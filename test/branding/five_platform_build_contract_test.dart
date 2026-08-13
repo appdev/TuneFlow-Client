@@ -14,9 +14,9 @@ void main() {
     expect(workflow, contains('ANDROID_KEYSTORE_BASE64'));
     expect(workflow, contains('flutter build ios --release --no-codesign'));
     expect(workflow, contains('CODE_SIGNING_ALLOWED=NO'));
-    expect(workflow, contains('runs-on: windows-latest'));
+    expect(workflow, contains('runs-on: windows-2022'));
     expect(workflow, contains('flutter build windows --release'));
-    expect(workflow, contains('runs-on: ubuntu-latest'));
+    expect(workflow, contains('runs-on: ubuntu-22.04'));
     expect(workflow, contains('flutter build linux --release'));
     expect('uses: actions/upload-artifact@v4'.allMatches(workflow), hasLength(5));
     expect(androidBuild, contains('signingConfigs'));
