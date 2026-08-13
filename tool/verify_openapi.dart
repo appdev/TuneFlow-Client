@@ -40,11 +40,14 @@ Never fail(String message) {
 }
 
 void main(List<String> arguments) {
-  final file = File(
-    arguments.isEmpty
-        ? '../TuneFlow/dist/server/openapi.json'
-        : arguments.single,
-  );
+  if (arguments.length > 1) {
+    fail('usage: dart run tool/verify_openapi.dart <openapi.json>');
+  }
+  final path = arguments.isNotEmpty
+      ? arguments.single
+      : Platform.environment['TUNEFLOW_OPENAPI_PATH'] ??
+            fail('provide <openapi.json> or set TUNEFLOW_OPENAPI_PATH');
+  final file = File(path);
   if (!file.existsSync()) fail('missing ${file.path}');
   final document = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
   final paths =
