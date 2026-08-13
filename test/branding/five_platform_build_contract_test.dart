@@ -8,6 +8,9 @@ void main() {
       '.github/workflows/build-clients.yml',
     ).readAsStringSync();
     final androidBuild = File('android/app/build.gradle.kts').readAsStringSync();
+    final linuxRunnerBuild = File(
+      'linux/runner/CMakeLists.txt',
+    ).readAsStringSync();
 
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, isNot(contains('flutter build appbundle')));
@@ -22,5 +25,13 @@ void main() {
     expect(androidBuild, contains('signingConfigs'));
     expect(androidBuild, contains('key.properties'));
     expect(androidBuild, isNot(contains('getByName("debug")')));
+    expect(
+      linuxRunnerBuild,
+      contains(r'"--sourcedir=${CMAKE_CURRENT_SOURCE_DIR}/resources"'),
+    );
+    expect(
+      linuxRunnerBuild,
+      contains(r'"--target=${TUNEFLOW_RESOURCE_SOURCE}"'),
+    );
   });
 }

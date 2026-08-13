@@ -18,9 +18,9 @@ add_custom_command(
   OUTPUT "${TUNEFLOW_RESOURCE_SOURCE}"
   COMMAND ${GLIB_COMPILE_RESOURCES}
     "${CMAKE_CURRENT_SOURCE_DIR}/resources/tuneflow.gresource.xml"
-    --sourcedir="${CMAKE_CURRENT_SOURCE_DIR}/resources"
+    "--sourcedir=${CMAKE_CURRENT_SOURCE_DIR}/resources"
     --generate-source
-    --target="${TUNEFLOW_RESOURCE_SOURCE}"
+    "--target=${TUNEFLOW_RESOURCE_SOURCE}"
     --c-name=tuneflow
   DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/resources/tuneflow.gresource.xml"
