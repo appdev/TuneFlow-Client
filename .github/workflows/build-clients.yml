@@ -2,9 +2,6 @@ name: Build TuneFlow clients
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
 
 permissions:
   contents: read
@@ -15,7 +12,6 @@ env:
 jobs:
   android:
     name: Android signed APK
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -201,3 +197,56 @@ jobs:
           name: tuneflow-linux
           path: tuneflow-linux.tar.gz
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [android, ios, macos, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve and validate release tag
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
+          test -n "$version"
+          RELEASE_TAG="v$version"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $RELEASE_TAG already exists"
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::Release $RELEASE_TAG already exists"
+            exit 1
+          fi
+      - name: Download client artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Verify release assets
+        shell: bash
+        run: |
+          test -f release-assets/app-release.apk
+          test -f release-assets/tuneflow-ios-unsigned.zip
+          test -f release-assets/tuneflow-macos-unsigned.zip
+          test -f release-assets/tuneflow-windows.zip
+          test -f release-assets/tuneflow-linux.tar.gz
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 5
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TAG" \
+            --generate-notes \
+            release-assets/app-release.apk \
+            release-assets/tuneflow-ios-unsigned.zip \
+            release-assets/tuneflow-macos-unsigned.zip \
+            release-assets/tuneflow-windows.zip \
+            release-assets/tuneflow-linux.tar.gz

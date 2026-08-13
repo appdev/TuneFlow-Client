@@ -12,6 +12,10 @@ void main() {
       'linux/runner/CMakeLists.txt',
     ).readAsStringSync();
 
+    expect(workflow, contains('workflow_dispatch:'));
+    expect(workflow, isNot(contains('push:')));
+    expect(workflow, isNot(contains('pull_request:')));
+    expect(workflow, contains('contents: write'));
     expect(workflow, contains('flutter build apk --release'));
     expect(workflow, isNot(contains('flutter build appbundle')));
     expect(workflow, contains('ANDROID_KEYSTORE_BASE64'));
@@ -30,6 +34,35 @@ void main() {
     expect(workflow, contains('runs-on: ubuntu-22.04'));
     expect(workflow, contains('flutter build linux --release'));
     expect('uses: actions/upload-artifact@v4'.allMatches(workflow), hasLength(5));
+    expect(
+      workflow,
+      contains('needs: [android, ios, macos, windows, linux]'),
+    );
+    expect(workflow, contains("grep -m1 '^version:' pubspec.yaml"));
+    expect(workflow, contains(r'refs/tags/$RELEASE_TAG'));
+    expect(workflow, contains(r'gh release view "$RELEASE_TAG"'));
+    expect(
+      'uses: actions/download-artifact@v4'.allMatches(workflow),
+      hasLength(1),
+    );
+    expect(workflow, contains('merge-multiple: true'));
+    expect(workflow, contains('test -f release-assets/app-release.apk'));
+    expect(
+      workflow,
+      contains('test -f release-assets/tuneflow-ios-unsigned.zip'),
+    );
+    expect(
+      workflow,
+      contains('test -f release-assets/tuneflow-macos-unsigned.zip'),
+    );
+    expect(workflow, contains('test -f release-assets/tuneflow-windows.zip'));
+    expect(
+      workflow,
+      contains('test -f release-assets/tuneflow-linux.tar.gz'),
+    );
+    expect(workflow, contains(r'gh release create "$RELEASE_TAG"'));
+    expect(workflow, contains(r'--target "$GITHUB_SHA"'));
+    expect(workflow, contains('--generate-notes'));
     expect(androidBuild, contains('signingConfigs'));
     expect(androidBuild, contains('key.properties'));
     expect(androidBuild, isNot(contains('getByName("debug")')));
