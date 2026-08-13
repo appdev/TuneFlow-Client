@@ -17,6 +17,14 @@ void main() {
     expect(workflow, contains('ANDROID_KEYSTORE_BASE64'));
     expect(workflow, contains('flutter build ios --release --no-codesign'));
     expect(workflow, contains('CODE_SIGNING_ALLOWED=NO'));
+    expect(
+      'codesign --remove-signature'.allMatches(workflow),
+      hasLength(2),
+    );
+    expect(
+      'Verify Apple binaries are unsigned'.allMatches(workflow),
+      hasLength(2),
+    );
     expect(workflow, contains('runs-on: windows-2022'));
     expect(workflow, contains('flutter build windows --release'));
     expect(workflow, contains('runs-on: ubuntu-22.04'));

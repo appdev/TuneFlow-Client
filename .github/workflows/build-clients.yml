@@ -66,6 +66,35 @@ jobs:
       - run: flutter pub get
       - name: Build unsigned iOS app
         run: flutter build ios --release --no-codesign
+      - name: Remove iOS ad-hoc signatures
+        shell: bash
+        run: |
+          app=build/ios/iphoneos/Runner.app
+          strip_signature() {
+            codesign --remove-signature "$1" 2>/dev/null || true
+          }
+          strip_signature "$app"
+          while IFS= read -r -d '' binary; do
+            if file "$binary" | grep -q 'Mach-O'; then
+              strip_signature "$binary"
+            fi
+          done < <(find "$app" -type f -print0)
+      - name: Verify Apple binaries are unsigned
+        shell: bash
+        run: |
+          app=build/ios/iphoneos/Runner.app
+          verify_unsigned() {
+            if codesign -dv "$1" >/dev/null 2>&1; then
+              echo "::error file=$1::Code object still has a signature"
+              return 1
+            fi
+          }
+          verify_unsigned "$app"
+          while IFS= read -r -d '' binary; do
+            if file "$binary" | grep -q 'Mach-O'; then
+              verify_unsigned "$binary"
+            fi
+          done < <(find "$app" -type f -print0)
       - name: Package iOS app
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphoneos/Runner.app tuneflow-ios-unsigned.zip
       - name: Upload iOS app
@@ -88,6 +117,35 @@ jobs:
       - run: flutter pub get
       - name: Build unsigned macOS app
         run: CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO flutter build macos --release
+      - name: Remove macOS ad-hoc signatures
+        shell: bash
+        run: |
+          app=build/macos/Build/Products/Release/TuneFlow.app
+          strip_signature() {
+            codesign --remove-signature "$1" 2>/dev/null || true
+          }
+          strip_signature "$app"
+          while IFS= read -r -d '' binary; do
+            if file "$binary" | grep -q 'Mach-O'; then
+              strip_signature "$binary"
+            fi
+          done < <(find "$app" -type f -print0)
+      - name: Verify Apple binaries are unsigned
+        shell: bash
+        run: |
+          app=build/macos/Build/Products/Release/TuneFlow.app
+          verify_unsigned() {
+            if codesign -dv "$1" >/dev/null 2>&1; then
+              echo "::error file=$1::Code object still has a signature"
+              return 1
+            fi
+          }
+          verify_unsigned "$app"
+          while IFS= read -r -d '' binary; do
+            if file "$binary" | grep -q 'Mach-O'; then
+              verify_unsigned "$binary"
+            fi
+          done < <(find "$app" -type f -print0)
       - name: Package macOS app
         run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/TuneFlow.app tuneflow-macos-unsigned.zip
       - name: Upload macOS app
