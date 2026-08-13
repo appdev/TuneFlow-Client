@@ -1,0 +1,412 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
+
+import '../../api/models.dart';
+import '../../design/app_breakpoints.dart';
+import '../../design/components/app_button.dart';
+import '../../design/components/app_feedback.dart';
+import '../../design/components/app_states.dart';
+import '../../design/components/artwork.dart';
+import '../../design/design_tokens.dart';
+import '../catalog/catalog_track_list.dart';
+import '../downloads/download_repository.dart';
+import '../player/player_controller.dart';
+import '../search/adaptive_track_actions.dart';
+import '../search/search_track_metadata.dart';
+import '../search/track_action.dart';
+import 'online_playlist_detail_controller.dart';
+
+final class OnlinePlaylistDetailScreen extends StatefulWidget {
+  const OnlinePlaylistDetailScreen({
+    super.key,
+    required this.controller,
+    required this.player,
+    required this.downloads,
+  });
+
+  final OnlinePlaylistDetailController controller;
+  final PlayerController player;
+  final DownloadRepository downloads;
+
+  @override
+  State<OnlinePlaylistDetailScreen> createState() =>
+      _OnlinePlaylistDetailScreenState();
+}
+
+final class _OnlinePlaylistDetailScreenState
+    extends State<OnlinePlaylistDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller.state.pages.isEmpty) {
+      unawaited(widget.controller.load());
+    }
+  }
+
+  Future<void> _run(Future<void> Function() action, {String? success}) async {
+    try {
+      await action();
+      if (mounted && success != null) {
+        showAppMessage(context, title: '完成', message: success);
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        showAppMessage(
+          context,
+          title: '操作失败',
+          message: error.toString(),
+          destructive: true,
+        );
+      }
+    }
+  }
+
+  Future<void> _playAll() async {
+    await widget.controller.loadAllPages();
+    if (!mounted) return;
+    if (widget.controller.state.failedPage != null) {
+      showAppMessage(
+        context,
+        title: '无法播放全部',
+        message: '歌单仍有页面加载失败，请重试后再播放。',
+        destructive: true,
+      );
+      return;
+    }
+    await widget.player.playTracks(widget.controller.state.tracks);
+  }
+
+  Future<void> _lyrics(Track track) async {
+    final lyrics = await widget.controller.catalog.lyrics(track);
+    if (!mounted) return;
+    await showAppSheet<void>(
+      context,
+      title: track.title.isEmpty ? '歌词' : track.title,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 430),
+        child: SingleChildScrollView(
+          child: SelectableText(
+            [
+              lyrics.original,
+              if (lyrics.translation case final value?) value,
+            ].join('\n\n'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _choosePlaylist({Track? track, bool importAll = false}) async {
+    final playlists = await widget.controller.playlists.list();
+    if (!mounted) return;
+    await showAppSheet<void>(
+      context,
+      title: importAll ? '导入到本地歌单' : '添加到歌单',
+      child: playlists.isEmpty
+          ? const AppEmptyState(message: '还没有歌单')
+          : ListView.builder(
+              shrinkWrap: true,
+              itemCount: playlists.length,
+              itemBuilder: (context, index) {
+                final playlist = playlists[index];
+                return AppButton(
+                  variant: ShadButtonVariant.ghost,
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    if (importAll) {
+                      unawaited(widget.controller.importAll(playlist.id));
+                    } else if (track != null) {
+                      unawaited(
+                        _run(
+                          () => widget.controller.playlists.addTracks(
+                            playlist.id,
+                            [track],
+                          ),
+                          success: '已添加到 ${playlist.name}',
+                        ),
+                      );
+                    }
+                  },
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(playlist.name),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  List<TrackAction> _actionsFor(Track track) => buildTrackActions(
+    track: track,
+    player: widget.player,
+    showLyrics: (value) => _run(() => _lyrics(value)),
+    addToPlaylist: (value) => _run(() => _choosePlaylist(track: value)),
+    download: (value, quality) => _run(
+      () => widget.downloads.create(value, quality),
+      success: '已交给 Service 下载',
+    ),
+  );
+
+  void _more(Track track) {
+    unawaited(
+      showMobileTrackActions(
+        context,
+        track: track,
+        metadata: SearchTrackMetadata.fromTrack(track),
+        actions: _actionsFor(track),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.controller,
+    builder: (context, _) {
+      final state = widget.controller.state;
+      final playlist = state.playlist;
+      final mobile =
+          classifyLayout(MediaQuery.sizeOf(context).width) ==
+          AppLayoutClass.mobile;
+      if (playlist == null && state.loadingPage != null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (playlist == null) {
+        return _InitialError(error: state.error, retry: widget.controller.load);
+      }
+      return ColoredBox(
+        color: AppTokens.of(context).background,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            mobile ? 16 : 38,
+            mobile ? 18 : 30,
+            mobile ? 16 : 38,
+            16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _MetadataHero(
+                playlist: playlist,
+                mobile: mobile,
+                onPlayAll: _playAll,
+                onImportAll: () => _choosePlaylist(importAll: true),
+                busy: state.importing,
+              ),
+              if (state.importProgress case final progress?) ...[
+                const SizedBox(height: 10),
+                _ImportStatus(
+                  progress: progress,
+                  importing: state.importing,
+                  onCancel: widget.controller.cancelImport,
+                ),
+              ],
+              if (state.error != null && state.stale) ...[
+                const SizedBox(height: 10),
+                AppNotice.error(
+                  title: '部分歌曲加载失败',
+                  message: state.error.toString(),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Expanded(
+                child: CatalogTrackList(
+                  tracks: state.tracks,
+                  page: 1,
+                  pageSize: state.tracks.isEmpty ? 1 : state.tracks.length,
+                  total: playlist.total?.toInt(),
+                  providers: const [],
+                  aggregate: false,
+                  mobile: mobile,
+                  loadPicture: (track) async {
+                    final embedded = track.raw['pic'];
+                    if (embedded is String && embedded.isNotEmpty) {
+                      return Uri.tryParse(embedded);
+                    }
+                    final url = await widget.controller.catalog.picture(track);
+                    return Uri.tryParse(url);
+                  },
+                  onPlay: widget.player.play,
+                  onFavorite: (track) =>
+                      unawaited(_choosePlaylist(track: track)),
+                  actionsFor: _actionsFor,
+                  onMore: _more,
+                ),
+              ),
+              if (state.hasMore || state.failedPage != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: AppButton(
+                    variant: ShadButtonVariant.outline,
+                    onPressed: state.loadingPage != null
+                        ? null
+                        : () => unawaited(
+                            state.failedPage != null
+                                ? widget.controller.retryFailedPage()
+                                : widget.controller.loadPage(
+                                    state.pages.keys.reduce(
+                                          (a, b) => a > b ? a : b,
+                                        ) +
+                                        1,
+                                  ),
+                          ),
+                    child: Text(state.failedPage != null ? '重试加载' : '加载更多'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+final class _MetadataHero extends StatelessWidget {
+  const _MetadataHero({
+    required this.playlist,
+    required this.mobile,
+    required this.onPlayAll,
+    required this.onImportAll,
+    required this.busy,
+  });
+
+  final CatalogCollection playlist;
+  final bool mobile;
+  final Future<void> Function() onPlayAll;
+  final Future<void> Function() onImportAll;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final metadata = [
+      if (playlist.author.isNotEmpty) playlist.author,
+      if (playlist.total != null) '${playlist.total} 首',
+      if (playlist.playCount case final value?) '$value 播放',
+    ];
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          playlist.name,
+          maxLines: mobile ? 2 : 3,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.display.copyWith(fontSize: mobile ? 25 : 34),
+        ),
+        if (metadata.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(metadata.join(' · '), style: AppTypography.metadata),
+        ],
+        if (playlist.description case final description?)
+          if (description.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(description, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            AppButton(
+              key: const Key('online-playlist-play-all'),
+              onPressed: busy ? null : () => unawaited(onPlayAll()),
+              leading: const Icon(LucideIcons.play, size: 16),
+              child: const Text('播放全部'),
+            ),
+            AppButton(
+              key: const Key('online-playlist-import-all'),
+              variant: ShadButtonVariant.outline,
+              onPressed: busy ? null : () => unawaited(onImportAll()),
+              leading: const Icon(LucideIcons.listPlus, size: 16),
+              child: const Text('添加全部到歌单'),
+            ),
+          ],
+        ),
+      ],
+    );
+    if (mobile) return details;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 190),
+      child: Row(
+        children: [
+          AppArtwork(
+            imageUrl: playlist.imageUrl?.toString(),
+            seed: '${playlist.source}:${playlist.id}',
+            semanticLabel: '${playlist.name}封面',
+            size: 176,
+            icon: LucideIcons.listMusic,
+          ),
+          const SizedBox(width: 24),
+          Expanded(child: details),
+        ],
+      ),
+    );
+  }
+}
+
+final class _ImportStatus extends StatelessWidget {
+  const _ImportStatus({
+    required this.progress,
+    required this.importing,
+    required this.onCancel,
+  });
+
+  final PlaylistImportProgress progress;
+  final bool importing;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          '已获取 ${progress.fetched} · 已添加 ${progress.added} · '
+          '跳过 ${progress.skipped} · 失败 ${progress.failed}',
+          style: AppTypography.metadata,
+        ),
+      ),
+      if (importing)
+        AppButton(
+          variant: ShadButtonVariant.ghost,
+          onPressed: onCancel,
+          child: const Text('取消'),
+        ),
+    ],
+  );
+}
+
+final class _InitialError extends StatelessWidget {
+  const _InitialError({required this.error, required this.retry});
+  final Object? error;
+  final Future<void> Function() retry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppNotice.error(
+            title: '歌单详情加载失败',
+            message: error?.toString() ?? 'Service 未返回歌单详情。',
+          ),
+          const SizedBox(height: 12),
+          AppButton(
+            variant: ShadButtonVariant.outline,
+            onPressed: () => unawaited(retry()),
+            child: const Text('重试'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
