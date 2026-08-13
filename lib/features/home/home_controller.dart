@@ -87,7 +87,16 @@ final class HomeController extends ChangeNotifier {
     Object? firstError;
     Future<void> loadPlaylists() async {
       try {
-        nextPlaylists = await playlists.list();
+        final summaries = await playlists.list();
+        nextPlaylists = await Future.wait(
+          summaries.map<Future<PlaylistSummary>>((summary) async {
+            try {
+              return await playlists.get(summary.id);
+            } on Object {
+              return summary;
+            }
+          }),
+        );
       } on Object catch (error) {
         firstError ??= error;
       }

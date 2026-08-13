@@ -1,18 +1,23 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/app_theme_definition.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_glass_surface.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
-import '../../design/components/playback_progress.dart';
 import '../../design/components/queue_panel.dart';
 import '../../design/design_tokens.dart';
+import 'desktop_player_controls.dart';
+import 'desktop_player_stage.dart';
 import 'lyrics_view.dart';
+import 'mobile_player_controls.dart';
+import 'mobile_queue_sheet.dart';
+import 'player_backdrop.dart';
 import 'player_controller.dart';
 import 'player_state.dart';
 import 'wake_lock_port.dart';
@@ -37,14 +42,36 @@ final class PlayerScreen extends StatefulWidget {
 
 final class _PlayerScreenState extends State<PlayerScreen> {
   late final PageController pages = PageController(
-    initialPage: widget.controller.state.view.index,
+    initialPage: widget.controller.state.view == PlayerView.lyrics ? 1 : 0,
   );
+  String? _artworkKey;
+  AppArtworkSource? _artworkSource;
+
+  AppArtworkSource _sourceFor(Track track) {
+    final url = track.raw['pic'] as String?;
+    final key = '${track.source}:${track.id}:$url';
+    if (_artworkKey != key) {
+      _artworkKey = key;
+      _artworkSource = AppArtworkSource.fromUrl(
+        url,
+        fallbackSeed: '${track.source}:${track.id}',
+      );
+    }
+    return _artworkSource!;
+  }
 
   @override
   void initState() {
     super.initState();
     unawaited(widget.wakeLock.setEnabled(widget.keepAwake));
     unawaited(widget.controller.loadLyrics(widget.lyricsLoader));
+    if (widget.controller.state.view == PlayerView.queue) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.controller.setView(PlayerView.artwork);
+        unawaited(_queue());
+      });
+    }
   }
 
   @override
@@ -54,33 +81,30 @@ final class _PlayerScreenState extends State<PlayerScreen> {
     super.dispose();
   }
 
-  void _selectView(PlayerView view) {
-    widget.controller.setView(view);
-    if (pages.hasClients) {
-      pages.animateToPage(
-        view.index,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-      );
-    }
+  Future<void> _queue() {
+    final mobile = MediaQuery.sizeOf(context).width < 720;
+    return showAppSheet<void>(
+      context,
+      title: '播放队列',
+      initialChildSize: mobile ? .64 : null,
+      minChildSize: .48,
+      maxChildSize: .90,
+      child: mobile
+          ? MobileQueueSheet(controller: widget.controller)
+          : ListenableBuilder(
+              listenable: widget.controller,
+              builder: (context, _) {
+                final state = widget.controller.state;
+                return QueuePanel(
+                  compact: true,
+                  tracks: state.queue,
+                  currentIndex: state.currentIndex,
+                  onSelected: widget.controller.playIndex,
+                );
+              },
+            ),
+    );
   }
-
-  Future<void> _queue() => showAppSheet<void>(
-    context,
-    title: '播放队列',
-    child: ListenableBuilder(
-      listenable: widget.controller,
-      builder: (context, _) {
-        final state = widget.controller.state;
-        return QueuePanel(
-          compact: true,
-          tracks: state.queue,
-          currentIndex: state.currentIndex,
-          onSelected: widget.controller.playIndex,
-        );
-      },
-    ),
-  );
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -94,6 +118,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
           child: AppEmptyState(message: '播放队列为空'),
         );
       }
+      final artworkSource = _sourceFor(track);
       return LayoutBuilder(
         builder: (context, constraints) {
           final mobile =
@@ -102,37 +127,52 @@ final class _PlayerScreenState extends State<PlayerScreen> {
               ? _MobilePlayer(
                   key: const Key('player-mobile-layout'),
                   controller: widget.controller,
+                  artworkSource: artworkSource,
                   pages: pages,
-                  onViewSelected: _selectView,
+                  onQueue: _queue,
+                  onLyrics: () =>
+                      widget.controller.loadLyrics(widget.lyricsLoader),
                 )
-              : _DesktopPlayer(
+              : Stack(
                   key: const Key('player-wide-layout'),
-                  controller: widget.controller,
-                );
-          return ColoredBox(
-            key: const Key('player-screen-root'),
-            color: AppTokens.of(context).background,
-            child: SafeArea(
-              child: Column(
-                children: [
-                  if (state.error != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: AppNotice.error(
-                        title: '播放失败',
-                        message: state.error.toString(),
+                  fit: StackFit.expand,
+                  children: [
+                    DesktopPlayerStage(
+                      state: state,
+                      artworkSource: artworkSource,
+                      onRetryLyrics: () =>
+                          widget.controller.loadLyrics(widget.lyricsLoader),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 16,
+                      child: DesktopPlayerControls(
+                        controller: widget.controller,
                       ),
                     ),
-                  Expanded(child: content),
-                  _Controls(
-                    controller: widget.controller,
-                    onQueue: _queue,
-                    onLyrics: () =>
-                        widget.controller.loadLyrics(widget.lyricsLoader),
-                  ),
-                ],
+                  ],
+                );
+          return Stack(
+            key: const Key('player-screen-root'),
+            fit: StackFit.expand,
+            children: [
+              PlayerBackdrop(
+                source: artworkSource,
+                transitionKey: '${track.source}:${track.id}',
               ),
-            ),
+              SafeArea(child: content),
+              if (!mobile && state.error != null)
+                Positioned(
+                  top: 46,
+                  left: 24,
+                  right: 24,
+                  child: AppNotice.error(
+                    title: '播放失败',
+                    message: state.error.toString(),
+                  ),
+                ),
+            ],
           );
         },
       );
@@ -140,444 +180,109 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   );
 }
 
-final class _DesktopPlayer extends StatelessWidget {
-  const _DesktopPlayer({super.key, required this.controller});
-  final PlayerController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = controller.state;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(38, 30, 38, 18),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 450,
-            child: Transform.translate(
-              offset: const Offset(0, -30),
-              child: _DesktopArtworkStage(track: state.current!),
-            ),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Center(
-              child: SizedBox(
-                key: const Key('desktop-lyrics-viewport'),
-                height: 320,
-                child: LyricsView(
-                  state: state,
-                  verticalPadding: 28,
-                  edgeFade: true,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 final class _MobilePlayer extends StatelessWidget {
   const _MobilePlayer({
     super.key,
     required this.controller,
+    required this.artworkSource,
     required this.pages,
-    required this.onViewSelected,
-  });
-
-  final PlayerController controller;
-  final PageController pages;
-  final ValueChanged<PlayerView> onViewSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = controller.state;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '风从台北来',
-                      style: AppTypography.metadata.copyWith(
-                        color: AppTokens.of(context).muted,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '正在播放',
-                      style: AppTypography.display.copyWith(fontSize: 31),
-                    ),
-                  ],
-                ),
-              ),
-              ShadButton.ghost(
-                width: 44,
-                height: 44,
-                padding: EdgeInsets.zero,
-                onPressed: () {},
-                child: const Icon(LucideIcons.ellipsis, size: 20),
-              ),
-            ],
-          ),
-        ),
-        _ViewTabs(value: state.view, onChanged: onViewSelected),
-        Expanded(
-          child: PageView(
-            controller: pages,
-            onPageChanged: (index) =>
-                controller.setView(PlayerView.values[index]),
-            children: [
-              _ArtworkStage(track: state.current!, mobile: true),
-              LyricsView(state: state, verticalPadding: 160),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: QueuePanel(
-                  tracks: state.queue,
-                  currentIndex: state.currentIndex,
-                  onSelected: controller.playIndex,
-                  compact: true,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-final class _ViewTabs extends StatelessWidget {
-  const _ViewTabs({required this.value, required this.onChanged});
-  final PlayerView value;
-  final ValueChanged<PlayerView> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final entry in const [
-            (PlayerView.artwork, '封面'),
-            (PlayerView.lyrics, '歌词'),
-            (PlayerView.queue, '队列'),
-          ])
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ShadButton.raw(
-                key: Key('player-view-${entry.$1.name}'),
-                variant: value == entry.$1
-                    ? ShadButtonVariant.primary
-                    : ShadButtonVariant.outline,
-                height: 40,
-                padding: const EdgeInsets.symmetric(horizontal: 15),
-                onPressed: () => onChanged(entry.$1),
-                child: Text(entry.$2),
-              ),
-            ),
-        ],
-      ),
-    ),
-  );
-}
-
-final class _DesktopArtworkStage extends StatelessWidget {
-  const _DesktopArtworkStage({required this.track});
-  final Track track;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 450),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 1.45,
-            child: LayoutBuilder(
-              builder: (context, constraints) => AppArtwork(
-                imageUrl: track.raw['pic'] as String?,
-                seed: '${track.source}:${track.id}',
-                semanticLabel: '${track.title}封面',
-                size: constraints.maxWidth,
-                width: constraints.maxWidth,
-                height: constraints.maxHeight,
-                borderRadius: AppRadii.panel,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(track.title, style: AppTypography.display),
-          const SizedBox(height: 6),
-          Text(
-            '${track.artist} · ${track.raw['albumName'] ?? track.raw['album'] ?? ''}',
-            style: AppTypography.body.copyWith(
-              color: AppTokens.of(context).foregroundSecondary,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-final class _ArtworkStage extends StatelessWidget {
-  const _ArtworkStage({required this.track, this.mobile = false});
-  final Track track;
-  final bool mobile;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final limit = mobile ? 300.0 : 430.0;
-      final size = math
-          .min(
-            constraints.maxWidth,
-            constraints.maxHeight - (mobile ? 100 : 90),
-          )
-          .clamp(120.0, limit);
-      return Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppArtwork(
-                imageUrl: track.raw['pic'] as String?,
-                seed: '${track.source}:${track.id}',
-                semanticLabel: '${track.title}封面',
-                size: size,
-                borderRadius: AppRadii.panel,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Text(
-                track.title.isEmpty ? track.id : track.title,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: mobile ? AppTypography.section : AppTypography.display,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                track.artist,
-                textAlign: TextAlign.center,
-                style: AppTypography.body.copyWith(
-                  color: AppTokens.of(context).foregroundSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
-}
-
-final class _Controls extends StatelessWidget {
-  const _Controls({
-    required this.controller,
     required this.onQueue,
     required this.onLyrics,
   });
 
   final PlayerController controller;
+  final AppArtworkSource artworkSource;
+  final PageController pages;
   final VoidCallback onQueue;
   final VoidCallback onLyrics;
 
   @override
   Widget build(BuildContext context) {
     final state = controller.state;
-    final mobile = MediaQuery.sizeOf(context).width < 720;
-    if (mobile) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              state.current!.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.section,
-            ),
-            Text(
-              '${state.current!.artist} · ${state.quality == 'flac' ? '无损' : state.quality}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.body.copyWith(
-                color: AppTokens.of(context).foregroundSecondary,
+    final track = state.current!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        children: [
+          Row(
+            key: const Key('player-mobile-topbar'),
+            children: [
+              _MobileGlassIconButton(
+                label: '返回',
+                icon: LucideIcons.chevronDown,
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              Expanded(
+                child: Center(
+                  child: AppGlassSurface(
+                    role: AppGlassRole.clear,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    child: Text('正在播放', style: AppTypography.metadata),
+                  ),
+                ),
+              ),
+              _MobileGlassIconButton(
+                label: '播放队列',
+                icon: LucideIcons.ellipsis,
+                onPressed: onQueue,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (state.error != null)
+            AppGlassSurface(
+              key: const Key('player-mobile-playback-error'),
+              role: AppGlassRole.clear,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    LucideIcons.circleAlert,
+                    size: 18,
+                    color: AppTokens.of(context).danger,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('当前音频暂时无法播放')),
+                  ShadButton.ghost(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    onPressed: controller.resume,
+                    child: const Text('重试'),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            PlaybackProgress(
-              position: state.position,
-              duration: state.duration,
-              onSeek: controller.seek,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _ControlButton(
-                  key: const Key('player-previous'),
-                  label: '上一首',
-                  icon: LucideIcons.chevronLeft,
-                  enabled: state.currentIndex > 0,
-                  onPressed: controller.previous,
-                ),
-                const SizedBox(width: 8),
-                _ControlButton(
-                  key: const Key('player-play-pause'),
-                  label: state.playing ? '暂停' : '播放',
-                  icon: state.playing ? LucideIcons.pause : LucideIcons.play,
-                  prominent: true,
-                  onPressed: state.playing
-                      ? controller.pause
-                      : controller.resume,
-                ),
-                const SizedBox(width: 8),
-                _ControlButton(
-                  key: const Key('player-next'),
-                  label: '下一首',
-                  icon: LucideIcons.chevronRight,
-                  enabled: state.currentIndex + 1 < state.queue.length,
-                  onPressed: controller.next,
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-    return Container(
-      height: 92,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      decoration: BoxDecoration(
-        color: AppTokens.of(context).surface,
-        border: Border(
-          top: BorderSide(color: AppTokens.of(context).borderSoft),
-        ),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 300,
-            child: Row(
-              children: [
-                AppArtwork(
-                  imageUrl: state.current!.raw['pic'] as String?,
-                  seed: '${state.current!.source}:${state.current!.id}',
-                  semanticLabel: '${state.current!.title}封面',
-                  size: 42,
-                  borderRadius: 8,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(state.current!.title, style: AppTypography.title),
-                      Text(
-                        state.current!.artist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.metadata.copyWith(
-                          color: AppTokens.of(context).foregroundSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: PageView(
+              controller: pages,
+              onPageChanged: (index) =>
+                  controller.setView(PlayerView.values[index]),
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _ControlButton(
-                      key: const Key('player-previous'),
-                      label: '上一首',
-                      icon: LucideIcons.chevronLeft,
-                      enabled: state.currentIndex > 0,
-                      onPressed: controller.previous,
-                    ),
-                    _ControlButton(
-                      key: const Key('player-play-pause'),
-                      label: state.playing ? '暂停' : '播放',
-                      icon: state.playing
-                          ? LucideIcons.pause
-                          : LucideIcons.play,
-                      prominent: true,
-                      onPressed: state.playing
-                          ? controller.pause
-                          : controller.resume,
-                    ),
-                    _ControlButton(
-                      key: const Key('player-next'),
-                      label: '下一首',
-                      icon: LucideIcons.chevronRight,
-                      enabled: state.currentIndex + 1 < state.queue.length,
-                      onPressed: controller.next,
-                    ),
-                  ],
+                _MobileNowPlaying(
+                  track: track,
+                  artworkSource: artworkSource,
+                  state: state,
+                  onRetryLyrics: onLyrics,
                 ),
-                PlaybackProgress(
-                  position: state.position,
-                  duration: state.duration,
-                  compact: true,
-                  onSeek: controller.seek,
-                ),
+                LyricsView(state: state, verticalPadding: 120, edgeFade: true),
               ],
             ),
           ),
-          SizedBox(
-            width: 250,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SizedBox(
-                  width: 72,
-                  child: ShadSelect<String>(
-                    initialValue: state.quality,
-                    options: const [
-                      ShadOption(value: '128k', child: Text('128k')),
-                      ShadOption(value: '320k', child: Text('320k')),
-                      ShadOption(value: 'flac', child: Text('无损')),
-                    ],
-                    selectedOptionBuilder: (context, value) => Text(value),
-                    onChanged: (value) {
-                      if (value != null) controller.setQuality(value);
-                    },
-                  ),
-                ),
-                _ControlButton(
-                  label: '歌词',
-                  icon: LucideIcons.messageSquareText,
-                  onPressed: onLyrics,
-                ),
-                _ControlButton(
-                  label: '播放队列',
-                  icon: LucideIcons.listMusic,
-                  onPressed: onQueue,
-                ),
-              ],
-            ),
+          const SizedBox(height: 10),
+          MobilePlayerControls(
+            state: state,
+            onSeek: controller.seek,
+            onPrevious: controller.previous,
+            onPlayPause: state.playing ? controller.pause : controller.resume,
+            onNext: controller.next,
+            onPlaybackMode: controller.cyclePlaybackMode,
+            onQualityChanged: (quality) =>
+                unawaited(controller.setQuality(quality)),
+            onQueue: onQueue,
           ),
         ],
       ),
@@ -585,50 +290,112 @@ final class _Controls extends StatelessWidget {
   }
 }
 
-final class _ControlButton extends StatelessWidget {
-  const _ControlButton({
-    super.key,
+final class _MobileGlassIconButton extends StatelessWidget {
+  const _MobileGlassIconButton({
     required this.label,
     required this.icon,
     required this.onPressed,
-    this.enabled = true,
-    this.prominent = false,
   });
-
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
-  final bool enabled;
-  final bool prominent;
 
   @override
-  Widget build(BuildContext context) {
-    final child = prominent
-        ? Material(
-            color: AppTokens.of(context).foreground,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: enabled ? onPressed : null,
-              child: SizedBox.square(
-                dimension: 56,
-                child: Icon(
-                  icon,
-                  size: 23,
-                  color: AppTokens.of(context).background,
-                ),
+  Widget build(BuildContext context) => AppGlassSurface(
+    role: AppGlassRole.clear,
+    borderRadius: BorderRadius.circular(14),
+    child: Semantics(
+      button: true,
+      label: label,
+      child: ShadButton.ghost(
+        width: 44,
+        height: 44,
+        padding: EdgeInsets.zero,
+        onPressed: onPressed,
+        child: Icon(icon, size: 20),
+      ),
+    ),
+  );
+}
+
+final class _MobileNowPlaying extends StatelessWidget {
+  const _MobileNowPlaying({
+    required this.track,
+    required this.artworkSource,
+    required this.state,
+    required this.onRetryLyrics,
+  });
+  final Track track;
+  final AppArtworkSource artworkSource;
+  final PlayerState state;
+  final VoidCallback onRetryLyrics;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final artworkSize = (constraints.maxHeight * .46).clamp(132.0, 208.0);
+      return SingleChildScrollView(
+        padding: const EdgeInsets.only(top: 12),
+        child: Column(
+          children: [
+            AppArtwork(
+              key: const Key('player-mobile-artwork'),
+              source: artworkSource,
+              seed: '${track.source}:${track.id}',
+              semanticLabel: '${track.title}封面',
+              size: artworkSize,
+              borderRadius: AppRadii.panel,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              track.title.isEmpty ? track.id : track.title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.section,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              track.artist,
+              textAlign: TextAlign.center,
+              style: AppTypography.body.copyWith(
+                color: AppTokens.of(context).foregroundSecondary,
               ),
             ),
-          )
-        : ShadButton.raw(
-            variant: ShadButtonVariant.ghost,
-            width: 48,
-            height: 48,
-            padding: EdgeInsets.zero,
-            enabled: enabled,
-            onPressed: enabled ? onPressed : null,
-            child: Icon(icon, size: 19),
-          );
-    return Tooltip(message: label, child: child);
-  }
+            const SizedBox(height: 8),
+            if (state.lyricsError != null)
+              TextButton.icon(
+                key: const Key('player-mobile-lyric-error'),
+                onPressed: onRetryLyrics,
+                icon: const Icon(LucideIcons.rotateCcw, size: 15),
+                label: const Text('歌词暂不可用'),
+              )
+            else if (state.lyrics == null ||
+                (state.lyrics!.original.isEmpty &&
+                    (state.lyrics!.translation?.isEmpty ?? true)))
+              SizedBox(
+                height: 104,
+                child: Center(
+                  child: Text(
+                    '暂无歌词',
+                    style: AppTypography.body.copyWith(
+                      color: AppTokens.of(context).muted,
+                    ),
+                  ),
+                ),
+              )
+            else
+              SizedBox(
+                height: 104,
+                child: LyricsView(
+                  state: state,
+                  verticalPadding: 28,
+                  edgeFade: true,
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }

@@ -5,6 +5,7 @@ import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
 import '../../design/components/status_badge.dart';
@@ -132,40 +133,38 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('离线曲库', style: AppTypography.metadata),
-                          const SizedBox(height: 3),
-                          Text(
-                            mobile ? '下载' : '下载管理',
-                            style: mobile
-                                ? AppTypography.display.copyWith(fontSize: 31)
-                                : AppTypography.display,
-                          ),
-                        ],
+                if (mobile)
+                  const AppMobilePageHeader(title: '下载', eyebrow: '离线曲库')
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('离线曲库', style: AppTypography.metadata),
+                            const SizedBox(height: 3),
+                            Text('下载管理', style: AppTypography.display),
+                          ],
+                        ),
                       ),
-                    ),
-                    if (!mobile && state.jobs.any((job) => job.canPause))
-                      AppButton(
-                        variant: ShadButtonVariant.outline,
-                        onPressed: _pauseAll,
-                        child: const Text('全部暂停'),
-                      ),
-                    if (!mobile) ...[
-                      const SizedBox(width: 8),
-                      AppButton(
-                        variant: ShadButtonVariant.ghost,
-                        onPressed: widget.controller.refresh,
-                        leading: const Icon(LucideIcons.refreshCw, size: 18),
-                        child: const Text('刷新'),
-                      ),
+                      if (state.jobs.any((job) => job.canPause))
+                        AppButton(
+                          variant: ShadButtonVariant.outline,
+                          onPressed: _pauseAll,
+                          child: const Text('全部暂停'),
+                        ),
+                      ...[
+                        const SizedBox(width: 8),
+                        AppButton(
+                          variant: ShadButtonVariant.ghost,
+                          onPressed: widget.controller.refresh,
+                          leading: const Icon(LucideIcons.refreshCw, size: 18),
+                          child: const Text('刷新'),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
                 if (state.loading) ...[
                   const SizedBox(height: AppSpacing.md),
                   const LinearProgressIndicator(minHeight: 2),
@@ -208,6 +207,7 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
                               return _DownloadCard(
                                 job: job,
                                 mobile: mobile,
+                                loadPicture: widget.controller.loadPicture,
                                 onActions: () => _actions(job),
                               );
                             },
@@ -227,45 +227,29 @@ final class _DownloadCard extends StatelessWidget {
   const _DownloadCard({
     required this.job,
     required this.mobile,
+    required this.loadPicture,
     required this.onActions,
   });
   final DownloadJob job;
   final bool mobile;
+  final Future<Uri?> Function(Track) loadPicture;
   final VoidCallback onActions;
 
   @override
   Widget build(BuildContext context) {
     final content = Row(
       children: [
-        AppArtwork(
-          imageUrl: job.musicInfo.raw['pic'] as String?,
-          seed: '${job.musicInfo.source}:${job.musicInfo.id}',
-          semanticLabel: '${job.musicInfo.title}封面',
-          size: mobile ? 38 : 38,
-          borderRadius: AppRadii.control,
-          showFallback: false,
-        ),
+        _DownloadArtwork(track: job.musicInfo, loadPicture: loadPicture),
         const SizedBox(width: AppSpacing.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      job.musicInfo.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.title,
-                    ),
-                  ),
-                  if (!mobile)
-                    AppStatusBadge(
-                      label: _statusLabel(job.status),
-                      tone: _statusTone(job.status),
-                    ),
-                ],
+              Text(
+                job.musicInfo.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.title,
               ),
               const SizedBox(height: 5),
               Text(
@@ -298,6 +282,13 @@ final class _DownloadCard extends StatelessWidget {
             ],
           ),
         ),
+        if (!mobile) ...[
+          const SizedBox(width: AppSpacing.md),
+          AppStatusBadge(
+            label: _statusLabel(job.status),
+            tone: _statusTone(job.status),
+          ),
+        ],
         IconButton(
           key: Key('download-actions-${job.id}'),
           tooltip: '下载操作',
@@ -325,6 +316,32 @@ final class _DownloadCard extends StatelessWidget {
       child: content,
     );
   }
+}
+
+final class _DownloadArtwork extends StatelessWidget {
+  const _DownloadArtwork({required this.track, required this.loadPicture});
+
+  final Track track;
+  final Future<Uri?> Function(Track) loadPicture;
+
+  @override
+  Widget build(BuildContext context) {
+    final persisted = Uri.tryParse(track.raw['pic'] as String? ?? '');
+    if (persisted?.scheme == 'https') return _artwork(persisted);
+    return FutureBuilder<Uri?>(
+      future: loadPicture(track),
+      builder: (context, snapshot) => _artwork(snapshot.data),
+    );
+  }
+
+  Widget _artwork(Uri? picture) => AppArtwork(
+    imageUrl: picture?.toString(),
+    seed: '${track.source}:${track.id}',
+    semanticLabel: '${track.title}封面',
+    size: 38,
+    borderRadius: AppRadii.control,
+    showFallback: false,
+  );
 }
 
 String _downloadIssueMessage(String value, {bool warning = false}) {

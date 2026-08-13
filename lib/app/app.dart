@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../design/app_glass_policy.dart';
 import '../design/app_theme.dart';
+import '../design/app_theme_definition.dart';
+import '../design/app_theme_scope.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/player/service_audio_handler.dart';
@@ -81,14 +84,17 @@ final class _AppView extends ConsumerWidget {
     ref.watch(eventSubscriptionProvider);
     final AppSettings? settings = ref.watch(appSettingsProvider).value;
     final themeMode = settings?.themeMode ?? ThemeMode.system;
+    final themeDefinition = AppThemeRegistry.definition(
+      AppThemeRegistry.current,
+    );
     final locale = switch (settings?.language ?? AppLanguage.system) {
       AppLanguage.system => null,
       AppLanguage.zh => const Locale('zh'),
       AppLanguage.en => const Locale('en'),
     };
     return ShadApp.custom(
-      theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
+      theme: buildLightTheme(themeDefinition),
+      darkTheme: buildDarkTheme(themeDefinition),
       themeMode: themeMode,
       appBuilder: (context) => MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
@@ -104,7 +110,13 @@ final class _AppView extends ConsumerWidget {
           GlobalWidgetsLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        builder: (context, child) => ShadAppBuilder(child: child!),
+        builder: (context, child) => AppThemeScope(
+          definition: themeDefinition,
+          child: AppGlassPolicyHost(
+            reduceTransparency: settings?.reduceTransparency ?? false,
+            child: ShadAppBuilder(child: child!),
+          ),
+        ),
       ),
     );
   }

@@ -53,6 +53,8 @@ final class SettingsController extends ChangeNotifier {
       _persist(state.copyWith(showLyrics: value));
   Future<void> setShowTranslation(bool value) =>
       _persist(state.copyWith(showTranslation: value));
+  Future<void> setReduceTransparency(bool value) =>
+      _persist(state.copyWith(reduceTransparency: value));
 
   Future<void> replaceOrigin(String rawOrigin) async {
     final origin = ServiceOrigin.parse(rawOrigin).uri.toString();

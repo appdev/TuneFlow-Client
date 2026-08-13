@@ -507,10 +507,16 @@ final class Lyrics {
     if (translation != null && translation is! String) {
       _invalid('lyrics.tlyric');
     }
-    return Lyrics(
-      original: jsonString(json['lyric'], 'lyrics.lyric', allowEmpty: true),
-      translation: translation as String?,
+    final original = jsonString(
+      json['lyric'],
+      'lyrics.lyric',
+      allowEmpty: true,
     );
+    if (original.contains('\uFFFD') ||
+        (translation is String && translation.contains('\uFFFD'))) {
+      _invalid('lyrics.encoding');
+    }
+    return Lyrics(original: original, translation: translation as String?);
   }
 
   final String original;

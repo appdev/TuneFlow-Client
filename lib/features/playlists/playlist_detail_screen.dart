@@ -238,10 +238,7 @@ final class _PlaylistHero extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 3),
-            Text(
-              detail.displayName,
-              style: AppTypography.display.copyWith(fontSize: 31),
-            ),
+            Text(detail.displayName, style: AppTypography.mobilePageTitle),
             const SizedBox(height: 14),
             LayoutBuilder(
               builder: (context, constraints) => Stack(

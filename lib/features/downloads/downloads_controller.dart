@@ -27,6 +27,7 @@ final class DownloadsController extends ChangeNotifier {
   DownloadsController(this.repository);
 
   final DownloadRepository repository;
+  final Map<(String, String), Future<Uri?>> _pictures = {};
   DownloadsState state = const DownloadsState();
   Timer? _refreshTimer;
   DateTime? _sampledAt;
@@ -77,6 +78,28 @@ final class DownloadsController extends ChangeNotifier {
   Future<void> pause(String id) => _mutate(() => repository.pause(id));
   Future<void> resume(String id) => _mutate(() => repository.resume(id));
   Future<void> delete(String id) => _mutate(() => repository.delete(id));
+
+  Future<Uri?> loadPicture(Track track) {
+    final embedded = Uri.tryParse(track.raw['pic'] as String? ?? '');
+    if (embedded != null && embedded.scheme == 'https') {
+      return Future.value(embedded);
+    }
+    return _pictures.putIfAbsent((track.source, track.id), () async {
+      try {
+        final resolved = Uri.tryParse(await repository.picture(track));
+        if (resolved != null &&
+            (resolved.scheme == 'http' || resolved.scheme == 'https')) {
+          return resolved;
+        }
+      } on Object {
+        // A missing catalog source must not hide an otherwise usable snapshot.
+      }
+      return embedded != null &&
+              (embedded.scheme == 'http' || embedded.scheme == 'https')
+          ? embedded
+          : null;
+    });
+  }
 
   Future<BulkDownloadResult> pauseAll() async {
     final running = state.jobs

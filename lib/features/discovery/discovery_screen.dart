@@ -7,11 +7,15 @@ import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_glass_surface.dart';
+import '../../design/components/app_mobile_chrome.dart';
+import '../../design/app_theme_definition.dart';
 import '../../design/components/app_states.dart';
-import '../../design/components/artwork.dart';
 import '../../design/design_tokens.dart';
 import '../catalog/catalog_track_list.dart';
 import '../playlists/playlist_repository.dart';
+import '../search/adaptive_track_actions.dart';
+import '../search/search_track_metadata.dart';
 import '../search/track_action.dart';
 import '../search/search_repository.dart';
 import 'playlist_discovery_controller.dart';
@@ -197,24 +201,24 @@ final class _PageHeader extends StatelessWidget {
   final bool mobile;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        charts ? '每天更新' : '动态平台 · Service API',
-        style: AppTypography.metadata.copyWith(
-          color: AppTokens.of(context).muted,
-        ),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        charts ? '排行榜' : '歌单广场',
-        style: mobile
-            ? AppTypography.display.copyWith(fontSize: 31)
-            : AppTypography.display,
-      ),
-    ],
-  );
+  Widget build(BuildContext context) => mobile
+      ? AppMobilePageHeader(
+          title: charts ? '排行榜' : '歌单广场',
+          eyebrow: charts ? '每天更新' : '动态平台 · Service API',
+        )
+      : Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              charts ? '每天更新' : '动态平台 · Service API',
+              style: AppTypography.metadata.copyWith(
+                color: AppTokens.of(context).muted,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(charts ? '排行榜' : '歌单广场', style: AppTypography.display),
+          ],
+        );
 }
 
 final class _ProviderChips extends StatelessWidget {
@@ -228,21 +232,25 @@ final class _ProviderChips extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(
-      children: [
-        for (final provider in providers) ...[
-          AppButton(
-            variant: selected == provider.id
-                ? ShadButtonVariant.primary
-                : ShadButtonVariant.outline,
-            onPressed: () => onSelected(provider.id),
-            child: Text(provider.name.replaceAll('音乐', '')),
-          ),
-          const SizedBox(width: 8),
+  Widget build(BuildContext context) => AppGlassSurface(
+    role: AppGlassRole.control,
+    padding: const EdgeInsets.all(4),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final provider in providers) ...[
+            AppButton(
+              variant: selected == provider.id
+                  ? ShadButtonVariant.primary
+                  : ShadButtonVariant.ghost,
+              onPressed: () => onSelected(provider.id),
+              child: Text(provider.name.replaceAll('音乐', '')),
+            ),
+            const SizedBox(width: 4),
+          ],
         ],
-      ],
+      ),
     ),
   );
 }
@@ -305,7 +313,7 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
   ) {
     final charts = Column(
       children: [
-        for (final board in boards.take(12))
+        for (final board in boards.take(widget.mobile ? 3 : 12))
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: AppButton(
@@ -391,6 +399,32 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
                   onPlay: widget.playTracks == null
                       ? null
                       : () => unawaited(widget.playTracks!([entry.$2])),
+                  onFavorite: widget.onFavorite == null
+                      ? null
+                      : () => unawaited(widget.onFavorite!(entry.$2)),
+                  onMore: () => unawaited(
+                    showMobileTrackActions(
+                      context,
+                      track: entry.$2,
+                      metadata: SearchTrackMetadata.fromTrack(entry.$2),
+                      actions: [
+                        if (widget.playTracks != null)
+                          TrackAction(
+                            id: TrackActionId.playNow,
+                            label: '立即播放',
+                            icon: LucideIcons.play,
+                            invoke: () => widget.playTracks!([entry.$2]),
+                          ),
+                        if (widget.onFavorite != null)
+                          TrackAction(
+                            id: TrackActionId.addToPlaylist,
+                            label: '添加到歌单',
+                            icon: LucideIcons.heartPlus,
+                            invoke: () => widget.onFavorite!(entry.$2),
+                          ),
+                      ],
+                    ),
+                  ),
                 )
               else
                 CatalogTrackRow(
@@ -463,52 +497,104 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
 }
 
 final class _MobileLeaderboardTrack extends StatelessWidget {
-  const _MobileLeaderboardTrack({required this.track, required this.onPlay});
+  const _MobileLeaderboardTrack({
+    required this.track,
+    required this.onPlay,
+    required this.onFavorite,
+    required this.onMore,
+  });
 
   final Track track;
   final VoidCallback? onPlay;
+  final VoidCallback? onFavorite;
+  final VoidCallback onMore;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onPlay,
-    child: Container(
-      height: 62,
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTokens.of(context).border)),
-      ),
-      child: Row(
-        children: [
-          AppArtwork(
-            imageUrl: track.raw['pic'] is String
-                ? track.raw['pic']! as String
-                : null,
-            seed: track.id,
-            semanticLabel: '${track.title}封面',
-            size: 42,
-            borderRadius: 9,
-            showFallback: false,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(track.title, style: AppTypography.title),
-                Text(
-                  track.artist,
-                  style: AppTypography.metadata.copyWith(
-                    color: AppTokens.of(context).foregroundSecondary,
+  Widget build(BuildContext context) {
+    final metadata = SearchTrackMetadata.fromTrack(track);
+    final tokens = AppTokens.of(context);
+    return InkWell(
+      onTap: onPlay,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 62),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: tokens.border)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.title,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (metadata.qualityLabel case final quality?) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: tokens.success),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            quality,
+                            style: AppTypography.metadata.copyWith(
+                              color: tokens.success,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                      ],
+                      Flexible(
+                        child: Text(
+                          track.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.metadata.copyWith(
+                            color: tokens.foregroundSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Icon(LucideIcons.ellipsis, size: 18),
-        ],
+            if (onFavorite != null)
+              IconButton(
+                key: Key('leaderboard-favorite-${track.source}-${track.id}'),
+                tooltip: '添加到歌单',
+                onPressed: onFavorite,
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                icon: const Icon(LucideIcons.heartPlus, size: 20),
+              ),
+            IconButton(
+              key: Key('leaderboard-more-${track.source}-${track.id}'),
+              tooltip: '更多操作',
+              onPressed: onMore,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              icon: const Icon(LucideIcons.ellipsisVertical, size: 20),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 final class _Unavailable extends StatelessWidget {

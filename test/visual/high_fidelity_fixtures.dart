@@ -470,6 +470,8 @@ final class FixtureAudio implements AudioPort {
   Future<void> resume() async {}
   @override
   Future<void> seek(Duration position) async {}
+  @override
+  Future<void> stopPlayback() async {}
 }
 
 Future<PlayerController> fixturePlayerController() async {

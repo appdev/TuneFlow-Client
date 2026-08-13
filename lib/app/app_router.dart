@@ -130,6 +130,7 @@ GoRouter buildAppRouter({
                 playlists: PlaylistRepository(connected.api),
                 downloads: DownloadRepository(connected.api),
                 player: requirePlayer(),
+                onSettings: () => context.goNamed('settings'),
               );
             },
           ),

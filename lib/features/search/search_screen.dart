@@ -9,7 +9,9 @@ import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
+import '../../design/components/app_glass_surface.dart';
 import '../../design/components/app_states.dart';
+import '../../design/app_theme_definition.dart';
 import '../../design/design_tokens.dart';
 import '../downloads/download_repository.dart';
 import '../player/player_controller.dart';
@@ -30,6 +32,7 @@ final class SearchScreen extends StatefulWidget {
     required this.playlists,
     required this.downloads,
     required this.player,
+    this.onSettings,
     SearchHistoryRepository? history,
   }) : history = history ?? SearchHistoryRepository();
 
@@ -37,6 +40,7 @@ final class SearchScreen extends StatefulWidget {
   final PlaylistRepository playlists;
   final DownloadRepository downloads;
   final PlayerController player;
+  final VoidCallback? onSettings;
   final SearchHistoryRepository history;
 
   @override
@@ -70,7 +74,11 @@ final class _SearchScreenState extends State<SearchScreen> {
     unawaited(
       widget.controller.loadCapabilities().then((_) {
         if (!mounted) return;
-        setState(() => selectedSource = widget.controller.state.source);
+        setState(() {
+          selectedSource = mobileLayout && query.text.trim().isEmpty
+              ? SearchController.aggregateSource
+              : widget.controller.state.source;
+        });
       }),
     );
   }
@@ -239,6 +247,70 @@ final class _SearchScreenState extends State<SearchScreen> {
     if (scroll.hasClients) scroll.jumpTo(0);
   }
 
+  Future<void> _selectMobileView(SearchView view, SearchState state) async {
+    final kind = switch (view) {
+      SearchView.albums => CatalogSearchKind.album,
+      SearchView.playlists => CatalogSearchKind.playlist,
+      SearchView.overview || SearchView.tracks => CatalogSearchKind.track,
+    };
+    var source = selectedSource;
+    final currentSupports =
+        kind == CatalogSearchKind.track ||
+        state.providers.any(
+          (provider) =>
+              provider.id == source && provider.searchKinds.contains(kind),
+        );
+    if (!currentSupports) {
+      String? fallback;
+      for (final provider in state.providers) {
+        if (provider.searchKinds.contains(kind)) {
+          fallback = provider.id;
+          break;
+        }
+      }
+      if (fallback == null) return;
+      source = fallback;
+      setState(() => selectedSource = source);
+      await widget.controller.search(source: source, query: query.text);
+    }
+    await widget.controller.selectView(view);
+  }
+
+  Future<void> _chooseSource(SearchState state) async {
+    final optionWidth = MediaQuery.sizeOf(context).width - 112;
+    final selected = await showAppSheet<String>(
+      context,
+      title: '音乐来源',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final provider in [
+            ...state.providers.map((item) => (item.id, item.name)),
+            (SearchController.aggregateSource, '全部来源'),
+          ])
+            AppButton(
+              key: Key('search-source-option-${provider.$1}'),
+              variant: ShadButtonVariant.ghost,
+              onPressed: () => Navigator.of(context).pop(provider.$1),
+              child: SizedBox(
+                width: optionWidth,
+                child: Row(
+                  children: [
+                    Expanded(child: Text(provider.$2)),
+                    if (provider.$1 == selectedSource)
+                      const Icon(LucideIcons.check, size: 18),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || selected == null || selected == selectedSource) return;
+    setState(() => selectedSource = selected);
+    await _search();
+  }
+
   @override
   void dispose() {
     scroll
@@ -285,6 +357,16 @@ final class _SearchScreenState extends State<SearchScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (mobile) ...[
+                          _MobileSearchMasthead(onSettings: widget.onSettings),
+                          const SizedBox(height: 28),
+                          Text(
+                            '搜索',
+                            key: const Key('search-page-title'),
+                            style: AppTypography.mobilePageTitle,
+                          ),
+                          const SizedBox(height: 20),
+                        ],
                         _SearchBar(
                           mobile: mobile,
                           state: state,
@@ -304,21 +386,38 @@ final class _SearchScreenState extends State<SearchScreen> {
                             onCleared: () => unawaited(_clearHistory()),
                           ),
                         ],
-                        SizedBox(height: mobile ? 4 : 18),
-                        _SourceTabs(
-                          state: state,
-                          selected: selectedSource,
-                          onSelected: (source) {
-                            setState(() => selectedSource = source);
-                            unawaited(_search());
-                          },
-                        ),
-                        _ViewTabs(
-                          controller: widget.controller,
-                          state: state,
-                          onSelected: (view) =>
-                              unawaited(widget.controller.selectView(view)),
-                        ),
+                        if (mobile) ...[
+                          const SizedBox(height: 20),
+                          _MobileSearchFilters(
+                            state: state,
+                            sourceLabel: _sourceLabel(state, selectedSource),
+                            onViewSelected: (view) =>
+                                unawaited(_selectMobileView(view, state)),
+                            onSourcePressed: () =>
+                                unawaited(_chooseSource(state)),
+                          ),
+                          if (!showHistory && state.query.isNotEmpty) ...[
+                            const SizedBox(height: 28),
+                            _MobileResultsHeading(state: state),
+                            const SizedBox(height: 8),
+                          ],
+                        ] else ...[
+                          const SizedBox(height: 18),
+                          _SourceTabs(
+                            state: state,
+                            selected: selectedSource,
+                            onSelected: (source) {
+                              setState(() => selectedSource = source);
+                              unawaited(_search());
+                            },
+                          ),
+                          _ViewTabs(
+                            controller: widget.controller,
+                            state: state,
+                            onSelected: (view) =>
+                                unawaited(widget.controller.selectView(view)),
+                          ),
+                        ],
                         if (!(mobile && showHistory))
                           Expanded(
                             child: mobile
@@ -402,7 +501,7 @@ final class _SearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: mobile ? 44 : 42,
+    height: mobile ? 52 : 42,
     child: Row(
       children: [
         if (!mobile) ...[
@@ -415,12 +514,16 @@ final class _SearchBar extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: mobile ? double.infinity : 610,
+              minHeight: mobile ? 52 : 0,
             ),
             child: AppTextField(
               key: const Key('search-field'),
               controller: controller,
               focusNode: focusNode,
               placeholder: '搜索音乐',
+              surface: mobile
+                  ? AppFieldSurface.glass
+                  : AppFieldSurface.standard,
               leading: const Padding(
                 padding: EdgeInsets.only(left: 10),
                 child: Icon(LucideIcons.search, size: 18),
@@ -435,19 +538,213 @@ final class _SearchBar extends StatelessWidget {
             ),
           ),
         ),
-        if (mobile) ...[
-          const SizedBox(width: 8),
-          IconButton(
-            key: const Key('search-options-button'),
-            tooltip: '搜索选项',
-            onPressed: () {},
-            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-            icon: const Icon(LucideIcons.ellipsis, size: 20),
-          ),
-        ],
       ],
     ),
   );
+}
+
+String _sourceLabel(SearchState state, String source) {
+  if (source == SearchController.aggregateSource) return '全部来源';
+  return state.providers
+          .where((provider) => provider.id == source)
+          .firstOrNull
+          ?.name ??
+      '选择来源';
+}
+
+final class _MobileSearchMasthead extends StatelessWidget {
+  const _MobileSearchMasthead({required this.onSettings});
+
+  final VoidCallback? onSettings;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('search-mobile-masthead'),
+    height: 44,
+    child: Row(
+      children: [
+        Image.asset(
+          'assets/branding/TuneFlow.png',
+          key: const Key('brand-logo'),
+          width: 28,
+          height: 28,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (context, error, stackTrace) => Icon(
+            LucideIcons.audioLines,
+            size: 24,
+            color: AppTokens.of(context).accent,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'TuneFlow',
+            style: AppTypography.section.copyWith(fontSize: 19),
+          ),
+        ),
+        AppGlassSurface(
+          role: AppGlassRole.control,
+          padding: EdgeInsets.zero,
+          child: IconButton(
+            key: const Key('search-settings'),
+            tooltip: '设置',
+            onPressed: onSettings,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+            icon: const Icon(LucideIcons.settings, size: 20),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+final class _MobileSearchFilters extends StatelessWidget {
+  const _MobileSearchFilters({
+    required this.state,
+    required this.sourceLabel,
+    required this.onViewSelected,
+    required this.onSourcePressed,
+  });
+
+  final SearchState state;
+  final String sourceLabel;
+  final ValueChanged<SearchView> onViewSelected;
+  final VoidCallback onSourcePressed;
+
+  SearchView get selectedView => switch (state.view) {
+    SearchView.overview => SearchView.tracks,
+    final view => view,
+  };
+
+  bool supports(SearchView view) {
+    if (view == SearchView.tracks || view == SearchView.overview) return true;
+    final kind = view == SearchView.albums
+        ? CatalogSearchKind.album
+        : CatalogSearchKind.playlist;
+    return state.providers.any(
+      (provider) => provider.searchKinds.contains(kind),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AppGlassSurface(
+    key: const Key('search-mobile-filters'),
+    role: AppGlassRole.control,
+    padding: const EdgeInsets.all(4),
+    child: Row(
+      children: [
+        _MobileFilterItem(
+          key: const Key('search-mobile-filter-tracks'),
+          label: '歌曲',
+          selected: selectedView == SearchView.tracks,
+          onPressed: () => onViewSelected(SearchView.tracks),
+        ),
+        _MobileFilterItem(
+          key: const Key('search-mobile-filter-albums'),
+          label: '专辑',
+          selected: selectedView == SearchView.albums,
+          onPressed: supports(SearchView.albums)
+              ? () => onViewSelected(SearchView.albums)
+              : null,
+        ),
+        _MobileFilterItem(
+          key: const Key('search-mobile-filter-playlists'),
+          label: '歌单',
+          selected: selectedView == SearchView.playlists,
+          onPressed: supports(SearchView.playlists)
+              ? () => onViewSelected(SearchView.playlists)
+              : null,
+        ),
+        _MobileFilterItem(
+          key: const Key('search-source-control'),
+          label: sourceLabel,
+          selected: false,
+          onPressed: onSourcePressed,
+        ),
+      ],
+    ),
+  );
+}
+
+final class _MobileFilterItem extends StatelessWidget {
+  const _MobileFilterItem({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+    super.key,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(AppRadii.compactCard),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: selected ? tokens.surfaceWarm : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadii.compactCard),
+              border: selected ? Border.all(color: tokens.borderSoft) : null,
+            ),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
+              style: AppTypography.body.copyWith(
+                color: onPressed == null
+                    ? tokens.muted.withValues(alpha: .55)
+                    : selected
+                    ? tokens.accent
+                    : tokens.foregroundSecondary,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _MobileResultsHeading extends StatelessWidget {
+  const _MobileResultsHeading({required this.state});
+
+  final SearchState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, unit) = switch (state.view) {
+      SearchView.albums => ('专辑', '张'),
+      SearchView.playlists => ('歌单', '个'),
+      _ => ('歌曲', '首'),
+    };
+    final section = state.activeSection;
+    final count = section.total ?? section.items.length;
+    return Row(
+      key: const Key('search-results-heading'),
+      children: [
+        Expanded(child: Text(title, style: AppTypography.section)),
+        Text(
+          '$count $unit',
+          style: AppTypography.counter.copyWith(
+            color: AppTokens.of(context).muted,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 final class _HistoryButton extends StatelessWidget {

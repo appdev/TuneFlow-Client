@@ -45,7 +45,7 @@ final class PlaylistCard extends StatelessWidget {
                     icon: LucideIcons.listMusic,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   playlist.displayName,
                   maxLines: 1,

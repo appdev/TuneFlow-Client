@@ -4,7 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../design/app_breakpoints.dart';
 import '../design/components/app_navigation.dart';
-import '../design/components/artwork.dart';
+import '../design/components/app_mobile_dock.dart';
 import '../design/design_tokens.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/player/mini_player.dart';
@@ -87,35 +87,50 @@ final class AppShell extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final layout = classifyLayout(constraints.maxWidth);
+          final resolvedPlatform =
+              platform ?? resolveAppPlatform(Theme.of(context).platform);
+          if (location.startsWith('/player')) {
+            return PlatformWindowFrame(
+              platform: resolvedPlatform,
+              location: location,
+              controller: desktopWindowController,
+              onBack: context.canPop() ? context.pop : () => context.go('/'),
+              onSearch: () => context.go('/search'),
+              child: Scaffold(backgroundColor: Colors.transparent, body: child),
+            );
+          }
           if (layout == AppLayoutClass.mobile) {
-            return Column(
-              children: [
-                Expanded(child: SafeArea(bottom: false, child: child)),
-                if (showMiniPlayer)
-                  MiniPlayer(
-                    controller: player,
-                    onOpen: () => context.pushNamed('player'),
-                    variant: MiniPlayerVariant.mobile,
-                  ),
-                AppMobileNavigation(
-                  destinations: _mobileDestinations,
-                  selectedId:
-                      _mobileDestinations.any(
-                        (destination) => destination.id == selectedId,
-                      )
-                      ? selectedId
-                      : 'home',
-                  onSelected: navigate,
-                ),
-              ],
+            final mobileShell = Scaffold(
+              backgroundColor: Colors.transparent,
+              extendBody: true,
+              body: SafeArea(bottom: false, child: child),
+              bottomNavigationBar: showMiniPlayer
+                  ? AppMobileDock(
+                      player: player,
+                      destinations: _mobileDestinations,
+                      selectedId:
+                          _mobileDestinations.any(
+                            (destination) => destination.id == selectedId,
+                          )
+                          ? selectedId
+                          : 'home',
+                      onSelected: navigate,
+                      onOpenPlayer: () => context.pushNamed('player'),
+                    )
+                  : null,
+            );
+            return PlatformWindowFrame(
+              platform: resolvedPlatform,
+              location: location,
+              controller: desktopWindowController,
+              onBack: context.canPop() ? context.pop : null,
+              onSearch: () => context.go('/search'),
+              child: mobileShell,
             );
           }
           final compact = layout == AppLayoutClass.narrow;
-          final showContext =
-              !compact && (location == '/' || location.startsWith('/square'));
           return PlatformWindowFrame(
-            platform:
-                platform ?? resolveAppPlatform(Theme.of(context).platform),
+            platform: resolvedPlatform,
             location: location,
             controller: desktopWindowController,
             onBack: context.canPop() ? context.pop : null,
@@ -138,7 +153,6 @@ final class AppShell extends StatelessWidget {
                         ),
                       ),
                       Expanded(child: child),
-                      if (showContext) _DesktopQueueContext(controller: player),
                     ],
                   ),
                 ),
@@ -246,101 +260,6 @@ final class _StatusDot extends StatelessWidget {
       boxShadow: [
         BoxShadow(color: AppTokens.of(context).success, blurRadius: 12),
       ],
-    ),
-  );
-}
-
-final class _DesktopQueueContext extends StatelessWidget {
-  const _DesktopQueueContext({required this.controller});
-
-  final PlayerController controller;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 292,
-    padding: const EdgeInsets.fromLTRB(18, 26, 18, 18),
-    decoration: BoxDecoration(
-      color: AppTokens.of(context).surface.withValues(alpha: .36),
-      border: Border(left: BorderSide(color: AppTokens.of(context).border)),
-    ),
-    child: ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        final state = controller.state;
-        final upcoming = state.queue
-            .skip(state.currentIndex + 1)
-            .toList(growable: false);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('随后播放', style: AppTypography.section),
-            const SizedBox(height: 14),
-            for (final track in upcoming)
-              InkWell(
-                onTap: () => controller.playIndex(state.queue.indexOf(track)),
-                child: Container(
-                  height: 58,
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: AppTokens.of(context).border),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      AppArtwork(
-                        imageUrl: track.raw['pic'] as String?,
-                        seed: track.id,
-                        semanticLabel: '${track.title}封面',
-                        size: 38,
-                        borderRadius: 9,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.metadata.copyWith(
-                                color: AppTokens.of(context).foreground,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            Text(
-                              track.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTypography.metadata.copyWith(
-                                color: AppTokens.of(
-                                  context,
-                                ).foregroundSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        switch (track.id) {
-                          'forest' => '6:32',
-                          'romance' => '4:12',
-                          'white' => '5:17',
-                          'sudden' => '3:34',
-                          _ => '',
-                        },
-                        style: AppTypography.counter.copyWith(
-                          color: AppTokens.of(context).foregroundSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
     ),
   );
 }

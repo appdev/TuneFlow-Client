@@ -84,11 +84,22 @@ void main() {
   setUpAll(() async {
     final chineseFontLoader = FontLoader('NotoSansCJKsc')
       ..addFont(rootBundle.load('assets/fonts/NotoSansCJKsc-Regular.otf'));
+    final displayFontLoader = FontLoader('NotoSerifSC')
+      ..addFont(
+        rootBundle.load('assets/fonts/NotoSerifSC-VariableFont_wght.ttf'),
+      );
+    final dataFontLoader = FontLoader('IBMPlexMono')
+      ..addFont(rootBundle.load('assets/fonts/IBMPlexMono-Medium.ttf'));
     final iconLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
       );
-    await Future.wait([chineseFontLoader.load(), iconLoader.load()]);
+    await Future.wait([
+      chineseFontLoader.load(),
+      displayFontLoader.load(),
+      dataFontLoader.load(),
+      iconLoader.load(),
+    ]);
   });
 
   testWidgets('home desktop dark', (tester) async {
@@ -233,13 +244,51 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('歌词'));
-    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('mobile-mini-player')), findsNothing);
+    expect(find.byKey(const Key('player-mobile-artwork')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-controls')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-progress')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-transport')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-queue')), findsOneWidget);
+    expect(find.text('封面'), findsNothing);
+    expect(find.text('歌词'), findsNothing);
+    expect(find.text('队列'), findsNothing);
     await expectLater(
       find.byKey(const Key('main-shell')),
       matchesGoldenFile('goldens/player-mobile-dark.png'),
+    );
+  });
+
+  testWidgets('player mobile queue dark', (tester) async {
+    configureViewport(tester, const Size(390, 844));
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = await fixturePlayerController();
+    await tester.pumpWidget(
+      shellHarness(
+        path: '/player',
+        player: controller,
+        child: PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async =>
+              const Lyrics(original: '[00:01]晚风轻轻吹过\n[00:40]城市慢慢安静'),
+          wakeLock: NoopWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('player-mobile-queue')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('player-mobile-queue-sheet')), findsOneWidget);
+    expect(find.text('5 首'), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-queue-clear')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/player-mobile-queue-dark.png'),
     );
   });
 

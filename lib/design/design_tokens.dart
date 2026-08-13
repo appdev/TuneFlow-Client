@@ -20,42 +20,45 @@ final class AppTokens {
     required this.danger,
     required this.focusRing,
     required this.overlay,
+    required this.playerVeil,
   });
 
   static const light = AppTokens(
-    background: Color(0xFFEDF3F6),
-    surface: Color(0xFFFFFFFF),
-    surfaceWarm: Color(0xFFE6EEF2),
-    foreground: Color(0xFF111A20),
-    foregroundSecondary: Color(0xFF44535E),
-    muted: Color(0xFF6D7B85),
-    border: Color(0xFFCEDAE0),
-    borderSoft: Color(0xFFE0E8EC),
-    accent: Color(0xFF356B7C),
-    accentForeground: Color(0xFFF7FCFE),
-    success: Color(0xFF2C8C63),
-    warning: Color(0xFFA86D24),
-    danger: Color(0xFFB94E4E),
-    focusRing: Color(0xFF4D8090),
-    overlay: Color(0x66111A20),
+    background: Color(0xFFECF6F3),
+    surface: Color(0xFFDEECE7),
+    surfaceWarm: Color(0xFFCEDFDA),
+    foreground: Color(0xFF091411),
+    foregroundSecondary: Color(0xFF273330),
+    muted: Color(0xFF576460),
+    border: Color(0xFFBFCFCA),
+    borderSoft: Color(0xFFCEDFDA),
+    accent: Color(0xFF136D5B),
+    accentForeground: Color(0xFFEFF7F5),
+    success: Color(0xFF317A45),
+    warning: Color(0xFFB07A20),
+    danger: Color(0xFFC43F3E),
+    focusRing: Color(0xFF008E73),
+    overlay: Color(0x66091411),
+    playerVeil: Color(0xCCECF6F3),
   );
 
   static const dark = AppTokens(
-    background: Color(0xFF05090D),
-    surface: Color(0xFF0B1118),
-    surfaceWarm: Color(0xFF182432),
-    foreground: Color(0xFFF3F7FA),
-    foregroundSecondary: Color(0xFFB7C3CD),
-    muted: Color(0xFF7F8D99),
-    border: Color(0xFF26333D),
-    borderSoft: Color(0xFF1B2730),
-    accent: Color(0xFFA8D5E5),
-    accentForeground: Color(0xFF071219),
-    success: Color(0xFF5ED39A),
-    warning: Color(0xFFE3B35C),
-    danger: Color(0xFFF17878),
-    focusRing: Color(0xFFD5F1FA),
+    background: Color(0xFF040B09),
+    surface: Color(0xFF0A1411),
+    surfaceWarm: Color(0xFF14201C),
+    foreground: Color(0xFFE5EDEB),
+    foregroundSecondary: Color(0xFFB6C0BD),
+    muted: Color(0xFF8A9592),
+    border: Color(0xFF25312D),
+    borderSoft: Color(0xFF14201C),
+    accent: Color(0xFF6DBDA8),
+    accentForeground: Color(0xFF040E0B),
+    success: Color(0xFF7CBD89),
+    warning: Color(0xFFE1AD63),
+    danger: Color(0xFFF47B74),
+    focusRing: Color(0xFF66D5BA),
     overlay: Color(0xB3000000),
+    playerVeil: Color(0xD9040B09),
   );
 
   static AppTokens of(BuildContext context) =>
@@ -76,6 +79,7 @@ final class AppTokens {
   final Color danger;
   final Color focusRing;
   final Color overlay;
+  final Color playerVeil;
 }
 
 abstract final class AppSpacing {
@@ -92,10 +96,21 @@ abstract final class AppSpacing {
 abstract final class AppRadii {
   static const double control = 8;
   static const double compactCard = 12;
-  static const double card = 18;
-  static const double panel = 24;
-  static const double sheet = 28;
+  static const double card = 16;
+  static const double panel = 20;
+  static const double sheet = 24;
   static const double pill = 999;
+}
+
+abstract final class AppDurations {
+  static const Duration state = Duration(milliseconds: 180);
+  static const Duration page = Duration(milliseconds: 280);
+  static const Duration reducedMotion = Duration(milliseconds: 150);
+}
+
+abstract final class AppCurves {
+  static const Curve out = Cubic(0.16, 1, 0.3, 1);
+  static const Curve inOut = Cubic(0.65, 0, 0.35, 1);
 }
 
 abstract final class AppShadows {
@@ -108,27 +123,42 @@ abstract final class AppShadows {
 }
 
 abstract final class AppTypography {
-  static const String fontFamily = 'NotoSansCJKsc';
+  static const String displayFontFamily = 'NotoSerifSC';
+  static const String bodyFontFamily = 'NotoSansCJKsc';
+  static const String dataFontFamily = 'IBMPlexMono';
+  static const String fontFamily = bodyFontFamily;
   static const hero = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 62,
-    height: 1.02,
-    fontWeight: FontWeight.w700,
-    letterSpacing: -2.4,
+    fontFamily: displayFontFamily,
+    fontSize: 34,
+    height: 1.15,
+    fontWeight: FontWeight.w600,
+    fontStyle: FontStyle.normal,
+    letterSpacing: -0.5,
   );
   static const display = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 40,
-    height: 1.08,
-    fontWeight: FontWeight.w700,
-    letterSpacing: -1.2,
-  );
-  static const section = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 22,
+    fontFamily: displayFontFamily,
+    fontSize: 28,
     height: 1.2,
     fontWeight: FontWeight.w600,
-    letterSpacing: -0.4,
+    fontStyle: FontStyle.normal,
+    letterSpacing: -0.3,
+  );
+  static const pageTitle = display;
+  static const mobilePageTitle = TextStyle(
+    fontFamily: displayFontFamily,
+    fontSize: 24,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    fontStyle: FontStyle.normal,
+    letterSpacing: -0.2,
+  );
+  static const section = TextStyle(
+    fontFamily: displayFontFamily,
+    fontSize: 20,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    fontStyle: FontStyle.normal,
+    letterSpacing: -0.2,
   );
   static const title = TextStyle(
     fontFamily: fontFamily,
@@ -138,8 +168,8 @@ abstract final class AppTypography {
   );
   static const body = TextStyle(
     fontFamily: fontFamily,
-    fontSize: 14,
-    height: 1.5,
+    fontSize: 15,
+    height: 1.45,
   );
   static const metadata = TextStyle(
     fontFamily: fontFamily,
@@ -148,7 +178,7 @@ abstract final class AppTypography {
     fontWeight: FontWeight.w500,
   );
   static const counter = TextStyle(
-    fontFamily: fontFamily,
+    fontFamily: dataFontFamily,
     fontSize: 12,
     height: 1.35,
     fontFeatures: [FontFeature.tabularFigures()],

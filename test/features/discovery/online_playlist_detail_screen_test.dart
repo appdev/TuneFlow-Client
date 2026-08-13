@@ -52,6 +52,8 @@ final class _Audio implements AudioPort {
   Future<void> resume() async {}
   @override
   Future<void> seek(Duration position) async {}
+  @override
+  Future<void> stopPlayback() async {}
 }
 
 Widget harness(Widget child) => ShadApp.custom(

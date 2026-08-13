@@ -22,6 +22,22 @@ final class DesktopTitleContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (location.startsWith('/player')) {
+      return Stack(
+        children: [
+          Positioned(
+            left: leadingInset,
+            top: 0,
+            bottom: 0,
+            child: _TitleAction(
+              icon: LucideIcons.chevronLeft,
+              label: '返回',
+              onPressed: onBack,
+            ),
+          ),
+        ],
+      );
+    }
     final l10n = AppLocalizations.of(context);
     final pageTitle = switch (location) {
       final value when value.startsWith('/search') => l10n.desktopTitleSearch,
@@ -34,7 +50,6 @@ final class DesktopTitleContent extends StatelessWidget {
       final value when value.startsWith('/sources') => l10n.desktopTitleSources,
       final value when value.startsWith('/settings') =>
         l10n.desktopTitleSettings,
-      final value when value.startsWith('/player') => l10n.desktopTitlePlayer,
       final value when value.startsWith('/states') => l10n.desktopTitleStates,
       _ => l10n.desktopTitleHome,
     };
@@ -89,16 +104,21 @@ final class _TitleAction extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: label,
-    child: ShadButton.raw(
-      variant: ShadButtonVariant.ghost,
-      width: 38,
-      height: 38,
-      padding: EdgeInsets.zero,
-      enabled: onPressed != null,
-      onPressed: onPressed,
-      child: Icon(icon, size: 17),
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    enabled: onPressed != null,
+    label: label,
+    child: Tooltip(
+      message: label,
+      child: ShadButton.raw(
+        variant: ShadButtonVariant.ghost,
+        width: 38,
+        height: 38,
+        padding: EdgeInsets.zero,
+        enabled: onPressed != null,
+        onPressed: onPressed,
+        child: Icon(icon, size: 17),
+      ),
     ),
   );
 }

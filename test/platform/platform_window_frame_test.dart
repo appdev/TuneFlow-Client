@@ -37,6 +37,30 @@ void main() {
     expect(find.byKey(const Key('window-close')), findsNothing);
   });
 
+  testWidgets('player window chrome keeps only back over the shared canvas', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        AppPlatform.macos,
+        location: '/player',
+        onBack: () {},
+        onSearch: () {},
+      ),
+    );
+
+    expect(find.bySemanticsLabel('返回'), findsOneWidget);
+    expect(find.bySemanticsLabel('前进'), findsNothing);
+    expect(find.bySemanticsLabel('全局搜索'), findsNothing);
+    expect(find.text('正在播放 · 音流'), findsNothing);
+    final titleBar = tester.widget<Container>(
+      find.byKey(const Key('desktop-title-bar')),
+    );
+    final decoration = titleBar.decoration! as BoxDecoration;
+    expect(decoration.color, Colors.transparent);
+    expect(decoration.border, isNull);
+  });
+
   for (final platform in [AppPlatform.windows, AppPlatform.linux]) {
     testWidgets('$platform renders right-side caption controls', (
       tester,
@@ -65,7 +89,12 @@ void main() {
   }
 }
 
-Widget _harness(AppPlatform platform) {
+Widget _harness(
+  AppPlatform platform, {
+  String location = '/search',
+  VoidCallback? onBack,
+  VoidCallback? onSearch,
+}) {
   final controller = DesktopWindowController(_FakeWindowOperations());
   return ShadApp.custom(
     theme: buildLightTheme(),
@@ -83,8 +112,10 @@ Widget _harness(AppPlatform platform) {
         body: ShadAppBuilder(
           child: PlatformWindowFrame(
             platform: platform,
-            location: '/search',
+            location: location,
             controller: controller,
+            onBack: onBack,
+            onSearch: onSearch,
             child: const ColoredBox(
               key: Key('window-frame-content'),
               color: Colors.transparent,

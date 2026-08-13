@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -25,6 +26,7 @@ final class PlayerController extends ChangeNotifier {
   late final Future<void> Function(Track track)? _recordHistory;
   late final StreamSubscription<AudioSnapshot> _subscription;
   PlayerState state;
+  final Random _random = Random();
 
   Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
@@ -39,6 +41,7 @@ final class PlayerController extends ChangeNotifier {
       showLyrics: state.showLyrics,
       showTranslation: state.showTranslation,
       view: state.view,
+      playbackMode: state.playbackMode,
     );
     notifyListeners();
     await _playCurrent();
@@ -72,6 +75,60 @@ final class PlayerController extends ChangeNotifier {
 
   Future<void> play(Track track) => playTracks([track]);
 
+  Future<bool> removeAt(int index) async {
+    if (index < 0 || index >= state.queue.length) return false;
+    if (state.queue.length == 1) return clearQueue();
+
+    final removingCurrent = index == state.currentIndex;
+    final queue = [...state.queue]..removeAt(index);
+    if (!removingCurrent) {
+      final nextIndex = index < state.currentIndex
+          ? state.currentIndex - 1
+          : state.currentIndex;
+      state = state.copyWith(
+        queue: List.unmodifiable(queue),
+        currentIndex: nextIndex,
+      );
+      notifyListeners();
+      return true;
+    }
+
+    final nextIndex = index < queue.length ? index : queue.length - 1;
+    state = state.copyWith(
+      queue: List.unmodifiable(queue),
+      currentIndex: nextIndex,
+      processing: PlayerProcessing.loading,
+      position: Duration.zero,
+      duration: Duration.zero,
+      buffered: Duration.zero,
+      clearLyrics: true,
+      error: null,
+      lyricsError: null,
+    );
+    notifyListeners();
+    await _playCurrent();
+    return true;
+  }
+
+  Future<bool> clearQueue() async {
+    if (state.queue.isEmpty) return false;
+    try {
+      await audio.stopPlayback();
+    } on Object catch (error) {
+      state = state.copyWith(error: error);
+      notifyListeners();
+      return false;
+    }
+    state = PlayerState(
+      quality: state.quality,
+      showTranslation: state.showTranslation,
+      view: PlayerView.artwork,
+      playbackMode: state.playbackMode,
+    );
+    notifyListeners();
+    return true;
+  }
+
   Future<void> playIndex(int index) async {
     if (index < 0 || index >= state.queue.length) return;
     state = state.copyWith(
@@ -83,8 +140,23 @@ final class PlayerController extends ChangeNotifier {
     await _playCurrent();
   }
 
-  Future<void> previous() => playIndex(state.currentIndex - 1);
-  Future<void> next() => playIndex(state.currentIndex + 1);
+  Future<void> previous() => state.playbackMode == PlaybackMode.shuffle
+      ? playIndex(_randomQueueIndex())
+      : playIndex(state.currentIndex - 1);
+  Future<void> next() => state.playbackMode == PlaybackMode.shuffle
+      ? playIndex(_randomQueueIndex())
+      : playIndex(state.currentIndex + 1);
+
+  void cyclePlaybackMode() {
+    final nextMode = switch (state.playbackMode) {
+      PlaybackMode.sequential => PlaybackMode.repeatOne,
+      PlaybackMode.repeatOne => PlaybackMode.shuffle,
+      PlaybackMode.shuffle => PlaybackMode.sequential,
+    };
+    state = state.copyWith(playbackMode: nextMode);
+    notifyListeners();
+  }
+
   Future<void> pause() => audio.pause();
   Future<void> resume() async {
     if (state.current == null) {
@@ -105,11 +177,17 @@ final class PlayerController extends ChangeNotifier {
 
   Future<void> seek(Duration position) => audio.seek(position);
 
-  Future<void> setQuality(String quality) async {
-    if (quality == state.quality) return;
+  Future<bool> setQuality(String quality) async {
+    if (quality == state.quality) return true;
+    final previousQuality = state.quality;
     state = state.copyWith(quality: quality);
     notifyListeners();
-    if (state.current != null) await _playCurrent();
+    if (state.current == null) return true;
+    final played = await _playCurrent();
+    if (played) return true;
+    state = state.copyWith(quality: previousQuality);
+    notifyListeners();
+    return false;
   }
 
   void setShowLyrics(bool value) {
@@ -135,22 +213,22 @@ final class PlayerController extends ChangeNotifier {
     if (track == null) return;
     try {
       final lyrics = await loader(track);
-      state = state.copyWith(lyrics: lyrics, error: null);
+      state = state.copyWith(lyrics: lyrics, lyricsError: null);
     } on Object catch (error) {
-      state = state.copyWith(error: error);
+      state = state.copyWith(clearLyrics: true, lyricsError: error);
     }
     notifyListeners();
   }
 
-  Future<void> _playCurrent() async {
+  Future<bool> _playCurrent() async {
     final track = state.current;
-    if (track == null) return;
+    if (track == null) return false;
     try {
       if (await audio.playCachedTrack(track, state.quality)) {
         state = state.copyWith(error: null);
         notifyListeners();
         _saveHistory(track);
-        return;
+        return true;
       }
     } on Object {
       // A stale or undecodable cache must not prevent a fresh Service resolve.
@@ -163,7 +241,7 @@ final class PlayerController extends ChangeNotifier {
         state = state.copyWith(error: null);
         notifyListeners();
         _saveHistory(track);
-        return;
+        return true;
       } on PlaybackStreamExpiredException catch (error) {
         lastError = error;
         if (attempt == 0) continue;
@@ -177,6 +255,7 @@ final class PlayerController extends ChangeNotifier {
       error: lastError,
     );
     notifyListeners();
+    return false;
   }
 
   void _saveHistory(Track track) {
@@ -185,6 +264,9 @@ final class PlayerController extends ChangeNotifier {
   }
 
   void _onSnapshot(AudioSnapshot snapshot) {
+    final newlyCompleted =
+        snapshot.processing == PlayerProcessing.completed &&
+        state.processing != PlayerProcessing.completed;
     state = state.copyWith(
       playing: snapshot.playing,
       processing: snapshot.processing,
@@ -193,6 +275,31 @@ final class PlayerController extends ChangeNotifier {
       buffered: snapshot.buffered,
     );
     notifyListeners();
+    if (newlyCompleted) unawaited(_handleCompletion());
+  }
+
+  int _randomQueueIndex() {
+    if (state.queue.length < 2) return state.currentIndex;
+    final offset = 1 + _random.nextInt(state.queue.length - 1);
+    return (state.currentIndex + offset) % state.queue.length;
+  }
+
+  Future<void> _handleCompletion() async {
+    switch (state.playbackMode) {
+      case PlaybackMode.repeatOne:
+        state = state.copyWith(
+          processing: PlayerProcessing.loading,
+          position: Duration.zero,
+        );
+        notifyListeners();
+        await _playCurrent();
+      case PlaybackMode.shuffle:
+        await playIndex(_randomQueueIndex());
+      case PlaybackMode.sequential:
+        if (state.currentIndex + 1 < state.queue.length) {
+          await playIndex(state.currentIndex + 1);
+        }
+    }
   }
 
   @override

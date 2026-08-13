@@ -21,6 +21,7 @@ final class AppSettings {
     this.keepAwake = false,
     this.showLyrics = false,
     this.showTranslation = true,
+    this.reduceTransparency = false,
   });
 
   final String? origin;
@@ -30,6 +31,7 @@ final class AppSettings {
   final bool keepAwake;
   final bool showLyrics;
   final bool showTranslation;
+  final bool reduceTransparency;
 
   AppSettings copyWith({
     String? origin,
@@ -40,6 +42,7 @@ final class AppSettings {
     bool? keepAwake,
     bool? showLyrics,
     bool? showTranslation,
+    bool? reduceTransparency,
   }) => AppSettings(
     origin: clearOrigin ? null : origin ?? this.origin,
     themeMode: themeMode ?? this.themeMode,
@@ -48,6 +51,7 @@ final class AppSettings {
     keepAwake: keepAwake ?? this.keepAwake,
     showLyrics: showLyrics ?? this.showLyrics,
     showTranslation: showTranslation ?? this.showTranslation,
+    reduceTransparency: reduceTransparency ?? this.reduceTransparency,
   );
 
   @override
@@ -59,7 +63,8 @@ final class AppSettings {
       other.quality == quality &&
       other.keepAwake == keepAwake &&
       other.showLyrics == showLyrics &&
-      other.showTranslation == showTranslation;
+      other.showTranslation == showTranslation &&
+      other.reduceTransparency == reduceTransparency;
 
   @override
   int get hashCode => Object.hash(
@@ -70,6 +75,7 @@ final class AppSettings {
     keepAwake,
     showLyrics,
     showTranslation,
+    reduceTransparency,
   );
 }
 
@@ -90,6 +96,7 @@ final class SharedAppPreferences implements AppPreferences {
   static const _keepAwakeKey = 'keep_awake';
   static const _showLyricsKey = 'show_lyrics';
   static const _showTranslationKey = 'show_translation';
+  static const _reduceTransparencyKey = 'reduce_transparency';
 
   final SharedPreferencesAsync _preferences;
 
@@ -114,6 +121,8 @@ final class SharedAppPreferences implements AppPreferences {
     keepAwake: await _preferences.getBool(_keepAwakeKey) ?? false,
     showLyrics: await _preferences.getBool(_showLyricsKey) ?? false,
     showTranslation: await _preferences.getBool(_showTranslationKey) ?? true,
+    reduceTransparency:
+        await _preferences.getBool(_reduceTransparencyKey) ?? false,
   );
 
   @override
@@ -129,6 +138,10 @@ final class SharedAppPreferences implements AppPreferences {
     await _preferences.setBool(_keepAwakeKey, settings.keepAwake);
     await _preferences.setBool(_showLyricsKey, settings.showLyrics);
     await _preferences.setBool(_showTranslationKey, settings.showTranslation);
+    await _preferences.setBool(
+      _reduceTransparencyKey,
+      settings.reduceTransparency,
+    );
   }
 
   @override

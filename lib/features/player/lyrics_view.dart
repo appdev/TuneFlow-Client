@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/app_glass_policy.dart';
 import '../../design/components/app_states.dart';
 import '../../design/design_tokens.dart';
 import 'lyrics_timeline.dart';
@@ -19,6 +20,12 @@ final class LyricsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (state.lyricsError != null) {
+      return const AppEmptyState(
+        message: '歌词暂不可用',
+        icon: Icons.lyrics_outlined,
+      );
+    }
     final lyrics = state.lyrics;
     if (lyrics == null ||
         (lyrics.original.isEmpty && (lyrics.translation?.isEmpty ?? true))) {
@@ -32,6 +39,7 @@ final class LyricsView extends StatelessWidget {
       );
     }
     final active = activeLyricIndex(lines, state.position);
+    final reduceMotion = AppGlassPolicyScope.policyOf(context).reduceMotion;
     final list = ListView.builder(
       key: ValueKey('lyrics-$active'),
       padding: EdgeInsets.symmetric(horizontal: 20, vertical: verticalPadding),
@@ -40,7 +48,9 @@ final class LyricsView extends StatelessWidget {
         final line = lines[index];
         final selected = index == active;
         return AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 180),
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
           style: AppTypography.body.copyWith(
             fontSize: selected ? 28 : 20,
             height: 1.35,

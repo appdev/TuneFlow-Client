@@ -7,6 +7,7 @@ import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/playlist_card.dart';
 import '../../design/design_tokens.dart';
@@ -82,19 +83,21 @@ final class _PlaylistDiscoveryViewState extends State<PlaylistDiscoveryView> {
             48,
           ),
           children: [
-            Text(
-              '动态平台 · Service API',
-              style: AppTypography.metadata.copyWith(
-                color: AppTokens.of(context).muted,
+            if (mobile)
+              const AppMobilePageHeader(
+                title: '歌单广场',
+                eyebrow: '动态平台 · Service API',
+              )
+            else ...[
+              Text(
+                '动态平台 · Service API',
+                style: AppTypography.metadata.copyWith(
+                  color: AppTokens.of(context).muted,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '歌单广场',
-              style: mobile
-                  ? AppTypography.display.copyWith(fontSize: 31)
-                  : AppTypography.display,
-            ),
+              const SizedBox(height: 4),
+              const Text('歌单广场', style: AppTypography.display),
+            ],
             const SizedBox(height: 18),
             if (state.providers.isNotEmpty)
               _ChipRow(

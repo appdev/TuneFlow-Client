@@ -14,6 +14,7 @@
 migrate_working_dir/
 .codex/
 .superpowers/
+.hallmark/
 artifacts/
 image.png
 test/visual/failures/

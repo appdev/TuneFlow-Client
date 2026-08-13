@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_form.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/playlist_card.dart';
@@ -133,34 +134,43 @@ final class _PlaylistsScreenState extends State<PlaylistsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '当前 Service',
-                              style: AppTypography.metadata,
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              mobile ? '我的音乐' : '我的歌单',
-                              style: mobile
-                                  ? AppTypography.display.copyWith(fontSize: 31)
-                                  : AppTypography.display,
-                            ),
-                          ],
+                  if (mobile)
+                    AppMobilePageHeader(
+                      title: '我的音乐',
+                      eyebrow: '当前 Service',
+                      actions: [
+                        AppButton(
+                          key: const Key('create-playlist'),
+                          onPressed: _create,
+                          leading: const Icon(LucideIcons.plus, size: 18),
+                          child: const Text('新建'),
                         ),
-                      ),
-                      AppButton(
-                        key: const Key('create-playlist'),
-                        onPressed: _create,
-                        leading: const Icon(LucideIcons.plus, size: 18),
-                        child: const Text('新建歌单'),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '当前 Service',
+                                style: AppTypography.metadata,
+                              ),
+                              const SizedBox(height: 3),
+                              const Text('我的歌单', style: AppTypography.display),
+                            ],
+                          ),
+                        ),
+                        AppButton(
+                          key: const Key('create-playlist'),
+                          onPressed: _create,
+                          leading: const Icon(LucideIcons.plus, size: 18),
+                          child: const Text('新建歌单'),
+                        ),
+                      ],
+                    ),
                   if (state.loading) ...[
                     const SizedBox(height: AppSpacing.md),
                     const LinearProgressIndicator(minHeight: 2),

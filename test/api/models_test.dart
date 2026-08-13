@@ -137,6 +137,10 @@ void main() {
       () => Lyrics.fromJson({'lyric': 1}),
       throwsA(isA<ServiceException>()),
     );
+    expect(
+      () => Lyrics.fromJson({'lyric': '[00:01]���� - ������'}),
+      throwsA(isA<ServiceException>()),
+    );
   });
 
   test(

@@ -25,6 +25,7 @@ void main() {
       await controller.setQuality(PlaybackQuality.high320k);
       await controller.setKeepAwake(true);
       await controller.setShowLyrics(true);
+      await controller.setReduceTransparency(true);
       await controller.replaceOrigin('http://new.local/');
       await controller.disconnect();
 
@@ -33,6 +34,7 @@ void main() {
       expect(saved.quality, PlaybackQuality.high320k);
       expect(saved.keepAwake, isTrue);
       expect(saved.showLyrics, isTrue);
+      expect(saved.reduceTransparency, isTrue);
       expect(qualities, ['320k']);
       expect(connections, ['http://new.local']);
       expect(disconnects, 1);

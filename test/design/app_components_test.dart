@@ -8,6 +8,7 @@ import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
 import 'package:musicfree_service_client/design/components/app_feedback.dart';
 import 'package:musicfree_service_client/design/components/app_form.dart';
+import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
 import 'package:musicfree_service_client/design/components/app_states.dart';
 import 'package:musicfree_service_client/design/components/queue_panel.dart';
 import 'package:musicfree_service_client/design/components/playlist_card.dart';
@@ -241,6 +242,42 @@ void main() {
     expect(find.text('加入歌单'), findsOneWidget);
   });
 
+  testWidgets('showAppSheet supports bounded draggable mobile extents', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    late BuildContext context;
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Builder(
+          builder: (value) {
+            context = value;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    showAppSheet<void>(
+      context,
+      title: '播放队列',
+      initialChildSize: .64,
+      minChildSize: .48,
+      maxChildSize: .90,
+      child: const SizedBox(key: Key('sheet-content')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DraggableScrollableSheet), findsOneWidget);
+    expect(find.byKey(const Key('sheet-content')), findsOneWidget);
+    expect(find.byType(AppGlassSurface), findsOneWidget);
+    expect(find.bySemanticsLabel('关闭'), findsOneWidget);
+  });
+
   test('app layout changes at the accepted mobile boundary', () {
     expect(appLayoutForWidth(719), AppLayout.phone);
     expect(appLayoutForWidth(720), AppLayout.tablet);
@@ -351,6 +388,30 @@ void main() {
 
     expect(find.byKey(const Key('artwork-fallback-love')), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
+  });
+
+  testWidgets('gallery playlist fits the narrow desktop grid ratio', (
+    tester,
+  ) async {
+    const playlist = PlaylistDetail(id: 'narrow', name: '窄窗歌单', tracks: []);
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 256,
+            height: 256 / .84,
+            child: PlaylistCard(
+              playlist: playlist,
+              variant: PlaylistCardVariant.gallery,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('queue panel selects the requested queue index', (tester) async {

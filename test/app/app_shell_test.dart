@@ -136,6 +136,11 @@ void main() {
     expect(find.byKey(const Key('home-route')), findsOneWidget);
     expect(find.byKey(const Key('main-shell')), findsOneWidget);
     expect(find.byKey(const Key('desktop-navigation')), findsOneWidget);
+    expect(
+      find.text('随后播放'),
+      findsNothing,
+      reason: 'unrelated desktop pages must not reserve a queue column',
+    );
     expect(find.byKey(const Key('desktop-persistent-player')), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('desktop-persistent-player'))).height,
@@ -153,6 +158,17 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.text('Home · TuneFlow'), findsOneWidget);
     expect(preferences.settings.origin, 'http://service.local');
+
+    GoRouter.of(
+      tester.element(find.byKey(const Key('main-shell'))),
+    ).go('/player');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('player-route')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-navigation')), findsNothing);
+    expect(find.byKey(const Key('desktop-persistent-player')), findsNothing);
+
+    GoRouter.of(tester.element(find.byKey(const Key('main-shell')))).go('/');
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('macos-title-bar')), findsOneWidget);
     expect(find.byKey(const Key('window-minimize')), findsNothing);
@@ -178,6 +194,8 @@ void main() {
   testWidgets('mobile shell uses compact player and five destinations', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -211,16 +229,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('mobile-bottom-navigation')), findsOneWidget);
-    expect(find.byKey(const Key('mobile-mini-player')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-player-dock')), findsOneWidget);
     expect(
-      tester.getSize(find.byKey(const Key('mobile-mini-player'))).height,
-      0,
-      reason: 'an empty mobile player must not reserve shell space',
+      find.byKey(const Key('macos-title-bar')),
+      findsOneWidget,
+      reason: 'a narrow macOS window still needs drag and traffic-light space',
     );
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-mini-player')), findsNothing);
     expect(
       tester.getSize(find.byKey(const Key('mobile-bottom-navigation'))).height,
-      58,
+      64,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('mobile-bottom-navigation'))).width,
+      366,
+      reason: 'the empty-queue dock still fills the viewport minus 12px insets',
     );
     expect(
       find.descendant(
@@ -229,6 +253,19 @@ void main() {
       ),
       findsOneWidget,
     );
+    for (final label in const ['首页', '搜索', '我的音乐', '下载', '更多']) {
+      final target = find.bySemanticsLabel(label);
+      expect(target, findsOneWidget);
+      final size = tester.getSize(target);
+      expect(size.width, greaterThanOrEqualTo(44), reason: label);
+      expect(size.height, greaterThanOrEqualTo(44), reason: label);
+    }
+
+    tester.element(find.byKey(const Key('main-shell'))).go('/player');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mobile-player-dock')), findsNothing);
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('reconnecting reloads playlist UI from the new Service', (

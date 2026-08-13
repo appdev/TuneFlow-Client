@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design/components/status_badge.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/design_tokens.dart';
 
 final class MoreScreen extends StatelessWidget {
@@ -25,22 +26,11 @@ final class MoreScreen extends StatelessWidget {
     key: const Key('more-mobile-layout'),
     color: AppTokens.of(context).background,
     child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 124),
       children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                '更多',
-                style: TextStyle(
-                  fontFamily: AppTypography.fontFamily,
-                  fontSize: 31,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const AppStatusBadge(label: '已连接', tone: StatusTone.success),
-          ],
+        const AppMobilePageHeader(
+          title: '更多',
+          actions: [AppStatusBadge(label: '已连接', tone: StatusTone.success)],
         ),
         const SizedBox(height: 24),
         _MoreTile(title: '歌单广场', onTap: onSquare),

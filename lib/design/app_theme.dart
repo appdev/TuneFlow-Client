@@ -1,62 +1,90 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import 'app_theme_definition.dart';
 import 'design_tokens.dart';
 
-ShadThemeData buildLightTheme() => ShadThemeData(
+ShadThemeData buildLightTheme([
+  AppThemeDefinition definition = AppThemeRegistry.mistSea,
+]) => ShadThemeData(
   brightness: Brightness.light,
-  colorScheme: _lightScheme,
-  textTheme: ShadTextTheme(family: AppTypography.fontFamily),
+  colorScheme: _schemeFor(definition.light),
+  textTheme: ShadTextTheme(family: AppTypography.bodyFontFamily),
   radius: const BorderRadius.all(Radius.circular(AppRadii.control)),
   breakpoints: ShadBreakpoints(sm: 720, md: 900, lg: 1180),
 );
 
-final _lightScheme = ShadZincColorScheme.light(
-  background: AppTokens.light.background,
-  foreground: AppTokens.light.foreground,
-  card: AppTokens.light.surface,
-  cardForeground: AppTokens.light.foreground,
-  popover: AppTokens.light.surface,
-  popoverForeground: AppTokens.light.foreground,
-  primary: AppTokens.light.accent,
-  primaryForeground: AppTokens.light.accentForeground,
-  secondary: AppTokens.light.surfaceWarm,
-  secondaryForeground: AppTokens.light.foreground,
-  muted: AppTokens.light.surfaceWarm,
-  mutedForeground: AppTokens.light.muted,
-  accent: AppTokens.light.surfaceWarm,
-  accentForeground: AppTokens.light.foreground,
-  destructive: AppTokens.light.danger,
-  border: AppTokens.light.border,
-  input: AppTokens.light.border,
-  ring: AppTokens.light.focusRing,
-);
-
-ShadThemeData buildDarkTheme() => ShadThemeData(
+ShadThemeData buildDarkTheme([
+  AppThemeDefinition definition = AppThemeRegistry.mistSea,
+]) => ShadThemeData(
   brightness: Brightness.dark,
-  colorScheme: _darkScheme,
-  textTheme: ShadTextTheme(family: AppTypography.fontFamily),
+  colorScheme: _schemeFor(definition.dark),
+  textTheme: ShadTextTheme(family: AppTypography.bodyFontFamily),
   radius: const BorderRadius.all(Radius.circular(AppRadii.control)),
   breakpoints: ShadBreakpoints(sm: 720, md: 900, lg: 1180),
 );
 
-final _darkScheme = ShadZincColorScheme.dark(
-  background: AppTokens.dark.background,
-  foreground: AppTokens.dark.foreground,
-  card: AppTokens.dark.surface,
-  cardForeground: AppTokens.dark.foreground,
-  popover: AppTokens.dark.surface,
-  popoverForeground: AppTokens.dark.foreground,
-  primary: AppTokens.dark.accent,
-  primaryForeground: AppTokens.dark.accentForeground,
-  secondary: AppTokens.dark.surfaceWarm,
-  secondaryForeground: AppTokens.dark.foreground,
-  muted: AppTokens.dark.surfaceWarm,
-  mutedForeground: AppTokens.dark.muted,
-  accent: AppTokens.dark.surfaceWarm,
-  accentForeground: AppTokens.dark.foreground,
-  destructive: AppTokens.dark.danger,
-  border: AppTokens.dark.border,
-  input: AppTokens.dark.border,
-  ring: AppTokens.dark.focusRing,
-);
+ShadColorScheme _schemeFor(AppThemeVariant variant) {
+  final tokens = variant.tokens;
+  final parameters = (
+    background: tokens.background,
+    foreground: tokens.foreground,
+    card: tokens.surface,
+    cardForeground: tokens.foreground,
+    popover: tokens.surface,
+    popoverForeground: tokens.foreground,
+    primary: tokens.accent,
+    primaryForeground: tokens.accentForeground,
+    secondary: tokens.surfaceWarm,
+    secondaryForeground: tokens.foreground,
+    muted: tokens.surfaceWarm,
+    mutedForeground: tokens.muted,
+    accent: tokens.surfaceWarm,
+    accentForeground: tokens.foreground,
+    destructive: tokens.danger,
+    border: tokens.border,
+    input: tokens.border,
+    ring: tokens.focusRing,
+  );
+  return variant.brightness == Brightness.dark
+      ? ShadZincColorScheme.dark(
+          background: parameters.background,
+          foreground: parameters.foreground,
+          card: parameters.card,
+          cardForeground: parameters.cardForeground,
+          popover: parameters.popover,
+          popoverForeground: parameters.popoverForeground,
+          primary: parameters.primary,
+          primaryForeground: parameters.primaryForeground,
+          secondary: parameters.secondary,
+          secondaryForeground: parameters.secondaryForeground,
+          muted: parameters.muted,
+          mutedForeground: parameters.mutedForeground,
+          accent: parameters.accent,
+          accentForeground: parameters.accentForeground,
+          destructive: parameters.destructive,
+          border: parameters.border,
+          input: parameters.input,
+          ring: parameters.ring,
+        )
+      : ShadZincColorScheme.light(
+          background: parameters.background,
+          foreground: parameters.foreground,
+          card: parameters.card,
+          cardForeground: parameters.cardForeground,
+          popover: parameters.popover,
+          popoverForeground: parameters.popoverForeground,
+          primary: parameters.primary,
+          primaryForeground: parameters.primaryForeground,
+          secondary: parameters.secondary,
+          secondaryForeground: parameters.secondaryForeground,
+          muted: parameters.muted,
+          mutedForeground: parameters.mutedForeground,
+          accent: parameters.accent,
+          accentForeground: parameters.accentForeground,
+          destructive: parameters.destructive,
+          border: parameters.border,
+          input: parameters.input,
+          ring: parameters.ring,
+        );
+}

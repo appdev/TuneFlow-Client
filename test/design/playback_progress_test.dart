@@ -39,6 +39,9 @@ void main() {
           .height,
       28,
     );
+    final slider = tester.widget<ShadSlider>(find.byType(ShadSlider));
+    expect(slider.trackHeight, 4);
+    expect(slider.thumbRadius, 6);
     expect(tester.getSize(find.text('1:05')).width, lessThanOrEqualTo(42));
     expect(tester.getSize(find.text('4:05')).width, lessThanOrEqualTo(42));
 
@@ -55,6 +58,36 @@ void main() {
     await tester.pump();
     expect(seeked, isNotNull);
     expect(seeked!.inSeconds, greaterThan(180));
+  });
+
+  testWidgets('playback progress expands only its interaction height', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: PlaybackProgress(
+            position: const Duration(seconds: 30),
+            duration: const Duration(minutes: 3),
+            hitExtent: 44,
+            trackHeight: 4,
+            thumbDiameter: 12,
+            onSeek: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester
+          .getSize(find.byKey(const Key('playback-progress-hit-area')))
+          .height,
+      44,
+    );
+    final slider = tester.widget<ShadSlider>(find.byType(ShadSlider));
+    expect(slider.trackHeight, 4);
+    expect(slider.thumbRadius, 6);
   });
 
   testWidgets('playback progress disables seeking without a duration', (

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design/components/artwork.dart';
+import '../../design/components/app_glass_surface.dart';
 import '../../design/components/playback_progress.dart';
+import '../../design/app_theme_definition.dart';
 import '../../design/design_tokens.dart';
 import 'player_controller.dart';
 import 'player_state.dart';
@@ -31,42 +33,52 @@ final class MiniPlayer extends StatelessWidget {
           ? const Key('desktop-persistent-player')
           : const Key('mobile-mini-player');
       if (track == null) return SizedBox.shrink(key: shellKey);
-      final tokens = AppTokens.of(context);
       final imageUrl = track.raw['pic'] is String
           ? track.raw['pic']! as String
           : null;
       if (variant == MiniPlayerVariant.mobile) {
-        return Material(
+        return AppGlassSurface(
           key: shellKey,
-          color: tokens.surface,
-          child: InkWell(
-            key: const Key('mini-player'),
-            onTap: onOpen,
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 64),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: tokens.borderSoft)),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  AppArtwork(
-                    imageUrl: imageUrl,
-                    seed: '${track.source}:${track.id}',
-                    semanticLabel: '${track.title}封面',
-                    size: 40,
-                    borderRadius: AppRadii.control,
+          role: AppGlassRole.nav,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const Key('mini-player'),
+              onTap: onOpen,
+              child: SizedBox(
+                height: 60,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    children: [
+                      AppArtwork(
+                        imageUrl: imageUrl,
+                        seed: '${track.source}:${track.id}',
+                        semanticLabel: '${track.title}封面',
+                        size: 42,
+                        borderRadius: AppRadii.control,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(child: _TrackIdentity(controller: controller)),
+                      _TransportButton(
+                        tooltip: state.playing ? '暂停' : '播放',
+                        icon: state.playing
+                            ? LucideIcons.pause
+                            : LucideIcons.play,
+                        onPressed: state.playing
+                            ? controller.pause
+                            : controller.resume,
+                      ),
+                      _TransportButton(
+                        key: const Key('mobile-player-next'),
+                        tooltip: '下一首',
+                        icon: LucideIcons.skipForward,
+                        enabled: state.currentIndex + 1 < state.queue.length,
+                        onPressed: controller.next,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(child: _TrackIdentity(controller: controller)),
-                  _TransportButton(
-                    tooltip: state.playing ? '暂停' : '播放',
-                    icon: state.playing ? LucideIcons.pause : LucideIcons.play,
-                    onPressed: state.playing
-                        ? controller.pause
-                        : controller.resume,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -308,7 +320,7 @@ final class _DesktopTrackIdentity extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = controller.state;
     final track = state.current!;
-    final error = state.error?.toString();
+    final hasError = state.error != null;
     final metadataStyle = AppTypography.metadata.copyWith(
       color: AppTokens.of(context).foregroundSecondary,
     );
@@ -330,12 +342,12 @@ final class _DesktopTrackIdentity extends StatelessWidget {
         ),
         SizedBox(
           height: 14,
-          child: error == null
+          child: !hasError
               ? null
               : Tooltip(
-                  message: error,
+                  message: '重试播放',
                   child: Text(
-                    error,
+                    '播放失败，点击重试',
                     key: const Key('desktop-player-error'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

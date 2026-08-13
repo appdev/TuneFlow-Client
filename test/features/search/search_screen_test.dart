@@ -8,6 +8,7 @@ import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
 import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
@@ -64,6 +65,8 @@ final class _Audio implements AudioPort {
   Future<void> resume() async {}
   @override
   Future<void> seek(Duration position) async {}
+  @override
+  Future<void> stopPlayback() async {}
 }
 
 void main() {
@@ -316,7 +319,7 @@ void main() {
     expect(pictureRequests, 0);
   });
 
-  testWidgets('mobile overview keeps collections behind their view tabs', (
+  testWidgets('mobile overview renders the track list without a feature card', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -369,7 +372,8 @@ void main() {
 
     expect(find.text('不应出现在综合首屏'), findsNothing);
     expect(find.text('单曲'), findsNothing);
-    expect(find.byKey(const Key('search-best-match')), findsOneWidget);
+    expect(find.byKey(const Key('search-best-match')), findsNothing);
+    expect(find.byKey(const Key('search-track-kw-wind')), findsOneWidget);
   });
 
   testWidgets('shows Web-equivalent provider tabs and aggregate search', (
@@ -694,6 +698,356 @@ void main() {
 
     expect(find.byKey(const Key('search-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('search-field')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('search-field')),
+        matching: find.byType(AppGlassSurface),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile search follows the approved workbench hierarchy', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.method == 'GET') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track', 'album', 'playlist'],
+                  },
+                  {
+                    'id': 'tx',
+                    'name': 'QQ音乐',
+                    'searchKinds': ['track'],
+                  },
+                ],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        if (body['source'] == 'tx') {
+          return http.Response(
+            jsonEncode({
+              'data': {'list': <Object?>[], 'total': 0},
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'list': [
+                {
+                  'id': 'wind',
+                  'name': '晚风',
+                  'singer': '伍佰 & China Blue',
+                  'source': 'kw',
+                  'types': ['flac'],
+                },
+              ],
+              'total': 42,
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      harness(
+        SearchScreen(
+          controller: feature.SearchController(SearchRepository(api)),
+          playlists: PlaylistRepository(api),
+          downloads: DownloadRepository(api),
+          player: testPlayer(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('search-mobile-masthead')), findsOneWidget);
+    expect(find.byKey(const Key('brand-logo')), findsOneWidget);
+    expect(find.byKey(const Key('search-page-title')), findsOneWidget);
+    expect(find.text('搜索'), findsOneWidget);
+    expect(find.byKey(const Key('search-mobile-filters')), findsOneWidget);
+    expect(find.byKey(const Key('search-source-tabs')), findsNothing);
+    expect(find.byKey(const Key('search-view-overview')), findsNothing);
+    expect(tester.getSize(find.byKey(const Key('search-field'))).height, 52);
+
+    final mastheadY = tester
+        .getTopLeft(find.byKey(const Key('search-mobile-masthead')))
+        .dy;
+    final titleY = tester
+        .getTopLeft(find.byKey(const Key('search-page-title')))
+        .dy;
+    final fieldY = tester.getTopLeft(find.byKey(const Key('search-field'))).dy;
+    final filtersY = tester
+        .getTopLeft(find.byKey(const Key('search-mobile-filters')))
+        .dy;
+    expect(mastheadY, lessThan(titleY));
+    expect(titleY, lessThan(fieldY));
+    expect(fieldY, lessThan(filtersY));
+
+    await tester.enterText(find.byKey(const Key('search-field')), '伍佰');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('search-results-heading')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('search-results-heading')),
+        matching: find.text('歌曲'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('42 首'),
+      findsOneWidget,
+      reason: tester
+          .widgetList<Text>(find.byType(Text))
+          .map((text) => text.data)
+          .whereType<String>()
+          .join(' | '),
+    );
+    expect(find.byKey(const Key('search-best-match')), findsNothing);
+    expect(find.byKey(const Key('search-track-kw-wind')), findsOneWidget);
+  });
+
+  testWidgets('mobile source control keeps providers in a bottom sheet', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final searchedSources = <String>[];
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.method == 'GET') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track'],
+                  },
+                  {
+                    'id': 'tx',
+                    'name': 'QQ音乐',
+                    'searchKinds': ['track'],
+                  },
+                ],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        searchedSources.add(body['source']! as String);
+        return http.Response(
+          jsonEncode({
+            'data': {'list': <Object?>[], 'total': 0},
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      harness(
+        SearchScreen(
+          controller: feature.SearchController(SearchRepository(api)),
+          playlists: PlaylistRepository(api),
+          downloads: DownloadRepository(api),
+          player: testPlayer(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('search-field')), 'Jay');
+    await tester.tap(find.byKey(const Key('search-source-control')));
+    await tester.pumpAndSettle();
+
+    final sheet = find.byType(ShadSheet);
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.text('酷我音乐')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('QQ音乐')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('全部来源')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('search-source-option-tx')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ShadSheet), findsNothing);
+    expect(searchedSources, ['tx']);
+  });
+
+  testWidgets(
+    'mobile defaults to all sources and keeps collection tabs usable',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final searches = <(String, String)>[];
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.method == 'GET') {
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'sources': [
+                    {
+                      'id': 'kw',
+                      'name': '酷我音乐',
+                      'searchKinds': ['track'],
+                    },
+                    {
+                      'id': 'wy',
+                      'name': '网易音乐',
+                      'searchKinds': ['track', 'album'],
+                    },
+                  ],
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          searches.add((request.url.path, body['source']! as String));
+          final albums = request.url.path.endsWith('/albums/search');
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'list': albums
+                    ? [
+                        {
+                          'id': 'jay-album',
+                          'kind': 'album',
+                          'name': '叶惠美',
+                          'source': 'wy',
+                        },
+                      ]
+                    : <Object?>[],
+                'total': albums ? 1 : 0,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+
+      await tester.pumpWidget(
+        harness(
+          SearchScreen(
+            controller: feature.SearchController(SearchRepository(api)),
+            playlists: PlaylistRepository(api),
+            downloads: DownloadRepository(api),
+            player: testPlayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('search-source-control')),
+          matching: find.text('全部来源'),
+        ),
+        findsOneWidget,
+      );
+      final albumInkWell = find.descendant(
+        of: find.byKey(const Key('search-mobile-filter-albums')),
+        matching: find.byType(InkWell),
+      );
+      expect(tester.widget<InkWell>(albumInkWell).onTap, isNotNull);
+
+      await tester.enterText(find.byKey(const Key('search-field')), 'Jay');
+      await tester.tap(find.byKey(const Key('search-mobile-filter-albums')));
+      await tester.pumpAndSettle();
+
+      expect(searches, contains(('/api/v1/catalog/albums/search', 'wy')));
+      expect(find.text('叶惠美'), findsOneWidget);
+    },
+  );
+
+  testWidgets('search layout stays overflow-free across target widths', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final width in [320.0, 375.0, 414.0, 768.0]) {
+      tester.view.physicalSize = Size(width, 844);
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track', 'album', 'playlist'],
+                  },
+                ],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        ),
+      );
+      await tester.pumpWidget(
+        harness(
+          SearchScreen(
+            key: ValueKey(width),
+            controller: feature.SearchController(SearchRepository(api)),
+            playlists: PlaylistRepository(api),
+            downloads: DownloadRepository(api),
+            player: testPlayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull, reason: 'viewport width $width');
+    }
   });
 }

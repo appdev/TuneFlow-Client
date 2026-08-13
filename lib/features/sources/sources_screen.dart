@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
 import 'source_repository.dart';
@@ -48,14 +49,16 @@ final class _SourcesScreenState extends State<SourcesScreen> {
             48,
           ),
           children: [
-            const Text('GET /api/v1/sources', style: AppTypography.metadata),
-            const SizedBox(height: 4),
-            Text(
-              '音源管理',
-              style: mobile
-                  ? AppTypography.display.copyWith(fontSize: 31)
-                  : AppTypography.display,
-            ),
+            if (mobile)
+              const AppMobilePageHeader(
+                title: '音源管理',
+                eyebrow: 'GET /api/v1/sources',
+              )
+            else ...[
+              const Text('GET /api/v1/sources', style: AppTypography.metadata),
+              const SizedBox(height: 4),
+              const Text('音源管理', style: AppTypography.display),
+            ],
             if (state.loading) ...[
               const SizedBox(height: 18),
               const LinearProgressIndicator(minHeight: 2),

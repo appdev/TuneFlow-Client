@@ -29,6 +29,7 @@ abstract interface class AudioPort {
   Future<void> pause();
   Future<void> resume();
   Future<void> seek(Duration position);
+  Future<void> stopPlayback();
 }
 
 final class SilentAudioPort implements AudioPort {
@@ -49,6 +50,8 @@ final class SilentAudioPort implements AudioPort {
   Future<void> resume() async {}
   @override
   Future<void> seek(Duration position) async {}
+  @override
+  Future<void> stopPlayback() async {}
 }
 
 final class ServiceAudioHandler extends BaseAudioHandler
@@ -205,6 +208,12 @@ final class ServiceAudioHandler extends BaseAudioHandler
   Future<void> pause() => _player.pause();
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+  @override
+  Future<void> stopPlayback() async {
+    await _player.stop();
+    _publishSnapshot(position: Duration.zero);
+  }
+
   @override
   Future<void> skipToPrevious() => _previous();
   @override

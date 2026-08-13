@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../app_theme_definition.dart';
+import 'app_glass_surface.dart';
+
+enum AppFieldSurface { standard, glass }
+
 final class AppTextField extends StatelessWidget {
   const AppTextField({
     super.key,
@@ -14,6 +19,7 @@ final class AppTextField extends StatelessWidget {
     this.leading,
     this.trailing,
     this.enabled = true,
+    this.surface = AppFieldSurface.standard,
   });
 
   final TextEditingController? controller;
@@ -26,18 +32,24 @@ final class AppTextField extends StatelessWidget {
   final Widget? leading;
   final Widget? trailing;
   final bool enabled;
+  final AppFieldSurface surface;
 
   @override
-  Widget build(BuildContext context) => ShadInput(
-    controller: controller,
-    focusNode: focusNode,
-    initialValue: controller == null ? initialValue : null,
-    placeholder: Text(placeholder),
-    onChanged: onChanged,
-    onSubmitted: onSubmitted,
-    keyboardType: keyboardType,
-    leading: leading,
-    trailing: trailing,
-    enabled: enabled,
-  );
+  Widget build(BuildContext context) {
+    final input = ShadInput(
+      controller: controller,
+      focusNode: focusNode,
+      initialValue: controller == null ? initialValue : null,
+      placeholder: Text(placeholder),
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      keyboardType: keyboardType,
+      leading: leading,
+      trailing: trailing,
+      enabled: enabled,
+    );
+    return surface == AppFieldSurface.glass
+        ? AppGlassSurface(role: AppGlassRole.control, child: input)
+        : input;
+  }
 }

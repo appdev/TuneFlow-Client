@@ -124,11 +124,22 @@ void main() {
   setUpAll(() async {
     final chineseFontLoader = FontLoader('NotoSansCJKsc')
       ..addFont(rootBundle.load('assets/fonts/NotoSansCJKsc-Regular.otf'));
+    final displayFontLoader = FontLoader('NotoSerifSC')
+      ..addFont(
+        rootBundle.load('assets/fonts/NotoSerifSC-VariableFont_wght.ttf'),
+      );
+    final dataFontLoader = FontLoader('IBMPlexMono')
+      ..addFont(rootBundle.load('assets/fonts/IBMPlexMono-Medium.ttf'));
     final iconLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
       );
-    await Future.wait([chineseFontLoader.load(), iconLoader.load()]);
+    await Future.wait([
+      chineseFontLoader.load(),
+      displayFontLoader.load(),
+      dataFontLoader.load(),
+      iconLoader.load(),
+    ]);
   });
 
   for (final viewport in const [Size(1440, 960), Size(1024, 768)]) {

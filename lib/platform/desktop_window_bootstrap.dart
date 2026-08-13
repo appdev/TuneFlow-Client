@@ -13,7 +13,7 @@ WindowOptions desktopWindowOptions(AppPlatform platform) {
   }
   return WindowOptions(
     size: const Size(1240, 820),
-    minimumSize: const Size(960, 640),
+    minimumSize: const Size(390, 640),
     center: true,
     backgroundColor: Colors.transparent,
     title: 'TuneFlow',

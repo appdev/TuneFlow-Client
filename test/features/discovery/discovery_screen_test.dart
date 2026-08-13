@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/features/discovery/discovery_screen.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
 import 'package:musicfree_service_client/features/search/search_repository.dart';
@@ -19,6 +20,86 @@ http.Response _data(Object value) => http.Response(
 );
 
 void main() {
+  testWidgets('mobile charts prioritizes tracks and preserves track rows', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.url.path == '/api/v1/catalog/capabilities') {
+          return _data({
+            'sources': [
+              {
+                'id': 'kw',
+                'name': '酷我音乐',
+                'searchKinds': ['track'],
+                'leaderboards': true,
+              },
+            ],
+          });
+        }
+        if (request.url.path == '/api/v1/catalog/leaderboards') {
+          return _data({
+            'source': 'kw',
+            'list': [
+              for (var index = 1; index <= 4; index++)
+                {
+                  'id': 'board-$index',
+                  'providerId': 'board-$index',
+                  'name': '榜单$index',
+                  'source': 'kw',
+                },
+            ],
+          });
+        }
+        if (request.url.path == '/api/v1/catalog/leaderboards/tracks') {
+          return _data({
+            'list': [
+              {
+                'songmid': 'track-1',
+                'name': '晚风',
+                'singer': '伍佰',
+                'source': 'kw',
+              },
+            ],
+            'total': 1,
+          });
+        }
+        throw StateError('Unexpected request: ${request.url}');
+      }),
+    );
+
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        builder: (context, child) => ShadAppBuilder(child: child!),
+        home: Scaffold(
+          body: DiscoveryScreen(
+            repository: SearchRepository(api),
+            kind: DiscoveryKind.charts,
+            onSearch: () {},
+            playTracks: (_) async {},
+            playlists: PlaylistRepository(api),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('榜单3'), findsOneWidget);
+    expect(find.text('榜单4'), findsNothing);
+    expect(find.text('晚风'), findsOneWidget);
+    expect(find.byType(AppArtwork), findsNothing);
+    expect(
+      find.byKey(const Key('leaderboard-favorite-kw-track-1')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('leaderboard reports a localized playlist add failure', (
     tester,
   ) async {

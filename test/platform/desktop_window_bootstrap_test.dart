@@ -22,7 +22,11 @@ void main() {
       final options = desktopWindowOptions(platform);
       expect(options.title, 'TuneFlow');
       expect(options.titleBarStyle, TitleBarStyle.hidden);
-      expect(options.minimumSize, const Size(960, 640));
+      expect(
+        options.minimumSize,
+        const Size(390, 640),
+        reason: 'desktop builds must be resizable into the mobile breakpoint',
+      );
       expect(options.center, isTrue);
     }
   });

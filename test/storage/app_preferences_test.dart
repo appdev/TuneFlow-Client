@@ -19,6 +19,7 @@ void main() {
     expect(settings.quality, PlaybackQuality.low128k);
     expect(settings.keepAwake, isFalse);
     expect(settings.showLyrics, isFalse);
+    expect(settings.reduceTransparency, isFalse);
   });
 
   test('round trips approved preferences', () async {
@@ -30,6 +31,7 @@ void main() {
       quality: PlaybackQuality.high320k,
       keepAwake: true,
       showLyrics: true,
+      reduceTransparency: true,
     );
 
     await preferences.write(expected);
@@ -46,6 +48,7 @@ void main() {
       quality: PlaybackQuality.lossless,
       keepAwake: true,
       showLyrics: true,
+      reduceTransparency: true,
     );
     await preferences.write(expected);
 

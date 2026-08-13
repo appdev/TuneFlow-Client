@@ -10,12 +10,18 @@ final class PlaybackProgress extends StatelessWidget {
     required this.duration,
     required this.onSeek,
     this.compact = false,
+    this.hitExtent = 28,
+    this.trackHeight = 4,
+    this.thumbDiameter = 12,
   });
 
   final Duration position;
   final Duration duration;
   final ValueChanged<Duration> onSeek;
   final bool compact;
+  final double hitExtent;
+  final double trackHeight;
+  final double thumbDiameter;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +32,7 @@ final class PlaybackProgress extends StatelessWidget {
     final timeStyle = AppTypography.counter.copyWith(color: tokens.muted);
     return SizedBox(
       key: const Key('playback-progress'),
-      height: compact ? 22 : 28,
+      height: hitExtent,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -42,7 +48,7 @@ final class PlaybackProgress extends StatelessWidget {
           Expanded(
             child: SizedBox(
               key: const Key('playback-progress-hit-area'),
-              height: compact ? 22 : 28,
+              height: hitExtent,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   void seekAt(double dx) {
@@ -64,8 +70,8 @@ final class PlaybackProgress extends StatelessWidget {
                         initialValue: value,
                         max: maximum,
                         enabled: durationMs > 0,
-                        trackHeight: 3,
-                        thumbRadius: compact ? 4 : 5,
+                        trackHeight: trackHeight,
+                        thumbRadius: thumbDiameter / 2,
                         activeTrackColor: tokens.accent,
                         inactiveTrackColor: tokens.surfaceWarm,
                         onChanged: (next) =>

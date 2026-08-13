@@ -9,10 +9,42 @@ const artworkRequestHeaders = {
       'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0 Safari/537.36',
 };
 
+@immutable
+final class AppArtworkSource {
+  AppArtworkSource.network(String url, {required this.fallbackSeed})
+    : provider = NetworkImage(
+        _normalizeArtworkUrl(url),
+        headers: artworkRequestHeaders,
+      );
+
+  const AppArtworkSource.fallback({required this.fallbackSeed})
+    : provider = null;
+
+  factory AppArtworkSource.fromUrl(
+    String? url, {
+    required String fallbackSeed,
+  }) => url == null || url.isEmpty
+      ? AppArtworkSource.fallback(fallbackSeed: fallbackSeed)
+      : AppArtworkSource.network(url, fallbackSeed: fallbackSeed);
+
+  final ImageProvider<Object>? provider;
+  final String fallbackSeed;
+}
+
+String _normalizeArtworkUrl(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null ||
+      (uri.host != 'p1.music.126.net' && uri.host != 'p2.music.126.net')) {
+    return url;
+  }
+  return uri.replace(host: 'p3.music.126.net').toString();
+}
+
 final class AppArtwork extends StatelessWidget {
   const AppArtwork({
     super.key,
-    required this.imageUrl,
+    this.imageUrl,
+    this.source,
     required this.seed,
     required this.semanticLabel,
     required this.size,
@@ -24,6 +56,7 @@ final class AppArtwork extends StatelessWidget {
   });
 
   final String? imageUrl;
+  final AppArtworkSource? source;
   final String seed;
   final String semanticLabel;
   final double size;
@@ -34,30 +67,32 @@ final class AppArtwork extends StatelessWidget {
   final bool showFallback;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    image: true,
-    label: semanticLabel,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: SizedBox(
-        width: width ?? size,
-        height: height ?? size,
-        child: imageUrl == null || imageUrl!.isEmpty
-            ? showFallback
-                  ? _ArtworkFallback(seed: seed)
-                  : const SizedBox.shrink()
-            : Image.network(
-                imageUrl!,
-                headers: artworkRequestHeaders,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (_, _, _) => showFallback
-                    ? _ArtworkFallback(seed: seed)
-                    : const SizedBox.shrink(),
-              ),
+  Widget build(BuildContext context) {
+    final resolved =
+        source ?? AppArtworkSource.fromUrl(imageUrl, fallbackSeed: seed);
+    final fallback = showFallback
+        ? _ArtworkFallback(seed: resolved.fallbackSeed)
+        : const SizedBox.shrink();
+    return Semantics(
+      image: true,
+      label: semanticLabel,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: SizedBox(
+          width: width ?? size,
+          height: height ?? size,
+          child: resolved.provider == null
+              ? fallback
+              : Image(
+                  image: resolved.provider!,
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (_, _, _) => fallback,
+                ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 final class _ArtworkFallback extends StatelessWidget {

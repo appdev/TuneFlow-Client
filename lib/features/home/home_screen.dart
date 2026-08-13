@@ -5,8 +5,10 @@ import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_glass_surface.dart';
 import '../../design/components/artwork.dart';
 import '../../design/components/playlist_card.dart';
+import '../../design/app_theme_definition.dart';
 import '../../design/design_tokens.dart';
 import '../player/player_controller.dart';
 import 'home_controller.dart';
@@ -358,35 +360,21 @@ final class _MobileHome extends StatelessWidget {
     final track = state.featured.firstOrNull;
     return SingleChildScrollView(
       key: const Key('home-screen'),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 124),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_greeting(now()), style: AppTypography.metadata),
-                    const SizedBox(height: 3),
-                    Text(
-                      track?.title.isNotEmpty == true ? track!.title : '开始听音乐',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.display,
-                    ),
-                  ],
-                ),
-              ),
-              _IconShortcut(
-                key: const Key('home-search'),
-                icon: LucideIcons.search,
-                label: '搜索',
-                onPressed: onSearch,
-              ),
-            ],
+          _MobileHomeMasthead(onSettings: onSettings),
+          const SizedBox(height: 28),
+          Text(
+            _mobileTimestamp(now()),
+            style: AppTypography.counter.copyWith(
+              color: AppTokens.of(context).muted,
+              letterSpacing: 1,
+            ),
           ),
+          const SizedBox(height: 8),
+          const Text('继续听点熟悉的。', style: AppTypography.mobilePageTitle),
           if (state.error != null) ...[
             const SizedBox(height: AppSpacing.md),
             AppNotice.error(
@@ -394,18 +382,17 @@ final class _MobileHome extends StatelessWidget {
               message: state.error.toString(),
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: 24),
           if (track != null)
-            LayoutBuilder(
-              builder: (context, constraints) => _FeatureArt(
-                track: track,
-                size: constraints.maxWidth / 1.45,
-                width: constraints.maxWidth,
-                height: constraints.maxWidth / 1.45,
-              ),
+            _MobileContinueCard(
+              key: const Key('home-feature-card'),
+              track: track,
+              onPlay: () =>
+                  player == null ? onPlaylists() : player!.play(track),
             )
           else
             _EmptyHero(onSearch: onSearch),
+          _HiddenShortcut(key: const Key('home-search'), onPressed: onSearch),
           _HiddenShortcut(
             key: const Key('home-playlists'),
             onPressed: onPlaylists,
@@ -414,41 +401,219 @@ final class _MobileHome extends StatelessWidget {
             key: const Key('home-downloads'),
             onPressed: onDownloads,
           ),
-          _HiddenShortcut(
-            key: const Key('home-settings'),
-            onPressed: onSettings,
-          ),
-          const SizedBox(height: 22),
-          _HomeMetrics(state: state, compact: true),
-          const SizedBox(height: 22),
+          const SizedBox(height: 28),
           _SectionHeader(
-            title: _primarySectionTitle(state),
+            title: '最近常听',
             caption: '',
             onOpen: state.recentlyArrived.isNotEmpty
                 ? onDownloads
                 : onPlaylists,
           ),
-          const SizedBox(height: 14),
-          _TrackGallery(
+          const SizedBox(height: 12),
+          _MobileTrackGallery(
             tracks: _primaryTracks(state),
             onPlay: (track) =>
                 player == null ? onPlaylists() : player!.play(track),
-            mobile: true,
           ),
-          if (state.playlists.isNotEmpty) ...[
-            const SizedBox(height: 22),
-            _SectionHeader(title: '我的歌单', caption: '', onOpen: onPlaylists),
-            const SizedBox(height: 14),
-            _PlaylistGallery(
-              playlists: state.playlists,
-              onOpen: onPlaylists,
-              mobile: true,
-            ),
-          ],
         ],
       ),
     );
   }
+}
+
+final class _MobileHomeMasthead extends StatelessWidget {
+  const _MobileHomeMasthead({required this.onSettings});
+
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    key: const Key('home-mobile-masthead'),
+    children: [
+      Image.asset(
+        'assets/branding/TuneFlow.png',
+        key: const Key('brand-logo'),
+        width: 26,
+        height: 26,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (context, error, stackTrace) => Icon(
+          LucideIcons.audioLines,
+          size: 24,
+          color: AppTokens.of(context).accent,
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(
+          'TuneFlow',
+          style: AppTypography.section.copyWith(fontSize: 19),
+        ),
+      ),
+      AppGlassSurface(
+        role: AppGlassRole.control,
+        padding: EdgeInsets.zero,
+        child: IconButton(
+          tooltip: '设置',
+          onPressed: onSettings,
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+          icon: const Icon(LucideIcons.settings, size: 20),
+        ),
+      ),
+    ],
+  );
+}
+
+final class _MobileContinueCard extends StatelessWidget {
+  const _MobileContinueCard({
+    super.key,
+    required this.track,
+    required this.onPlay,
+  });
+
+  final Track track;
+  final VoidCallback onPlay;
+
+  @override
+  Widget build(BuildContext context) => AppGlassSurface(
+    role: AppGlassRole.control,
+    padding: const EdgeInsets.all(12),
+    child: Row(
+      children: [
+        AppArtwork(
+          imageUrl: track.raw['pic'] as String?,
+          seed: '${track.source}:${track.id}',
+          semanticLabel: '${track.title}封面',
+          size: 112,
+          borderRadius: AppRadii.compactCard,
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '继续收听',
+                style: AppTypography.metadata.copyWith(
+                  color: AppTokens.of(context).muted,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                track.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.title,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                track.artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.metadata.copyWith(
+                  color: AppTokens.of(context).foregroundSecondary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              IconButton.filled(
+                tooltip: '继续播放',
+                onPressed: onPlay,
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                icon: const Icon(LucideIcons.play, size: 18),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+final class _MobileTrackGallery extends StatelessWidget {
+  const _MobileTrackGallery({required this.tracks, required this.onPlay});
+
+  final List<Track> tracks;
+  final ValueChanged<Track> onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tracks.isEmpty) {
+      return Text(
+        '暂无可展示的歌曲',
+        style: AppTypography.body.copyWith(
+          color: AppTokens.of(context).foregroundSecondary,
+        ),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - 12) / 2;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 18,
+          children: [
+            for (final track in tracks.take(4))
+              SizedBox(
+                width: width,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onPlay(track),
+                    borderRadius: BorderRadius.circular(AppRadii.card),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppArtwork(
+                          imageUrl: track.raw['pic'] as String?,
+                          seed: '${track.source}:${track.id}',
+                          semanticLabel: '${track.title}封面',
+                          size: width,
+                          borderRadius: AppRadii.card,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          track.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.title,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          track.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.metadata.copyWith(
+                            color: AppTokens.of(context).foregroundSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+String _mobileTimestamp(DateTime value) {
+  const weekdays = [
+    'MONDAY',
+    'TUESDAY',
+    'WEDNESDAY',
+    'THURSDAY',
+    'FRIDAY',
+    'SATURDAY',
+    'SUNDAY',
+  ];
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+  return '${weekdays[value.weekday - 1]} · $hour:$minute';
 }
 
 String _greeting(DateTime now) => switch (now.hour) {
@@ -521,10 +686,9 @@ final class _EmptyHero extends StatelessWidget {
 }
 
 final class _HomeMetrics extends StatelessWidget {
-  const _HomeMetrics({required this.state, this.compact = false});
+  const _HomeMetrics({required this.state});
 
   final HomeState state;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -538,10 +702,7 @@ final class _HomeMetrics extends StatelessWidget {
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = compact ? 1 : 3;
-        final width = columns == 1
-            ? constraints.maxWidth
-            : (constraints.maxWidth - AppSpacing.sm * (columns - 1)) / columns;
+        final width = (constraints.maxWidth - AppSpacing.sm * 2) / 3;
         return Wrap(
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
@@ -550,10 +711,7 @@ final class _HomeMetrics extends StatelessWidget {
               SizedBox(
                 width: width,
                 child: ShadCard(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: compact ? 14 : 18,
-                    vertical: compact ? 12 : 16,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 18, vertical: 16),
                   radius: BorderRadius.circular(AppRadii.compactCard),
                   backgroundColor: AppTokens.of(context).surface,
                   child: Row(
@@ -772,6 +930,15 @@ final class _PlaylistGallery extends StatelessWidget {
                 width: width,
                 child: PlaylistCard(
                   playlist: playlist,
+                  imageUrl: playlist is PlaylistDetail
+                      ? playlist.tracks
+                            .map((track) => track.raw['pic'])
+                            .whereType<String>()
+                            .where((url) => url.isNotEmpty)
+                            .map(Uri.tryParse)
+                            .whereType<Uri>()
+                            .firstOrNull
+                      : null,
                   onPressed: onOpen,
                   variant: PlaylistCardVariant.gallery,
                 ),
@@ -808,30 +975,5 @@ final class _SectionHeader extends StatelessWidget {
         child: const Text('查看全部'),
       ),
     ],
-  );
-}
-
-final class _IconShortcut extends StatelessWidget {
-  const _IconShortcut({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: label,
-    child: ShadButton.ghost(
-      width: 48,
-      height: 48,
-      padding: EdgeInsets.zero,
-      onPressed: onPressed,
-      child: Icon(icon, size: 20),
-    ),
   );
 }

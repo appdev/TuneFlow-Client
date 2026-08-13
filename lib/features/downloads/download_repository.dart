@@ -10,6 +10,16 @@ final class DownloadRepository {
     'downloads',
   ).map(DownloadJob.fromJson).toList(growable: false);
 
+  Future<String> picture(Track track) async {
+    final value = await api.request(
+      'POST',
+      '/api/v1/catalog/tracks/picture',
+      body: {'source': track.source, 'musicInfo': track.toJson()},
+    );
+    final json = jsonObject(value, 'picture');
+    return jsonString(json['url'], 'picture.url');
+  }
+
   Future<DownloadJob> create(
     Track track,
     String quality, {

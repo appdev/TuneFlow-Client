@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../app_glass_policy.dart';
+import '../app_theme_definition.dart';
 import '../design_tokens.dart';
+import 'app_glass_surface.dart';
 
 @immutable
 final class AppDestination {
@@ -106,32 +109,25 @@ final class AppMobileNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
     return Material(
       color: Colors.transparent,
-      child: DecoratedBox(
+      child: AppGlassSurface(
         key: const Key('mobile-bottom-navigation'),
-        decoration: BoxDecoration(
-          color: tokens.surface,
-          border: Border(top: BorderSide(color: tokens.borderSoft)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 58,
-            child: Row(
-              children: destinations
-                  .map(
-                    (destination) => Expanded(
-                      child: _MobileNavigationItem(
-                        destination: destination,
-                        selected: destination.id == selectedId,
-                        onPressed: () => onSelected(destination.id),
-                      ),
+        role: AppGlassRole.nav,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: destinations
+                .map(
+                  (destination) => Expanded(
+                    child: _MobileNavigationItem(
+                      destination: destination,
+                      selected: destination.id == selectedId,
+                      onPressed: () => onSelected(destination.id),
                     ),
-                  )
-                  .toList(growable: false),
-            ),
+                  ),
+                )
+                .toList(growable: false),
           ),
         ),
       ),
@@ -221,23 +217,47 @@ final class _MobileNavigationItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final reduceMotion = AppGlassPolicyScope.policyOf(context).reduceMotion;
     final color = selected ? tokens.accent : tokens.muted;
     return Semantics(
+      key: ValueKey('mobile-destination-${destination.id}'),
       button: true,
       selected: selected,
       label: destination.label,
-      child: InkWell(
-        onTap: onPressed,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(destination.icon, color: color, size: 21),
-            const SizedBox(height: 4),
-            Text(
-              destination.label,
-              style: AppTypography.metadata.copyWith(color: color),
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(AppRadii.compactCard),
+          child: AnimatedContainer(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            constraints: const BoxConstraints(minHeight: 44),
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            decoration: BoxDecoration(
+              color: selected ? tokens.surfaceWarm : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadii.compactCard),
+              border: selected ? Border.all(color: tokens.border) : null,
             ),
-          ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(destination.icon, color: color, size: 20),
+                const SizedBox(height: 3),
+                Text(
+                  destination.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.metadata.copyWith(
+                    color: color,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -33,4 +33,30 @@ void main() {
     expect(find.textContaining('文件权限'), findsNothing);
     expect(find.byKey(const Key('settings-wide-layout')), findsOneWidget);
   });
+
+  testWidgets(
+    'mobile settings can reduce transparency without changing theme',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var saved = const AppSettings(origin: 'http://service.local');
+      final controller = SettingsController(
+        settings: saved,
+        save: (value) async => saved = value,
+        connect: (_) async {},
+        disconnect: () async {},
+        setPlayerQuality: (_) async {},
+      );
+
+      await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+      expect(find.text('减少透明效果'), findsOneWidget);
+      await tester.tap(find.text('减少透明效果'));
+      await tester.pump();
+
+      expect(saved.reduceTransparency, isTrue);
+      expect(saved.themeMode, ThemeMode.system);
+    },
+  );
 }

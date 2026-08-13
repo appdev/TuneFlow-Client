@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/status_badge.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_controller.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_screen.dart';
@@ -96,6 +97,82 @@ void main() {
 
     final image = tester.widget<Image>(find.byType(Image).first);
     expect((image.image as NetworkImage).url, contains('download.jpg'));
+  });
+
+  testWidgets('download without persisted artwork resolves its cover', (
+    tester,
+  ) async {
+    final value = job('completed');
+    value['musicInfo'] = {
+      'id': 'missing-cover',
+      'name': 'Missing cover',
+      'source': 'kw',
+      'meta': {'songId': '39000261', 'albumId': '2179149'},
+    };
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/tracks/picture')) {
+            return http.Response(
+              jsonEncode({
+                'data': {'url': 'http://images.test/resolved-cover.jpg'},
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'data': [value],
+            }),
+            200,
+          );
+        }),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    final image = tester.widget<Image>(find.byType(Image).first);
+    expect((image.image as NetworkImage).url, contains('resolved-cover.jpg'));
+  });
+
+  testWidgets('desktop download status is vertically centered in its row', (
+    tester,
+  ) async {
+    final value = job('completed');
+    value['musicInfo'] = {
+      'id': 'aligned',
+      'name': 'Aligned track',
+      'source': 'tx',
+      'meta': {'picUrl': 'https://images.test/aligned.jpg'},
+    };
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [value],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    final statusCenter = tester.getCenter(find.byType(AppStatusBadge));
+    final actionsCenter = tester.getCenter(
+      find.byKey(const Key('download-actions-completed')),
+    );
+    expect(statusCenter.dy, closeTo(actionsCenter.dy, 0.5));
   });
 
   testWidgets('waiting job exposes only legal start and delete actions', (

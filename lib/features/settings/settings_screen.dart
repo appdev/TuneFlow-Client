@@ -7,6 +7,7 @@ import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
 import '../../storage/app_preferences.dart';
@@ -77,14 +78,13 @@ final class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('偏好与连接', style: AppTypography.metadata),
-                const SizedBox(height: 3),
-                Text(
-                  '设置',
-                  style: mobile
-                      ? AppTypography.display.copyWith(fontSize: 31)
-                      : AppTypography.display,
-                ),
+                if (mobile)
+                  const AppMobilePageHeader(title: '设置', eyebrow: '偏好与连接')
+                else ...[
+                  const Text('偏好与连接', style: AppTypography.metadata),
+                  const SizedBox(height: 3),
+                  const Text('设置', style: AppTypography.display),
+                ],
                 const SizedBox(height: AppSpacing.lg),
                 if (mobile) ...[
                   _ConnectionCard(
@@ -263,6 +263,25 @@ final class _MobilePreferences extends StatelessWidget {
           }),
         ),
         const SizedBox(height: 12),
+        _PreferenceRow(
+          label: '减少透明效果',
+          value: settings.reduceTransparency ? '开启' : '关闭',
+          onTap: () =>
+              controller.setReduceTransparency(!settings.reduceTransparency),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '使用不透明表面替代模糊，界面布局保持不变。',
+              style: AppTypography.metadata.copyWith(
+                color: AppTokens.of(context).muted,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
         _PreferenceRow(
           label: '语言',
           value: _languageLabel(settings.language),
