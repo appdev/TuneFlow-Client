@@ -10,7 +10,7 @@
 <p align="center">把喜欢的音乐，安静地留在自己的节奏里。</p>
 
 <p align="center">
-  <a href="https://github.com/appdev/TuneFlow-Client/actions/workflows/build-clients.yml">获取最新构建</a>
+  <a href="https://github.com/appdev/TuneFlow-Client/releases/tag/v1.0.1%2B2">下载修复版 v1.0.1</a>
   ·
   <a href="https://github.com/appdev/TuneFlow">TuneFlow Service</a>
 </p>
@@ -44,7 +44,7 @@ TuneFlow 会顺着不同屏幕调整布局。桌面上适合慢慢整理，手�
 
 ## 获取 TuneFlow
 
-TuneFlow 仍在持续开发中。可以前往 [GitHub Actions 构建页面](https://github.com/appdev/TuneFlow-Client/actions/workflows/build-clients.yml)，打开最近一次成功构建，在页面底部下载适合设备的文件。下载构建产物可能需要登录 GitHub。
+推荐使用已修复已知问题的 [TuneFlow v1.0.1（构建 2）](https://github.com/appdev/TuneFlow-Client/releases/tag/v1.0.1%2B2)。在 Release 页面中下载适合设备的文件即可，无需从 GitHub Actions 获取临时构建产物。
 
 | 设备 | 当前提供的文件 |
 | --- | --- |
