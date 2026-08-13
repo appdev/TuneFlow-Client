@@ -1,103 +1,65 @@
-# TuneFlow · 音流（客户端）
+<!-- Hallmark · genre: atmospheric · macrostructure: Workbench -->
+<!-- Hallmark · pre-emit critique: P4 H5 E4 S5 R5 V4 -->
 
-本仓库是 TuneFlow（中文名“音流”）的跨平台客户端，使用 Flutter 构建 Android、iOS、macOS、Windows 与 Linux 界面，并连接 [TuneFlow Service + Web](https://github.com/appdev/TuneFlow)。
+<p align="center">
+  <img src="assets/branding/TuneFlow.png" width="96" alt="TuneFlow 图标">
+</p>
 
-本仓库只负责客户端交互、状态展示与播放体验；音乐平台数据、歌单、媒体解析、下载、本地媒体库和持久化数据均由 TuneFlow Service 提供与管理。
+<h1 align="center">TuneFlow · 音流</h1>
 
-## 与服务端仓库的关系
+<p align="center">把喜欢的音乐，安静地留在自己的节奏里。</p>
 
-| 组成 | GitHub 仓库 | 职责 |
-| --- | --- | --- |
-| TuneFlow 客户端（本仓库） | [appdev/TuneFlow-Client](https://github.com/appdev/TuneFlow-Client) | 连接 Service、展示统一歌曲列表、搜索与歌单浏览、播放控制、下载管理和客户端交互状态 |
-| Service + Web | [appdev/TuneFlow](https://github.com/appdev/TuneFlow) | 聚合音乐平台、统一 API 契约、歌单与媒体库持久化、音频解析与代理、下载任务和事件流 |
+<p align="center">
+  <a href="https://github.com/appdev/TuneFlow-Client/actions/workflows/build-clients.yml">获取最新构建</a>
+  ·
+  <a href="https://github.com/appdev/TuneFlow">TuneFlow Service</a>
+</p>
 
-```mermaid
-flowchart LR
-    Client["TuneFlow Flutter\nAndroid / iOS / Desktop"]
-    Service["TuneFlow Service\nNode.js API"]
-    Providers["音乐平台与自定义源"]
-    Storage["歌单 / 下载 / 本地媒体库"]
+TuneFlow 是一款面向桌面与移动设备的音乐客户端。它把发现、收藏、歌单与播放放进一个简洁的空间里，让听音乐这件事轻松一点。
 
-    Client -->|"HTTP API + SSE"| Service
-    Service --> Providers
-    Service --> Storage
-```
+![TuneFlow 桌面首页](docs/images/readme/tuneflow-desktop-home.png)
 
-两套代码是同一产品的两个独立交付物：
+## 为每天的音乐而设计
 
-- Flutter 客户端不直接请求酷我、酷狗、QQ、网易云或咪咕等上游平台，也不复制服务端 provider 逻辑。
-- Service 将不同平台的数据规范化为统一歌曲、专辑、歌单和排行榜模型，客户端按统一模型渲染。
-- Service 是歌单、下载、本地媒体库等持久化数据的唯一所有者；客户端不自行维护第二份业务数据库。
-- API 契约发生变化时，应先在 Service 中更新实现与 OpenAPI/测试，再同步客户端 repository、模型与联调测试。
-- 两个仓库可以分别构建和发布，但进行真实数据联调时必须同时运行。
+### 找到想听的
 
-## 本地联调
+从熟悉的歌曲出发，也给偶然遇见的旋律留一点位置。搜索、推荐与歌单自然地聚在一起，不需要来回切换心情。
 
-### 1. 启动 TuneFlow Service
+### 把喜欢的留在身边
 
-```sh
-git clone https://github.com/appdev/TuneFlow.git
-cd TuneFlow
-npm ci
-npm run build:service
-npm run start:server
-```
+收藏、试听列表与自己的歌单集中整理。无论从哪里开始，都可以用同一种方式查看和播放。
 
-Service 默认地址为 `http://127.0.0.1:3124`。如需让手机或其他局域网设备访问，可在可信网络中设置 `TUNEFLOW_HOST=0.0.0.0`，并通过系统防火墙限制访问范围。Service 当前不应直接暴露到公网。
+### 专心听这一首
 
-### 2. 启动 Flutter 客户端
+清晰的封面、歌词与播放控制留在手边，其余内容安静退后。想沉浸时，界面不会打扰。
 
-```sh
-git clone https://github.com/appdev/TuneFlow-Client.git
-cd TuneFlow-Client
-flutter pub get
-flutter run -d macos
-```
+## 随身，也自在
 
-首次启动时在连接页填写 Service 地址：
+<p align="center">
+  <img src="docs/images/readme/tuneflow-mobile-player.png" width="45%" alt="TuneFlow 移动端播放页">
+  <img src="docs/images/readme/tuneflow-mobile-library.png" width="45%" alt="TuneFlow 移动端我的音乐">
+</p>
 
-- macOS、Windows、Linux、iOS 模拟器：`http://127.0.0.1:3124`
-- Android 模拟器：`http://10.0.2.2:3124`
-- 真机：`http://<运行 Service 的局域网地址>:3124`
+TuneFlow 会顺着不同屏幕调整布局。桌面上适合慢慢整理，手机上则把播放与常用歌单放得更近。
 
-客户端连接后会通过 `/api/v1/health` 和 `/api/v1/capabilities` 确认 Service 状态与能力，并通过 `/api/v1/events` 接收事件更新。
+## 获取 TuneFlow
 
-## 主要功能
+TuneFlow 仍在持续开发中。可以前往 [GitHub Actions 构建页面](https://github.com/appdev/TuneFlow-Client/actions/workflows/build-clients.yml)，打开最近一次成功构建，在页面底部下载适合设备的文件。下载构建产物可能需要登录 GitHub。
 
-- 多平台歌曲、专辑与歌单搜索
-- 真实歌单分类、推荐、详情与分页浏览
-- 全局统一的歌曲列表与播放操作
-- 排行榜、收藏歌单与试听列表
-- 播放、歌词、封面与媒体地址解析
-- Service 下载任务和本地媒体库管理
-- Android、iOS、macOS、Windows、Linux 自适应界面
+| 设备 | 当前提供的文件 |
+| --- | --- |
+| Android | 已签名 APK |
+| iPhone / iPad | 未签名的开发构建，需要自行签名 |
+| macOS | 未签名的开发构建，首次打开可能需要在系统中确认 |
+| Windows | ZIP 压缩包 |
+| Linux | TAR.GZ 压缩包 |
 
-## 开发验证
+## 与 TuneFlow Service 一起使用
 
-```sh
-flutter analyze
-flutter test
-flutter test test/visual/full_ui_gallery_test.dart
-flutter test test/visual/high_fidelity_gallery_test.dart
-```
+TuneFlow 客户端需要连接 [TuneFlow Service](https://github.com/appdev/TuneFlow) 才能使用在线搜索、歌单与播放等功能。客户端与 Service 都是公开项目，可以按自己的设备与使用方式进行部署。
 
-需要连接真实 Service 的集成测试：
+客户端源码位于 [appdev/TuneFlow-Client](https://github.com/appdev/TuneFlow-Client)。
 
-```sh
-LX_SERVICE_ORIGIN=http://127.0.0.1:3124 \
-  flutter test test/integration/real_catalog_sources_test.dart
-```
+## 版权与使用说明
 
-部分真实播放验收还需要按照测试提示提供 `LX_TEST_SOURCE` 和 `LX_TEST_QUERY`。
-
-## 联动开发约定
-
-1. 先确定功能属于客户端表现还是 Service 数据/能力，避免跨仓库重复实现。
-2. Service 新增或修改接口时，在 [TuneFlow](https://github.com/appdev/TuneFlow) 仓库完成接口测试和服务端构建。
-3. Flutter 侧使用 `lib/features/**/**_repository.dart` 封装接口调用，并保持页面只消费统一领域模型。
-4. 涉及搜索、排行榜、歌单详情等歌曲列表的改动，应同步验证共享列表组件及其视觉基线。
-5. 联调完成后分别提交到各自仓库，并在提交或 PR 中引用另一端的关联变更。
-
-## 安全与版权
-
-TuneFlow 用于技术学习与自托管场景。在线数据来自对应平台或用户配置的自定义源，项目不保证第三方数据和媒体链接的合法性、准确性或可用性。请遵守所在地法律法规，尊重音乐版权，并避免将无认证的 Service 暴露到公网。
+TuneFlow 用于个人学习与自托管场景。客户端不提供音乐内容，在线内容的可用性由所连接的 Service 及其数据来源决定。请遵守所在地法律法规，尊重音乐版权，并妥善保护自己的服务地址与数据。
