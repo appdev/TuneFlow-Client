@@ -73,6 +73,7 @@ final class AppArtwork extends StatelessWidget {
     final resolvedFallback = showFallback
         ? fallback ?? _ArtworkFallback(seed: resolved.fallbackSeed, icon: icon)
         : const SizedBox.shrink();
+    final cacheManager = AppImageCacheScope.maybeOf(context)?.manager;
     return Semantics(
       image: true,
       label: semanticLabel,
@@ -81,14 +82,14 @@ final class AppArtwork extends StatelessWidget {
         child: SizedBox(
           width: width ?? size,
           height: height ?? size,
-          child: resolved.url == null
+          child: resolved.url == null || cacheManager == null
               ? resolvedFallback
               : CachedNetworkImage(
                   key: ValueKey(resolved.url),
                   imageUrl: resolved.url!,
                   cacheKey: resolved.url!,
                   httpHeaders: artworkRequestHeaders,
-                  cacheManager: AppImageCacheScope.maybeOf(context)?.manager,
+                  cacheManager: cacheManager,
                   fit: BoxFit.cover,
                   filterQuality: FilterQuality.medium,
                   disablePlaceholderOnCacheHit: true,

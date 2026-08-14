@@ -12,13 +12,20 @@ import 'package:musicfree_service_client/design/components/status_badge.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_controller.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_screen.dart';
+import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-Widget harness(Widget child) => ShadApp.custom(
-  theme: buildLightTheme(),
-  appBuilder: (context) => MaterialApp(
-    theme: Theme.of(context),
-    home: Scaffold(body: ShadAppBuilder(child: child)),
+import '../../support/fake_app_image_cache.dart';
+import '../../support/test_image_cache_manager.dart';
+
+Widget harness(Widget child) => AppImageCacheScope(
+  cache: FakeAppImageCache(manager: TestImageCacheManager()),
+  child: ShadApp.custom(
+    theme: buildLightTheme(),
+    appBuilder: (context) => MaterialApp(
+      theme: Theme.of(context),
+      home: Scaffold(body: ShadAppBuilder(child: child)),
+    ),
   ),
 );
 

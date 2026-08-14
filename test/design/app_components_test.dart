@@ -515,13 +515,16 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      ShadApp(
-        theme: buildLightTheme(),
-        home: const AppArtwork(
-          imageUrl: 'https://example.test/cover.jpg',
-          seed: 'header-cover',
-          semanticLabel: '请求头封面',
-          size: 52,
+      AppImageCacheScope(
+        cache: FakeAppImageCache(manager: TestImageCacheManager()),
+        child: ShadApp(
+          theme: buildLightTheme(),
+          home: const AppArtwork(
+            imageUrl: 'https://example.test/cover.jpg',
+            seed: 'header-cover',
+            semanticLabel: '请求头封面',
+            size: 52,
+          ),
         ),
       ),
     );

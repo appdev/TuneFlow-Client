@@ -14,13 +14,20 @@ import 'package:musicfree_service_client/features/home/home_controller.dart';
 import 'package:musicfree_service_client/features/home/home_screen.dart';
 import 'package:musicfree_service_client/features/library/library_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
+import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-Widget harness(Widget child) => ShadApp.custom(
-  theme: buildLightTheme(),
-  appBuilder: (context) => MaterialApp(
-    theme: Theme.of(context),
-    home: ShadAppBuilder(child: child),
+import '../../support/fake_app_image_cache.dart';
+import '../../support/test_image_cache_manager.dart';
+
+Widget harness(Widget child) => AppImageCacheScope(
+  cache: FakeAppImageCache(manager: TestImageCacheManager()),
+  child: ShadApp.custom(
+    theme: buildLightTheme(),
+    appBuilder: (context) => MaterialApp(
+      theme: Theme.of(context),
+      home: ShadAppBuilder(child: child),
+    ),
   ),
 );
 
