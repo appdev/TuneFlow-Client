@@ -232,8 +232,10 @@ final class _CacheCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '图片 ${_formatBytes(controller.imageCacheBytes)} · '
-              '由图片缓存自动管理',
+              controller.imageCacheAvailable
+                  ? '图片 ${_formatBytes(controller.imageCacheBytes)} · '
+                        '由图片缓存自动管理'
+                  : '图片缓存不可用',
               style: AppTypography.metadata.copyWith(
                 color: AppTokens.of(context).muted,
               ),

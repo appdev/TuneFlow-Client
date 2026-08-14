@@ -4,11 +4,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/features/player/player_backdrop.dart';
+import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-Widget harness(Widget child) => ShadApp(
-  theme: buildLightTheme(),
-  home: Scaffold(body: child),
+import '../../support/fake_app_image_cache.dart';
+import '../../support/test_image_cache_manager.dart';
+
+Widget harness(Widget child) => AppImageCacheScope(
+  cache: FakeAppImageCache(manager: TestImageCacheManager()),
+  child: ShadApp(
+    theme: buildLightTheme(),
+    home: Scaffold(body: child),
+  ),
 );
 
 void main() {

@@ -64,6 +64,7 @@ final class SettingsController extends ChangeNotifier {
 
   bool get serviceSettingsAvailable =>
       _loadAutoDownloadOnPlay != null && _updateAutoDownloadOnPlay != null;
+  bool get imageCacheAvailable => _imageCache != null;
 
   Future<void> refreshServiceSettings() async {
     final load = _loadAutoDownloadOnPlay;
@@ -153,7 +154,7 @@ final class SettingsController extends ChangeNotifier {
     final next = state.copyWith(cacheLimitBytes: bytes);
     cacheBusy = true;
     cacheError = null;
-    notifyListeners();
+    _notifyIfActive();
     try {
       await _mediaCache?.setLimit(bytes);
       try {
@@ -168,7 +169,7 @@ final class SettingsController extends ChangeNotifier {
       rethrow;
     } finally {
       cacheBusy = false;
-      notifyListeners();
+      _notifyIfActive();
     }
   }
 
@@ -207,7 +208,7 @@ final class SettingsController extends ChangeNotifier {
     }
     cacheBusy = true;
     cacheError = null;
-    notifyListeners();
+    _notifyIfActive();
     try {
       Object? firstError;
       StackTrace? firstStackTrace;
@@ -232,7 +233,7 @@ final class SettingsController extends ChangeNotifier {
       rethrow;
     } finally {
       cacheBusy = false;
-      notifyListeners();
+      _notifyIfActive();
     }
   }
 

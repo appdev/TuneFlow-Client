@@ -50,8 +50,26 @@ Future<void> main() async {
     await imageCacheCandidate.refreshUsage();
     imageCache = imageCacheCandidate;
   } on Object catch (error) {
-    debugPrint('Local image cache unavailable: $error');
+    debugPrint('Primary local image cache unavailable: $error');
     await imageCacheCandidate?.dispose();
+    imageCacheCandidate = null;
+    try {
+      imageCacheCandidate = CeAppImageCache(
+        cacheBaseDirectory: Directory(
+          '${support.path}${Platform.pathSeparator}image-cache-fallback',
+        ),
+        metadataBaseDirectory: Directory(
+          '${support.path}${Platform.pathSeparator}'
+          'image-cache-fallback-metadata',
+        ),
+      );
+      await imageCacheCandidate.refreshUsage();
+      imageCache = imageCacheCandidate;
+    } on Object catch (fallbackError) {
+      debugPrint('Fallback local image cache unavailable: $fallbackError');
+      await imageCacheCandidate?.dispose();
+      imageCacheCandidate = null;
+    }
   }
   final languageCode = PlatformDispatcher.instance.locale.languageCode;
   final playbackChannelName = languageCode == 'zh'

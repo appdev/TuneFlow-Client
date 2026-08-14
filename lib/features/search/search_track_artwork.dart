@@ -38,9 +38,12 @@ final class _SearchTrackArtworkState extends State<SearchTrackArtwork> {
   @override
   void didUpdateWidget(covariant SearchTrackArtwork oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final oldResponse = _responsePicture(oldWidget.track);
+    final response = _responsePicture(widget.track);
     if (oldWidget.track.id != widget.track.id ||
-        oldWidget.track.source != widget.track.source) {
-      final response = _responsePicture(widget.track);
+        oldWidget.track.source != widget.track.source ||
+        oldResponse != response ||
+        (response == null && oldWidget.loadPicture != widget.loadPicture)) {
       picture = response == null
           ? widget.loadPicture(widget.track)
           : Future.value(response);
