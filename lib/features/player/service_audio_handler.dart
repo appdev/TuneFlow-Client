@@ -1,15 +1,33 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../api/models.dart';
+import '../../storage/media_cache.dart';
 import 'player_state.dart';
 
 String audioCacheExtension(String quality) =>
     quality.toLowerCase().contains('flac') ? '.flac' : '.mp3';
+
+const notificationArtworkHeaders = {
+  'Referer': 'https://music.163.com/',
+  'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+      'AppleWebKit/537.36 Chrome/120 Safari/537.36',
+};
+
+MediaItem mediaItemForTrack(Track track, {required Uri fallbackArtUri}) {
+  final artwork = track.raw['pic'];
+  final artworkUrl = artwork is String ? artwork.trim() : '';
+  return MediaItem(
+    id: track.id,
+    title: track.title.isEmpty ? track.id : track.title,
+    artist: track.artist,
+    artUri: artworkUrl.isEmpty ? fallbackArtUri : Uri.parse(artworkUrl),
+    artHeaders: artworkUrl.isEmpty ? null : notificationArtworkHeaders,
+  );
+}
 
 final class PlaybackStreamExpiredException implements Exception {
   const PlaybackStreamExpiredException();
@@ -57,7 +75,9 @@ final class SilentAudioPort implements AudioPort {
 final class ServiceAudioHandler extends BaseAudioHandler
     with SeekHandler
     implements AudioPort {
-  ServiceAudioHandler() {
+  ServiceAudioHandler({required Uri fallbackArtUri, MediaCache? cache})
+    : _fallbackArtUri = fallbackArtUri,
+      _cache = cache {
     _subscriptions = [
       _player.playbackEventStream.listen((_) => _publishSnapshot()),
       _player.positionStream.listen(
@@ -67,10 +87,14 @@ final class ServiceAudioHandler extends BaseAudioHandler
   }
 
   final AudioPlayer _player = AudioPlayer();
+  final Uri _fallbackArtUri;
+  final MediaCache? _cache;
   final StreamController<AudioSnapshot> _snapshots =
       StreamController<AudioSnapshot>.broadcast();
   AudioSnapshot _last = const AudioSnapshot();
   late final List<StreamSubscription<dynamic>> _subscriptions;
+  MediaCacheLease? _audioLease;
+  StreamSubscription<double>? _cacheProgress;
   Future<void> Function() _previous = _nothing;
   Future<void> Function() _next = _nothing;
 
@@ -93,15 +117,31 @@ final class ServiceAudioHandler extends BaseAudioHandler
 
   @override
   Future<bool> playCachedTrack(Track track, String quality) async {
-    final cache = await _cacheFile(track, quality);
-    if (!await cache.exists()) return false;
+    final cache = _cache;
+    if (cache == null) return false;
+    MediaCacheLease lease;
+    try {
+      lease = await cache.acquireAudio(
+        source: track.source,
+        trackId: track.id,
+        quality: quality,
+      );
+    } on Object {
+      return false;
+    }
+    if (!await lease.file.exists()) {
+      await lease.release();
+      return false;
+    }
     _setMediaItem(track);
     try {
-      await _player.setFilePath(cache.path);
+      await _player.setFilePath(lease.file.path);
+      await _replaceCacheLease(lease);
       await _startPlayback();
       return true;
     } on Object {
-      await cache.delete();
+      await cache.invalidate(lease.file);
+      await lease.release();
       rethrow;
     }
   }
@@ -109,21 +149,66 @@ final class ServiceAudioHandler extends BaseAudioHandler
   @override
   Future<void> playTrack(Track track, Uri streamUri, String quality) async {
     _setMediaItem(track);
-    final cache = await _cacheFile(track, quality);
-    final source = await LockCachingAudioSource(
-      streamUri,
-      cacheFile: cache,
-    ).resolve();
+    MediaCacheLease? lease;
+    StreamSubscription<double>? progress;
+    IndexedAudioSource source = AudioSource.uri(streamUri);
+    final cache = _cache;
+    if (cache != null) {
+      try {
+        lease = await cache.acquireAudio(
+          source: track.source,
+          trackId: track.id,
+          quality: quality,
+        );
+        // just_audio has no stable equivalent that exposes progressive cache
+        // download.
+        // ignore: experimental_member_use
+        final caching = LockCachingAudioSource(
+          streamUri,
+          cacheFile: lease.file,
+        );
+        source = await caching.resolve();
+        progress = caching.downloadProgressStream
+            .where((value) => value >= 1)
+            .take(1)
+            .listen((_) => unawaited(cache.reconcile().catchError((_) {})));
+      } on Object {
+        await progress?.cancel();
+        await lease?.release();
+        lease = null;
+        progress = null;
+        source = AudioSource.uri(streamUri);
+      }
+    }
     try {
       await _player.setAudioSource(source);
+      await _replaceCacheLease(lease, progress: progress);
       await _startPlayback();
     } on PlayerException catch (error) {
+      await progress?.cancel();
+      await lease?.release();
       final detail = '${error.code} ${error.message}'.toLowerCase();
       if (detail.contains('401') || detail.contains('403')) {
         throw const PlaybackStreamExpiredException();
       }
       rethrow;
+    } on Object {
+      await progress?.cancel();
+      await lease?.release();
+      rethrow;
     }
+  }
+
+  Future<void> _replaceCacheLease(
+    MediaCacheLease? next, {
+    StreamSubscription<double>? progress,
+  }) async {
+    final previousLease = _audioLease;
+    final previousProgress = _cacheProgress;
+    _audioLease = next;
+    _cacheProgress = progress;
+    await previousProgress?.cancel();
+    await previousLease?.release();
   }
 
   Future<void> _startPlayback() async {
@@ -144,8 +229,12 @@ final class ServiceAudioHandler extends BaseAudioHandler
       ProcessingState.completed => PlayerProcessing.completed,
     };
     final currentPosition = position ?? _player.position;
-    _last = AudioSnapshot(
+    final playing = effectivePlaybackPlaying(
       playing: _player.playing,
+      processing: processing,
+    );
+    _last = AudioSnapshot(
+      playing: playing,
       processing: processing,
       position: currentPosition,
       duration: _player.duration ?? Duration.zero,
@@ -156,11 +245,11 @@ final class ServiceAudioHandler extends BaseAudioHandler
       playbackState.value.copyWith(
         controls: [
           MediaControl.skipToPrevious,
-          _player.playing ? MediaControl.pause : MediaControl.play,
+          playing ? MediaControl.pause : MediaControl.play,
           MediaControl.skipToNext,
         ],
         systemActions: const {MediaAction.seek},
-        playing: _player.playing,
+        playing: playing,
         processingState: switch (_player.processingState) {
           ProcessingState.idle => AudioProcessingState.idle,
           ProcessingState.loading => AudioProcessingState.loading,
@@ -175,29 +264,7 @@ final class ServiceAudioHandler extends BaseAudioHandler
   }
 
   void _setMediaItem(Track track) {
-    mediaItem.add(
-      MediaItem(
-        id: track.id,
-        title: track.title.isEmpty ? track.id : track.title,
-        artist: track.artist,
-      ),
-    );
-  }
-
-  Future<File> _cacheFile(Track track, String quality) async {
-    final root = await getApplicationSupportDirectory();
-    final directory = Directory(
-      '${root.path}${Platform.pathSeparator}media-cache',
-    );
-    await directory.create(recursive: true);
-    final key = '${track.source}-${track.id}-$quality'.replaceAll(
-      RegExp(r'[^a-zA-Z0-9._-]'),
-      '_',
-    );
-    return File(
-      '${directory.path}${Platform.pathSeparator}$key'
-      '${audioCacheExtension(quality)}',
-    );
+    mediaItem.add(mediaItemForTrack(track, fallbackArtUri: _fallbackArtUri));
   }
 
   @override
@@ -211,6 +278,7 @@ final class ServiceAudioHandler extends BaseAudioHandler
   @override
   Future<void> stopPlayback() async {
     await _player.stop();
+    await _replaceCacheLease(null);
     _publishSnapshot(position: Duration.zero);
   }
 
@@ -222,6 +290,7 @@ final class ServiceAudioHandler extends BaseAudioHandler
   @override
   Future<void> stop() async {
     await _player.stop();
+    await _replaceCacheLease(null);
     await Future.wait(
       _subscriptions.map((subscription) => subscription.cancel()),
     );

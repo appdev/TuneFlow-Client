@@ -35,6 +35,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.6.0
+  cached_network_image_ce: ^4.10.0
   flutter_riverpod: 3.3.2
   shared_preferences: ^2.5.5
   just_audio: ^0.10.6
@@ -51,6 +52,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  file: ^7.0.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -76,6 +78,7 @@ flutter:
 
   assets:
     - assets/branding/TuneFlow.png
+    - assets/artwork/default_track_artwork.png
 
   fonts:
     - family: NotoSansCJKsc

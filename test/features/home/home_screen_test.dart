@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -79,6 +80,10 @@ void main() {
   testWidgets('home playlist uses the first available track artwork', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: MockClient((request) async {
@@ -129,11 +134,10 @@ void main() {
       ),
     );
 
-    final networkImages = tester
-        .widgetList<Image>(find.byType(Image))
-        .map((image) => image.image)
-        .whereType<NetworkImage>();
-    expect(networkImages.single.url, contains('playlist-cover.jpg'));
+    final networkImages = tester.widgetList<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(networkImages.single.imageUrl, contains('playlist-cover.jpg'));
   });
 
   testWidgets('mobile home uses an immersive gallery composition', (

@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../api/models.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/connection/connection_screen.dart';
-import '../features/client_data/client_data_repository.dart';
 import '../features/downloads/download_repository.dart';
 import '../features/downloads/downloads_controller.dart';
 import '../features/downloads/downloads_screen.dart';
@@ -19,6 +18,7 @@ import '../features/more/more_screen.dart';
 import '../features/player/player_controller.dart';
 import '../features/player/player_screen.dart';
 import '../features/player/wake_lock_port.dart';
+import '../features/playback_history/playback_history_repository.dart';
 import '../features/playlists/playlist_detail_controller.dart';
 import '../features/playlists/playlist_detail_screen.dart';
 import '../features/playlists/playlist_repository.dart';
@@ -32,7 +32,11 @@ import '../features/settings/settings_screen.dart';
 import '../features/sources/source_repository.dart';
 import '../features/sources/sources_controller.dart';
 import '../features/sources/sources_screen.dart';
+import '../platform/app_platform.dart';
+import '../platform/desktop_window_controller.dart';
+import '../platform/platform_window_frame.dart';
 import 'app_shell.dart';
+import 'app_navigation_history.dart';
 
 GoRouter buildAppRouter({
   required AsyncValue<ConnectedService?> Function() readConnection,
@@ -48,6 +52,7 @@ GoRouter buildAppRouter({
   final connection = readConnection();
   final connected = connection.value;
   final initialLocation = connected == null ? '/connect' : '/';
+  final navigationHistory = AppNavigationHistory();
 
   ConnectedService requireConnected() => readConnection().value!;
   PlayerController requirePlayer() => readPlayer()!;
@@ -55,6 +60,48 @@ GoRouter buildAppRouter({
   Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     await requirePlayer().playTracks(tracks, startIndex: startIndex);
+  }
+
+  Widget playerRoute(BuildContext context) {
+    final connected = requireConnected();
+    final platform = resolveAppPlatform(Theme.of(context).platform);
+
+    void closePlayer() {
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      } else {
+        context.go('/');
+      }
+    }
+
+    return KeyedSubtree(
+      key: const Key('player-route'),
+      child: PlatformWindowFrame(
+        platform: platform,
+        location: '/player',
+        controller: desktopWindowController,
+        onBack: closePlayer,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: PlayerScreen(
+            controller: requirePlayer(),
+            lyricsLoader: SearchRepository(connected.api).lyrics,
+            wakeLock: const SystemWakeLock(),
+            keepAwake: readKeepAwake(),
+            onBack: closePlayer,
+            topChromeInset: platform.isDesktop ? 38 : 0,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void openPlayer(BuildContext context) {
+    Navigator.of(
+      context,
+      rootNavigator: true,
+    ).push<void>(MaterialPageRoute<void>(builder: playerRoute));
   }
 
   return GoRouter(
@@ -83,11 +130,25 @@ GoRouter buildAppRouter({
       ShellRoute(
         builder: (context, state, child) {
           final connected = requireConnected();
+          navigationHistory.record(state.uri, extra: state.extra);
+
+          void navigateTo(AppNavigationEntry? entry) {
+            if (entry == null) return;
+            context.go(entry.uri.toString(), extra: entry.extra);
+          }
+
           return AppShell(
             key: ObjectKey(connected),
             connected: connected,
             onDisconnect: disconnect,
             player: requirePlayer(),
+            onOpenPlayer: () => openPlayer(context),
+            onBack: navigationHistory.canGoBack
+                ? () => navigateTo(navigationHistory.goBack())
+                : null,
+            onForward: navigationHistory.canGoForward
+                ? () => navigateTo(navigationHistory.goForward())
+                : null,
             child: child,
           );
         },
@@ -107,7 +168,7 @@ GoRouter buildAppRouter({
                     playlists: PlaylistRepository(connected.api),
                     downloads: DownloadRepository(connected.api),
                     library: LibraryRepository(connected.api),
-                    history: ClientDataRepository(connected.api),
+                    history: PlaybackHistoryRepository(connected.api),
                   ),
                   onSearch: () => context.goNamed('search'),
                   onPlaylists: () => context.goNamed('playlists'),
@@ -267,23 +328,12 @@ GoRouter buildAppRouter({
               );
             },
           ),
-          GoRoute(
-            path: '/player',
-            name: 'player',
-            builder: (context, state) {
-              final connected = requireConnected();
-              return KeyedSubtree(
-                key: const Key('player-route'),
-                child: PlayerScreen(
-                  controller: requirePlayer(),
-                  lyricsLoader: SearchRepository(connected.api).lyrics,
-                  wakeLock: const SystemWakeLock(),
-                  keepAwake: readKeepAwake(),
-                ),
-              );
-            },
-          ),
         ],
+      ),
+      GoRoute(
+        path: '/player',
+        name: 'player',
+        builder: (context, state) => playerRoute(context),
       ),
     ],
   );

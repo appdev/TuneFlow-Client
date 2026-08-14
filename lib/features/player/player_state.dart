@@ -6,6 +6,11 @@ enum PlayerView { artwork, lyrics, queue }
 
 enum PlaybackMode { sequential, repeatOne, shuffle }
 
+bool effectivePlaybackPlaying({
+  required bool playing,
+  required PlayerProcessing processing,
+}) => playing && processing != PlayerProcessing.completed;
+
 final class AudioSnapshot {
   const AudioSnapshot({
     this.playing = false,

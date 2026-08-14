@@ -15,6 +15,8 @@ final class AppTokens {
     required this.borderSoft,
     required this.accent,
     required this.accentForeground,
+    required this.primaryAction,
+    required this.primaryActionForeground,
     required this.success,
     required this.warning,
     required this.danger,
@@ -24,41 +26,45 @@ final class AppTokens {
   });
 
   static const light = AppTokens(
-    background: Color(0xFFECF6F3),
-    surface: Color(0xFFDEECE7),
-    surfaceWarm: Color(0xFFCEDFDA),
-    foreground: Color(0xFF091411),
-    foregroundSecondary: Color(0xFF273330),
-    muted: Color(0xFF576460),
-    border: Color(0xFFBFCFCA),
-    borderSoft: Color(0xFFCEDFDA),
-    accent: Color(0xFF136D5B),
-    accentForeground: Color(0xFFEFF7F5),
-    success: Color(0xFF317A45),
-    warning: Color(0xFFB07A20),
-    danger: Color(0xFFC43F3E),
-    focusRing: Color(0xFF008E73),
-    overlay: Color(0x66091411),
-    playerVeil: Color(0xCCECF6F3),
+    background: Color(0xFFF6F6F6),
+    surface: Color(0xFFFAFAFA),
+    surfaceWarm: Color(0xFFEAEAEA),
+    foreground: Color(0xFF252525),
+    foregroundSecondary: Color(0xFF494949),
+    muted: Color(0xFF626262),
+    border: Color(0xFFDDDDDD),
+    borderSoft: Color(0xFFEAEAEA),
+    accent: Color(0xFF14745F),
+    accentForeground: Color(0xFFF6F6F6),
+    primaryAction: Color(0xFF14745F),
+    primaryActionForeground: Color(0xFFF6F6F6),
+    success: Color(0xFF2F7D4A),
+    warning: Color(0xFF966000),
+    danger: Color(0xFFB93B3B),
+    focusRing: Color(0xFF008B70),
+    overlay: Color(0x66252525),
+    playerVeil: Color(0xCCF6F6F6),
   );
 
   static const dark = AppTokens(
-    background: Color(0xFF040B09),
-    surface: Color(0xFF0A1411),
-    surfaceWarm: Color(0xFF14201C),
-    foreground: Color(0xFFE5EDEB),
-    foregroundSecondary: Color(0xFFB6C0BD),
-    muted: Color(0xFF8A9592),
-    border: Color(0xFF25312D),
-    borderSoft: Color(0xFF14201C),
-    accent: Color(0xFF6DBDA8),
-    accentForeground: Color(0xFF040E0B),
-    success: Color(0xFF7CBD89),
-    warning: Color(0xFFE1AD63),
-    danger: Color(0xFFF47B74),
-    focusRing: Color(0xFF66D5BA),
-    overlay: Color(0xB3000000),
-    playerVeil: Color(0xD9040B09),
+    background: Color(0xFF171817),
+    surface: Color(0xFF202120),
+    surfaceWarm: Color(0xFF2B2C2A),
+    foreground: Color(0xFFECEDEA),
+    foregroundSecondary: Color(0xFFC6C7C3),
+    muted: Color(0xFFA0A19D),
+    border: Color(0xFF464743),
+    borderSoft: Color(0xFF30312F),
+    accent: Color(0xFF19D39B),
+    accentForeground: Color(0xFF101713),
+    primaryAction: Color(0xFF00E66A),
+    primaryActionForeground: Color(0xFF101713),
+    success: Color(0xFF75B987),
+    warning: Color(0xFFD7A45A),
+    danger: Color(0xFFE87870),
+    focusRing: Color(0xFF19D39B),
+    overlay: Color(0xB3121312),
+    playerVeil: Color(0xD9171817),
   );
 
   static AppTokens of(BuildContext context) =>
@@ -74,6 +80,8 @@ final class AppTokens {
   final Color borderSoft;
   final Color accent;
   final Color accentForeground;
+  final Color primaryAction;
+  final Color primaryActionForeground;
   final Color success;
   final Color warning;
   final Color danger;

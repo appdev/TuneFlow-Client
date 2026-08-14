@@ -339,6 +339,31 @@ void main() {
     },
   );
 
+  test(
+    'completed playback is presented as stopped when backend stays playing',
+    () async {
+      final audio = FakeAudio();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+      );
+      await controller.play(track('a'));
+
+      audio.controller.add(
+        const AudioSnapshot(
+          playing: true,
+          processing: PlayerProcessing.completed,
+          position: Duration(seconds: 30),
+          duration: Duration(seconds: 30),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.processing, PlayerProcessing.completed);
+      expect(controller.state.playing, isFalse);
+    },
+  );
+
   test('shuffle next selects a different queued track', () async {
     final controller = PlayerController(
       resolver: FakeResolver(),
@@ -480,6 +505,83 @@ void main() {
       expect(controller.state.error, isNull);
     },
   );
+
+  test('successful cached playback reports once after audio starts', () async {
+    final reports = <String>[];
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio()..cached = true,
+      reportPlayback: (track) async => reports.add(track.id),
+    );
+
+    await controller.play(track('cached'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(reports, ['cached']);
+  });
+
+  test(
+    'successful streamed playback reports once after audio starts',
+    () async {
+      final reports = <String>[];
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+        reportPlayback: (track) async => reports.add(track.id),
+      );
+
+      await controller.play(track('streamed'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(reports, ['streamed']);
+    },
+  );
+
+  test('failed playback startup does not report', () async {
+    final reports = <String>[];
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio()..playError = StateError('startup failed'),
+      reportPlayback: (track) async => reports.add(track.id),
+    );
+
+    await controller.play(track('failed'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(reports, isEmpty);
+    expect(controller.state.error, isA<StateError>());
+  });
+
+  test('ordinary pause and resume do not report again', () async {
+    final reports = <String>[];
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+      reportPlayback: (track) async => reports.add(track.id),
+    );
+    await controller.play(track('streamed'));
+    await Future<void>.delayed(Duration.zero);
+    reports.clear();
+
+    await controller.pause();
+    await controller.resume();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(reports, isEmpty);
+  });
+
+  test('reporting failure does not change successful playback state', () async {
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+      reportPlayback: (_) => throw StateError('report failed'),
+    );
+
+    await controller.play(track('streamed'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.error, isNull);
+  });
 
   test('queue remains available as a full-player entry intent', () {
     final controller = PlayerController(

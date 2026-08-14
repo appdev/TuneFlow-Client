@@ -112,6 +112,9 @@ void main() {
       }),
     );
     final player = PlayerController(resolver: _Resolver(), audio: _Audio());
+    await player.play(
+      Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
+    );
     final controller = OnlinePlaylistDetailController(
       catalog: SearchRepository(api),
       playlists: PlaylistRepository(api),
@@ -138,11 +141,90 @@ void main() {
     expect(find.text('短视频DJ热门歌曲｜网红BGM'), findsOneWidget);
     expect(find.textContaining('450.4万'), findsOneWidget);
     expect(find.byKey(const Key('catalog-track-kw-one')), findsOneWidget);
+    expect(
+      player.state.current?.raw['pic'],
+      'https://cdn.example.test/one.jpg',
+    );
 
     await tester.tap(find.byKey(const Key('online-playlist-play-all')));
     await tester.pumpAndSettle();
     expect(player.state.queue.map((track) => track.id), ['one']);
+    expect(
+      player.state.current?.raw['pic'],
+      'https://cdn.example.test/one.jpg',
+    );
     expect(find.text('重命名'), findsNothing);
     expect(find.text('删除歌单'), findsNothing);
   });
+
+  testWidgets(
+    'unrelated parent rebuild keeps the loaded online playlist detail',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1162, 768);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      var detailRequests = 0;
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/detail')) {
+            detailRequests++;
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'source': 'kw',
+                  'page': 1,
+                  'limit': 1,
+                  'total': 1,
+                  'hasMore': false,
+                  'playlist': {
+                    'id': 'list-1',
+                    'kind': 'playlist',
+                    'name': '已加载歌单',
+                    'source': 'kw',
+                  },
+                  'tracks': [
+                    {'id': 'one', 'name': 'One', 'source': 'kw'},
+                  ],
+                },
+              }),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }
+          return http.Response(
+            jsonEncode({'data': <Object?>[]}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      final player = PlayerController(resolver: _Resolver(), audio: _Audio());
+
+      OnlinePlaylistDetailScreen buildScreen() => OnlinePlaylistDetailScreen(
+        key: const ValueKey('online-playlist-kw-list-1'),
+        controller: OnlinePlaylistDetailController(
+          catalog: SearchRepository(api),
+          playlists: PlaylistRepository(api),
+          source: 'kw',
+          playlistId: 'list-1',
+        ),
+        player: player,
+        downloads: DownloadRepository(api),
+      );
+
+      await tester.pumpWidget(harness(buildScreen()));
+      await tester.pumpAndSettle();
+      expect(find.text('已加载歌单'), findsOneWidget);
+      expect(detailRequests, 1);
+
+      await tester.pumpWidget(harness(buildScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('已加载歌单'), findsOneWidget);
+      expect(find.text('歌单详情加载失败'), findsNothing);
+      expect(detailRequests, 1);
+    },
+  );
 }

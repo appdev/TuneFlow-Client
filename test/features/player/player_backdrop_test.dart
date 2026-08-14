@@ -1,3 +1,4 @@
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
@@ -11,7 +12,7 @@ Widget harness(Widget child) => ShadApp(
 );
 
 void main() {
-  testWidgets('backdrop is decorative and uses the supplied provider', (
+  testWidgets('backdrop is decorative and uses the supplied artwork URL', (
     tester,
   ) async {
     final source = AppArtworkSource.network(
@@ -22,13 +23,17 @@ void main() {
       harness(PlayerBackdrop(source: source, transitionKey: 'one')),
     );
 
-    final image = tester.widget<Image>(find.byType(Image));
-    expect(identical(image.image, source.provider), isTrue);
+    final image = tester.widget<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(image.imageUrl, source.url);
     expect(find.byType(ImageFiltered), findsOneWidget);
+    expect(find.byKey(const Key('player-backdrop-artwork')), findsOneWidget);
+    expect(find.byKey(const Key('player-backdrop-neutral')), findsNothing);
     expect(find.bySemanticsLabel('封面背景'), findsNothing);
   });
 
-  testWidgets('backdrop uses deterministic artwork when the URL is missing', (
+  testWidgets('backdrop stays neutral when the artwork URL is missing', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -40,6 +45,9 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('artwork-fallback-missing')), findsOneWidget);
+    expect(find.byKey(const Key('player-backdrop-neutral')), findsOneWidget);
+    expect(find.byType(AppArtwork), findsNothing);
+    expect(find.byType(ImageFiltered), findsNothing);
+    expect(find.byKey(const Key('artwork-fallback-missing')), findsNothing);
   });
 }

@@ -66,7 +66,7 @@ final class _SearchTrackArtworkState extends State<SearchTrackArtwork> {
   );
 }
 
-final class _ArtworkImage extends StatefulWidget {
+final class _ArtworkImage extends StatelessWidget {
   const _ArtworkImage({
     required this.uri,
     required this.track,
@@ -79,53 +79,33 @@ final class _ArtworkImage extends StatefulWidget {
   final double borderRadius;
 
   @override
-  State<_ArtworkImage> createState() => _ArtworkImageState();
-}
-
-final class _ArtworkImageState extends State<_ArtworkImage> {
-  var failed = false;
-
-  @override
-  void didUpdateWidget(covariant _ArtworkImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.uri != widget.uri) failed = false;
-  }
-
-  @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final fallback = Container(
-      key: Key(
-        'search-artwork-fallback-${widget.track.source}-${widget.track.id}',
-      ),
-      width: widget.size,
-      height: widget.size,
+      key: Key('search-artwork-fallback-${track.source}-${track.id}'),
+      width: size,
+      height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: tokens.surfaceWarm.withValues(alpha: .55),
         border: Border.all(color: tokens.borderSoft),
       ),
       child: Text(
-        trackInitial(widget.track),
+        trackInitial(track),
         style: AppTypography.title.copyWith(color: tokens.muted),
       ),
     );
-    if (widget.uri == null || failed) return fallback;
-    return Image.network(
-      widget.uri.toString(),
-      headers: artworkRequestHeaders,
-      key: Key('search-artwork-${widget.track.source}-${widget.track.id}'),
-      width: widget.size,
-      height: widget.size,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) {
-        if (!failed) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => failed = true);
-          });
-        }
-        return fallback;
-      },
+    if (uri == null) return fallback;
+    return AppArtwork(
+      key: Key('search-artwork-${track.source}-${track.id}'),
+      imageUrl: uri.toString(),
+      seed: '${track.source}:${track.id}',
+      semanticLabel: '${track.title} 封面',
+      size: size,
+      width: size,
+      height: size,
+      borderRadius: 0,
+      fallback: fallback,
     );
   }
 }

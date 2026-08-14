@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/playlist_card.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlists_controller.dart';
 import 'package:musicfree_service_client/features/playlists/playlists_screen.dart';
@@ -24,6 +25,10 @@ void main() {
   testWidgets('renders playlist cards and delegates detail navigation', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     final repository = PlaylistRepository(
       ServiceApi(
         ServiceOrigin.parse('http://service.local'),
@@ -75,5 +80,9 @@ void main() {
       greaterThanOrEqualTo(48),
     );
     expect(find.byKey(const Key('playlists-gallery-wide')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const Key('playlist-love'))).width,
+      lessThanOrEqualTo(playlistGalleryMaxItemExtent),
+    );
   });
 }

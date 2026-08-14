@@ -45,6 +45,7 @@ Widget _shellHarness({
   required Widget child,
   required PlayerController player,
   required AppPlatform platform,
+  required ThemeMode themeMode,
 }) {
   final api = fixtureApi();
   final connected = ConnectedService(
@@ -74,7 +75,7 @@ Widget _shellHarness({
   return ShadApp.custom(
     theme: buildLightTheme(),
     darkTheme: buildDarkTheme(),
-    themeMode: ThemeMode.dark,
+    themeMode: themeMode,
     appBuilder: (context) => MaterialApp.router(
       debugShowCheckedModeBanner: false,
       theme: Theme.of(context),
@@ -142,59 +143,76 @@ void main() {
     ]);
   });
 
-  for (final viewport in const [Size(1440, 960), Size(1024, 768)]) {
-    for (final page in _desktopPages) {
-      testWidgets(
-        'desktop $page ${viewport.width.toInt()}x${viewport.height.toInt()}',
-        (tester) async {
-          await _capture(tester, page: page, viewport: viewport, mobile: false);
-        },
-      );
-    }
-  }
-
-  for (final viewport in const [Size(390, 844), Size(360, 800)]) {
-    for (final page in _mobilePages) {
-      testWidgets(
-        'mobile $page ${viewport.width.toInt()}x${viewport.height.toInt()}',
-        (tester) async {
-          await _capture(tester, page: page, viewport: viewport, mobile: true);
-        },
-      );
-    }
-  }
-
-  for (final fixture in const [
-    (Size(1440, 960), false),
-    (Size(1024, 768), false),
-    (Size(390, 844), true),
-  ]) {
-    testWidgets(
-      '${fixture.$2 ? 'mobile' : 'desktop'} search history '
-      '${fixture.$1.width.toInt()}x${fixture.$1.height.toInt()}',
-      (tester) => _captureSearchHistory(
-        tester,
-        viewport: fixture.$1,
-        mobile: fixture.$2,
-      ),
-    );
-  }
-
-  for (final platform in const [
-    AppPlatform.macos,
-    AppPlatform.windows,
-    AppPlatform.linux,
-  ]) {
+  for (final themeMode in const [ThemeMode.dark, ThemeMode.light]) {
     for (final viewport in const [Size(1440, 960), Size(1024, 768)]) {
-      testWidgets(
-        '${platform.name} window frame '
-        '${viewport.width.toInt()}x${viewport.height.toInt()}',
-        (tester) => _capturePlatformFrame(
+      for (final page in _desktopPages) {
+        testWidgets('desktop $page ${themeMode.name} '
+            '${viewport.width.toInt()}x${viewport.height.toInt()}', (
           tester,
-          platform: platform,
-          viewport: viewport,
+        ) async {
+          await _capture(
+            tester,
+            page: page,
+            viewport: viewport,
+            mobile: false,
+            themeMode: themeMode,
+          );
+        });
+      }
+    }
+
+    for (final viewport in const [Size(390, 844), Size(360, 800)]) {
+      for (final page in _mobilePages) {
+        testWidgets('mobile $page ${themeMode.name} '
+            '${viewport.width.toInt()}x${viewport.height.toInt()}', (
+          tester,
+        ) async {
+          await _capture(
+            tester,
+            page: page,
+            viewport: viewport,
+            mobile: true,
+            themeMode: themeMode,
+          );
+        });
+      }
+    }
+
+    for (final fixture in const [
+      (Size(1440, 960), false),
+      (Size(1024, 768), false),
+      (Size(390, 844), true),
+    ]) {
+      testWidgets(
+        '${fixture.$2 ? 'mobile' : 'desktop'} search history '
+        '${themeMode.name} '
+        '${fixture.$1.width.toInt()}x${fixture.$1.height.toInt()}',
+        (tester) => _captureSearchHistory(
+          tester,
+          viewport: fixture.$1,
+          mobile: fixture.$2,
+          themeMode: themeMode,
         ),
       );
+    }
+
+    for (final platform in const [
+      AppPlatform.macos,
+      AppPlatform.windows,
+      AppPlatform.linux,
+    ]) {
+      for (final viewport in const [Size(1440, 960), Size(1024, 768)]) {
+        testWidgets(
+          '${platform.name} window frame ${themeMode.name} '
+          '${viewport.width.toInt()}x${viewport.height.toInt()}',
+          (tester) => _capturePlatformFrame(
+            tester,
+            platform: platform,
+            viewport: viewport,
+            themeMode: themeMode,
+          ),
+        );
+      }
     }
   }
 }
@@ -203,6 +221,7 @@ Future<void> _capturePlatformFrame(
   WidgetTester tester, {
   required AppPlatform platform,
   required Size viewport,
+  required ThemeMode themeMode,
 }) async {
   _configureViewport(tester, viewport);
   addTearDown(tester.view.resetPhysicalSize);
@@ -213,6 +232,7 @@ Future<void> _capturePlatformFrame(
       path: '/',
       player: player,
       platform: platform,
+      themeMode: themeMode,
       child: HomeScreen(
         controller: await fixtureHomeController(),
         onSearch: () {},
@@ -240,8 +260,11 @@ Future<void> _capturePlatformFrame(
   await expectLater(
     find.byKey(const Key('main-shell')),
     matchesGoldenFile(
-      'full_goldens/${platform.name}-window-frame-'
-      '${viewport.width.toInt()}x${viewport.height.toInt()}.png',
+      _goldenPath(
+        '${platform.name}-window-frame-'
+        '${viewport.width.toInt()}x${viewport.height.toInt()}',
+        themeMode,
+      ),
     ),
   );
 }
@@ -250,6 +273,7 @@ Future<void> _captureSearchHistory(
   WidgetTester tester, {
   required Size viewport,
   required bool mobile,
+  required ThemeMode themeMode,
 }) async {
   _configureViewport(tester, viewport);
   addTearDown(tester.view.resetPhysicalSize);
@@ -276,6 +300,7 @@ Future<void> _captureSearchHistory(
       player: player,
       child: surface,
       platform: mobile ? AppPlatform.android : AppPlatform.macos,
+      themeMode: themeMode,
     ),
   );
   await _precacheBranding(tester);
@@ -287,8 +312,11 @@ Future<void> _captureSearchHistory(
   await expectLater(
     find.byKey(const Key('main-shell')),
     matchesGoldenFile(
-      'full_goldens/$platform-search-history-'
-      '${viewport.width.toInt()}x${viewport.height.toInt()}.png',
+      _goldenPath(
+        '$platform-search-history-'
+        '${viewport.width.toInt()}x${viewport.height.toInt()}',
+        themeMode,
+      ),
     ),
   );
 }
@@ -298,6 +326,7 @@ Future<void> _capture(
   required String page,
   required Size viewport,
   required bool mobile,
+  required ThemeMode themeMode,
 }) async {
   _configureViewport(tester, viewport);
   addTearDown(tester.view.resetPhysicalSize);
@@ -312,6 +341,7 @@ Future<void> _capture(
       player: player,
       child: surface,
       platform: mobile ? AppPlatform.android : AppPlatform.macos,
+      themeMode: themeMode,
     ),
   );
   await _precacheBranding(tester);
@@ -326,9 +356,16 @@ Future<void> _capture(
   final height = viewport.height.toInt();
   await expectLater(
     find.byKey(const Key('main-shell')),
-    matchesGoldenFile('full_goldens/$platform-$page-${width}x$height.png'),
+    matchesGoldenFile(
+      _goldenPath('$platform-$page-${width}x$height', themeMode),
+    ),
   );
 }
+
+String _goldenPath(String stem, ThemeMode themeMode) =>
+    themeMode == ThemeMode.dark
+    ? 'full_goldens/$stem.png'
+    : 'full_goldens/$stem-light.png';
 
 Future<void> _precacheBranding(WidgetTester tester) async {
   await tester.runAsync(

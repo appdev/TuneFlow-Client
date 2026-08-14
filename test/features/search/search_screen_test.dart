@@ -70,6 +70,37 @@ final class _Audio implements AudioPort {
 }
 
 void main() {
+  testWidgets('desktop search leaves navigation controls to window chrome', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient(
+        (_) async => http.Response(jsonEncode({'data': <Object?>[]}), 200),
+      ),
+    );
+
+    await tester.pumpWidget(
+      harness(
+        SearchScreen(
+          controller: feature.SearchController(SearchRepository(api)),
+          playlists: PlaylistRepository(api),
+          downloads: DownloadRepository(api),
+          player: testPlayer(),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('search-wide-layout')), findsOneWidget);
+    expect(find.byTooltip('返回'), findsNothing);
+    expect(find.byTooltip('前进'), findsNothing);
+    expect(tester.getTopLeft(find.byKey(const Key('search-field'))).dx, 30);
+  });
+
   testWidgets('desktop artwork is clipped to a rounded square', (tester) async {
     const artworkSize = 38.0;
     final track = Track.fromJson({
@@ -501,6 +532,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('search-history-panel')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('search-history-panel'))).dx,
+      tester.getTopLeft(find.byKey(const Key('search-field'))).dx,
+    );
     final historyItem = find.byKey(const Key('search-history-item-0'));
     final gesture = await tester.startGesture(tester.getCenter(historyItem));
     await tester.pump();

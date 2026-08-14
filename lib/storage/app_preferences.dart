@@ -3,6 +3,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum AppLanguage { system, zh, en }
 
+const bytesPerGiB = 1024 * 1024 * 1024;
+const defaultMediaCacheLimitBytes = 5 * bytesPerGiB;
+const mediaCacheLimitOptionsBytes = <int>[
+  1 * bytesPerGiB,
+  2 * bytesPerGiB,
+  5 * bytesPerGiB,
+  10 * bytesPerGiB,
+  20 * bytesPerGiB,
+];
+
 enum PlaybackQuality {
   low128k('128k'),
   high320k('320k'),
@@ -22,6 +32,7 @@ final class AppSettings {
     this.showLyrics = false,
     this.showTranslation = true,
     this.reduceTransparency = false,
+    this.cacheLimitBytes = defaultMediaCacheLimitBytes,
   });
 
   final String? origin;
@@ -32,6 +43,7 @@ final class AppSettings {
   final bool showLyrics;
   final bool showTranslation;
   final bool reduceTransparency;
+  final int cacheLimitBytes;
 
   AppSettings copyWith({
     String? origin,
@@ -43,6 +55,7 @@ final class AppSettings {
     bool? showLyrics,
     bool? showTranslation,
     bool? reduceTransparency,
+    int? cacheLimitBytes,
   }) => AppSettings(
     origin: clearOrigin ? null : origin ?? this.origin,
     themeMode: themeMode ?? this.themeMode,
@@ -52,6 +65,7 @@ final class AppSettings {
     showLyrics: showLyrics ?? this.showLyrics,
     showTranslation: showTranslation ?? this.showTranslation,
     reduceTransparency: reduceTransparency ?? this.reduceTransparency,
+    cacheLimitBytes: cacheLimitBytes ?? this.cacheLimitBytes,
   );
 
   @override
@@ -64,7 +78,8 @@ final class AppSettings {
       other.keepAwake == keepAwake &&
       other.showLyrics == showLyrics &&
       other.showTranslation == showTranslation &&
-      other.reduceTransparency == reduceTransparency;
+      other.reduceTransparency == reduceTransparency &&
+      other.cacheLimitBytes == cacheLimitBytes;
 
   @override
   int get hashCode => Object.hash(
@@ -76,6 +91,7 @@ final class AppSettings {
     showLyrics,
     showTranslation,
     reduceTransparency,
+    cacheLimitBytes,
   );
 }
 
@@ -97,6 +113,7 @@ final class SharedAppPreferences implements AppPreferences {
   static const _showLyricsKey = 'show_lyrics';
   static const _showTranslationKey = 'show_translation';
   static const _reduceTransparencyKey = 'reduce_transparency';
+  static const _cacheLimitKey = 'media_cache_limit_bytes';
 
   final SharedPreferencesAsync _preferences;
 
@@ -123,6 +140,9 @@ final class SharedAppPreferences implements AppPreferences {
     showTranslation: await _preferences.getBool(_showTranslationKey) ?? true,
     reduceTransparency:
         await _preferences.getBool(_reduceTransparencyKey) ?? false,
+    cacheLimitBytes: _cacheLimitOrDefault(
+      await _preferences.getInt(_cacheLimitKey),
+    ),
   );
 
   @override
@@ -142,11 +162,17 @@ final class SharedAppPreferences implements AppPreferences {
       _reduceTransparencyKey,
       settings.reduceTransparency,
     );
+    await _preferences.setInt(_cacheLimitKey, settings.cacheLimitBytes);
   }
 
   @override
   Future<void> clearOrigin() => _preferences.remove(_originKey);
 }
+
+int _cacheLimitOrDefault(int? value) =>
+    mediaCacheLimitOptionsBytes.contains(value)
+    ? value!
+    : defaultMediaCacheLimitBytes;
 
 T _enumValue<T extends Enum>(List<T> values, String? name, T fallback) {
   for (final value in values) {

@@ -36,8 +36,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
     builder: (context, _) {
       final state = widget.controller.state;
       final mobile =
-          classifyLayout(MediaQuery.sizeOf(context).width) ==
-          AppLayoutClass.mobile;
+          classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
       return ColoredBox(
         key: Key(mobile ? 'sources-mobile-layout' : 'sources-wide-layout'),
         color: AppTokens.of(context).background,

@@ -118,118 +118,110 @@ final class _DesktopMiniPlayer extends StatelessWidget {
       color: tokens.surface,
       child: SizedBox(
         height: 96,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: tokens.borderSoft)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 7,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      key: const Key('desktop-track-surface'),
-                      onTap: onOpen,
-                      borderRadius: BorderRadius.circular(AppRadii.control),
-                      child: Row(
-                        children: [
-                          AppArtwork(
-                            key: const Key('desktop-player-artwork'),
-                            imageUrl: imageUrl,
-                            seed: track.id,
-                            semanticLabel: '${track.title}封面',
-                            size: 52,
-                            borderRadius: 10,
-                          ),
-                          const SizedBox(width: 12),
-                          Flexible(
-                            child: _DesktopTrackIdentity(
-                              controller: controller,
-                            ),
-                          ),
-                        ],
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 7,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: const Key('desktop-track-surface'),
+                    onTap: onOpen,
+                    borderRadius: BorderRadius.circular(AppRadii.control),
+                    child: Row(
+                      children: [
+                        AppArtwork(
+                          key: const Key('desktop-player-artwork'),
+                          imageUrl: imageUrl,
+                          seed: track.id,
+                          semanticLabel: '${track.title}封面',
+                          size: 52,
+                          borderRadius: 10,
+                        ),
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: _DesktopTrackIdentity(controller: controller),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                Expanded(
-                  flex: 13,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _TransportButton(
-                            key: const Key('player-previous-mini'),
-                            tooltip: '上一首',
-                            icon: LucideIcons.skipBack,
-                            enabled: state.currentIndex > 0,
-                            onPressed: controller.previous,
-                          ),
-                          const SizedBox(width: 6),
-                          _DesktopMainTransport(
-                            key: const Key('desktop-play-pause'),
-                            presentation: transport,
-                          ),
-                          const SizedBox(width: 6),
-                          _TransportButton(
-                            key: const Key('player-next-mini'),
-                            tooltip: '下一首',
-                            icon: LucideIcons.skipForward,
-                            enabled:
-                                state.currentIndex + 1 < state.queue.length,
-                            onPressed: controller.next,
-                          ),
-                        ],
-                      ),
-                      PlaybackProgress(
-                        position: state.position,
-                        duration: state.duration,
-                        onSeek: controller.seek,
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  flex: 7,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      ShadButton.outline(
-                        key: const Key('desktop-quality'),
-                        height: 44,
-                        onPressed: onOpen,
-                        child: Text(
-                          state.quality == 'flac' ? '无损' : state.quality,
+              ),
+              Expanded(
+                flex: 13,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _TransportButton(
+                          key: const Key('player-previous-mini'),
+                          tooltip: '上一首',
+                          icon: LucideIcons.skipBack,
+                          enabled: state.currentIndex > 0,
+                          onPressed: controller.previous,
                         ),
-                      ),
-                      _TransportButton(
-                        key: const Key('desktop-lyrics'),
-                        tooltip: '歌词',
-                        icon: LucideIcons.messageSquareText,
-                        onPressed: () {
-                          controller.setView(PlayerView.lyrics);
-                          onOpen();
-                        },
-                      ),
-                      _TransportButton(
-                        key: const Key('desktop-queue'),
-                        tooltip: '播放队列',
-                        icon: LucideIcons.listMusic,
-                        onPressed: () {
-                          controller.setView(PlayerView.queue);
-                          onOpen();
-                        },
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 6),
+                        _DesktopMainTransport(
+                          key: const Key('desktop-play-pause'),
+                          presentation: transport,
+                        ),
+                        const SizedBox(width: 6),
+                        _TransportButton(
+                          key: const Key('player-next-mini'),
+                          tooltip: '下一首',
+                          icon: LucideIcons.skipForward,
+                          enabled: state.currentIndex + 1 < state.queue.length,
+                          onPressed: controller.next,
+                        ),
+                      ],
+                    ),
+                    PlaybackProgress(
+                      position: state.position,
+                      duration: state.duration,
+                      onSeek: controller.seek,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                flex: 7,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ShadButton.outline(
+                      key: const Key('desktop-quality'),
+                      height: 44,
+                      onPressed: onOpen,
+                      child: Text(
+                        state.quality == 'flac' ? '无损' : state.quality,
+                      ),
+                    ),
+                    _TransportButton(
+                      key: const Key('desktop-lyrics'),
+                      tooltip: '歌词',
+                      icon: LucideIcons.messageSquareText,
+                      onPressed: () {
+                        controller.setView(PlayerView.lyrics);
+                        onOpen();
+                      },
+                    ),
+                    _TransportButton(
+                      key: const Key('desktop-queue'),
+                      tooltip: '播放队列',
+                      icon: LucideIcons.listMusic,
+                      onPressed: () {
+                        controller.setView(PlayerView.queue);
+                        onOpen();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

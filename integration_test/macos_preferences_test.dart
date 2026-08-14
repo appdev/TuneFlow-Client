@@ -6,6 +6,8 @@ import 'package:musicfree_service_client/app/app.dart';
 import 'package:musicfree_service_client/features/player/service_audio_handler.dart';
 import 'package:musicfree_service_client/storage/app_preferences.dart';
 
+final _fallbackArtUri = Uri.file('/tmp/tuneflow-default-track-artwork.png');
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -33,7 +35,7 @@ void main() {
     tester,
   ) async {
     final audio = await AudioService.init<ServiceAudioHandler>(
-      builder: ServiceAudioHandler.new,
+      builder: () => ServiceAudioHandler(fallbackArtUri: _fallbackArtUri),
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.musicfree.serviceclient.playback',
         androidNotificationChannelName: 'MusicFree 播放',

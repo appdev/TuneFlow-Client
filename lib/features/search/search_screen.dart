@@ -153,10 +153,16 @@ final class _SearchScreenState extends State<SearchScreen> {
     await widget.player.play(playable);
   }
 
-  Future<void> _run(Future<void> Function() action, {String? success}) async {
+  Future<void> _run(
+    Future<void> Function() action, {
+    String? success,
+    String? successTitle,
+  }) async {
     try {
       await action();
-      if (mounted && success != null) {
+      if (mounted && successTitle != null) {
+        showAppMessage(context, title: successTitle);
+      } else if (mounted && success != null) {
         showAppMessage(context, title: '完成', message: success);
       }
     } on Object catch (error) {
@@ -227,7 +233,7 @@ final class _SearchScreenState extends State<SearchScreen> {
     addToPlaylist: (value) => _run(() => _choosePlaylist(value)),
     download: (value, quality) => _run(
       () => widget.downloads.create(value, quality),
-      success: '已交给 Service 下载',
+      successTitle: '已加入下载队列',
     ),
   );
 
@@ -329,7 +335,7 @@ final class _SearchScreenState extends State<SearchScreen> {
       builder: (context, constraints) {
         final state = widget.controller.state;
         final mobile =
-            classifyLayout(constraints.maxWidth) == AppLayoutClass.mobile;
+            classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
         mobileLayout = mobile;
         return ColoredBox(
           key: Key(mobile ? 'search-mobile-layout' : 'search-wide-layout'),
@@ -462,7 +468,7 @@ final class _SearchScreenState extends State<SearchScreen> {
                     if (!mobile && showHistory)
                       Positioned(
                         top: 48,
-                        left: 90,
+                        left: 0,
                         width: 610,
                         child: SearchHistoryPanel(
                           items: historyItems,
@@ -504,12 +510,6 @@ final class _SearchBar extends StatelessWidget {
     height: mobile ? 52 : 42,
     child: Row(
       children: [
-        if (!mobile) ...[
-          const _HistoryButton(icon: LucideIcons.chevronLeft, tooltip: '返回'),
-          const SizedBox(width: 4),
-          const _HistoryButton(icon: LucideIcons.chevronRight, tooltip: '前进'),
-          const SizedBox(width: 14),
-        ],
         Flexible(
           child: ConstrainedBox(
             constraints: BoxConstraints(
@@ -745,24 +745,6 @@ final class _MobileResultsHeading extends StatelessWidget {
       ],
     );
   }
-}
-
-final class _HistoryButton extends StatelessWidget {
-  const _HistoryButton({required this.icon, required this.tooltip});
-  final IconData icon;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: 36,
-    child: IconButton(
-      tooltip: tooltip,
-      onPressed: null,
-      constraints: const BoxConstraints.tightFor(width: 36, height: 36),
-      padding: EdgeInsets.zero,
-      icon: Icon(icon, size: 18),
-    ),
-  );
 }
 
 final class _SourceTabs extends StatelessWidget {

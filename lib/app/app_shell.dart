@@ -21,12 +21,18 @@ final class AppShell extends StatelessWidget {
     required this.onDisconnect,
     required this.player,
     required this.child,
+    this.onOpenPlayer,
+    this.onBack,
+    this.onForward,
     this.platform,
   });
 
   final ConnectedService connected;
   final VoidCallback onDisconnect;
   final PlayerController player;
+  final VoidCallback? onOpenPlayer;
+  final VoidCallback? onBack;
+  final VoidCallback? onForward;
   final Widget child;
   final AppPlatform? platform;
 
@@ -80,29 +86,20 @@ final class AppShell extends StatelessWidget {
       'more' => '/more',
       _ => '/',
     });
+    final openPlayer = onOpenPlayer ?? () => context.goNamed('player');
 
     return Scaffold(
       key: const Key('main-shell'),
       backgroundColor: tokens.background,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final layout = classifyLayout(constraints.maxWidth);
+          final layout = classifyLayout(MediaQuery.sizeOf(context));
           final resolvedPlatform =
               platform ?? resolveAppPlatform(Theme.of(context).platform);
-          if (location.startsWith('/player')) {
-            return PlatformWindowFrame(
-              platform: resolvedPlatform,
-              location: location,
-              controller: desktopWindowController,
-              onBack: context.canPop() ? context.pop : () => context.go('/'),
-              onSearch: () => context.go('/search'),
-              child: Scaffold(backgroundColor: Colors.transparent, body: child),
-            );
-          }
           if (layout == AppLayoutClass.mobile) {
             final mobileShell = Scaffold(
               backgroundColor: Colors.transparent,
-              extendBody: true,
+              extendBody: false,
               body: SafeArea(bottom: false, child: child),
               bottomNavigationBar: showMiniPlayer
                   ? AppMobileDock(
@@ -115,7 +112,7 @@ final class AppShell extends StatelessWidget {
                           ? selectedId
                           : 'home',
                       onSelected: navigate,
-                      onOpenPlayer: () => context.pushNamed('player'),
+                      onOpenPlayer: openPlayer,
                     )
                   : null,
             );
@@ -123,7 +120,8 @@ final class AppShell extends StatelessWidget {
               platform: resolvedPlatform,
               location: location,
               controller: desktopWindowController,
-              onBack: context.canPop() ? context.pop : null,
+              onBack: onBack,
+              onForward: onForward,
               onSearch: () => context.go('/search'),
               child: mobileShell,
             );
@@ -133,35 +131,61 @@ final class AppShell extends StatelessWidget {
             platform: resolvedPlatform,
             location: location,
             controller: desktopWindowController,
-            onBack: context.canPop() ? context.pop : null,
+            onBack: onBack,
+            onForward: onForward,
             onSearch: () => context.go('/search'),
-            child: Column(
+            desktopSidebarWidth: compact ? 84 : 208,
+            child: Row(
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      AppDesktopNavigation(
-                        destinations: _desktopDestinations,
-                        selectedId: selectedId,
-                        compact: compact,
-                        onSelected: navigate,
-                        footer: _ConnectionFooter(
-                          connected: connected,
-                          compact: compact,
-                          onSources: () => navigate('sources'),
-                          onDisconnect: onDisconnect,
-                        ),
-                      ),
-                      Expanded(child: child),
-                    ],
+                AppDesktopNavigation(
+                  destinations: _desktopDestinations,
+                  selectedId: selectedId,
+                  compact: compact,
+                  onSelected: navigate,
+                  footer: _ConnectionFooter(
+                    connected: connected,
+                    compact: compact,
+                    onSources: () => navigate('sources'),
+                    onDisconnect: onDisconnect,
                   ),
                 ),
-                if (showMiniPlayer)
-                  MiniPlayer(
-                    controller: player,
-                    onOpen: () => context.pushNamed('player'),
-                    variant: MiniPlayerVariant.desktop,
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: player,
+                    builder: (context, _) {
+                      final hasTrack = player.state.current != null;
+                      return Stack(
+                        key: const Key('desktop-content-shell'),
+                        fit: StackFit.expand,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.only(
+                              bottom: showMiniPlayer && hasTrack ? 120 : 0,
+                            ),
+                            child: child,
+                          ),
+                          if (showMiniPlayer)
+                            Positioned(
+                              left: AppSpacing.sm,
+                              right: AppSpacing.sm,
+                              bottom: AppSpacing.sm,
+                              child: ClipRRect(
+                                key: const Key('desktop-player-inset'),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadii.card,
+                                ),
+                                child: MiniPlayer(
+                                  controller: player,
+                                  onOpen: openPlayer,
+                                  variant: MiniPlayerVariant.desktop,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
+                ),
               ],
             ),
           );

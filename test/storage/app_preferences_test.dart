@@ -20,6 +20,7 @@ void main() {
     expect(settings.keepAwake, isFalse);
     expect(settings.showLyrics, isFalse);
     expect(settings.reduceTransparency, isFalse);
+    expect(settings.cacheLimitBytes, defaultMediaCacheLimitBytes);
   });
 
   test('round trips approved preferences', () async {
@@ -32,11 +33,32 @@ void main() {
       keepAwake: true,
       showLyrics: true,
       reduceTransparency: true,
+      cacheLimitBytes: 10 * bytesPerGiB,
     );
 
     await preferences.write(expected);
 
     expect(await preferences.read(), expected);
+  });
+
+  test('round trips every supported local cache limit', () async {
+    final preferences = SharedAppPreferences();
+
+    for (final bytes in mediaCacheLimitOptionsBytes) {
+      await preferences.write(AppSettings(cacheLimitBytes: bytes));
+      expect((await preferences.read()).cacheLimitBytes, bytes);
+    }
+  });
+
+  test('falls back to 5 GB for an unsupported stored cache limit', () async {
+    final platform = InMemorySharedPreferencesAsync.withData({
+      'media_cache_limit_bytes': 3 * bytesPerGiB,
+    });
+    SharedPreferencesAsyncPlatform.instance = platform;
+
+    final settings = await SharedAppPreferences().read();
+
+    expect(settings.cacheLimitBytes, defaultMediaCacheLimitBytes);
   });
 
   test('clearOrigin preserves every non-origin preference', () async {

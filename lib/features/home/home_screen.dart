@@ -59,7 +59,7 @@ final class _HomeScreenState extends State<HomeScreen> {
     listenable: widget.controller,
     builder: (context, _) => LayoutBuilder(
       builder: (context, constraints) {
-        final layout = classifyLayout(constraints.maxWidth);
+        final layout = classifyLayout(MediaQuery.sizeOf(context));
         return ColoredBox(
           color: AppTokens.of(context).background,
           child: layout == AppLayoutClass.mobile

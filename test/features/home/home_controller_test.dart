@@ -6,9 +6,9 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
-import 'package:musicfree_service_client/features/client_data/client_data_repository.dart';
 import 'package:musicfree_service_client/features/home/home_controller.dart';
 import 'package:musicfree_service_client/features/library/library_repository.dart';
+import 'package:musicfree_service_client/features/playback_history/playback_history_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
 
 http.Response data(Object? value) =>
@@ -51,19 +51,25 @@ void main() {
   test(
     'dashboard maps valid playback history and ignores malformed entries',
     () async {
+      final paths = <String>[];
       final api = ServiceApi(
         ServiceOrigin.parse('http://service.local'),
         client: MockClient((request) async {
-          if (request.url.path.contains('client-data')) {
+          paths.add(request.url.path);
+          if (request.url.path == '/api/v1/playback/history') {
             return data([
               {
-                'id': 'history-1',
-                'name': 'Night Wind',
-                'singer': 'Artist',
-                'source': 'kw',
+                'track': {
+                  'id': 'history-1',
+                  'name': 'Night Wind',
+                  'singer': 'Artist',
+                  'source': 'kw',
+                },
                 'playedAt': 123,
               },
-              {'id': 'broken', 'source': 'kw'},
+              {
+                'track': {'id': 'broken', 'source': 'kw'},
+              },
             ]);
           }
           return data(<Object?>[]);
@@ -73,7 +79,7 @@ void main() {
         playlists: PlaylistRepository(api),
         downloads: DownloadRepository(api),
         library: LibraryRepository(api),
-        history: ClientDataRepository(api),
+        history: PlaybackHistoryRepository(api),
       );
 
       await controller.refresh();
@@ -82,6 +88,8 @@ void main() {
       expect(controller.state.continueListening.single.id, 'history-1');
       expect(controller.state.featured.single.id, 'history-1');
       expect(controller.state.lastSyncedAt, isNotNull);
+      expect(paths, contains('/api/v1/playback/history'));
+      expect(paths.where((path) => path.contains('client-data')), isEmpty);
     },
   );
 }

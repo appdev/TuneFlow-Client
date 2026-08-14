@@ -118,7 +118,8 @@ final class _PlaylistsScreenState extends State<PlaylistsScreen> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final mobile =
-              classifyLayout(constraints.maxWidth) == AppLayoutClass.mobile;
+              classifyLayout(MediaQuery.sizeOf(context)) ==
+              AppLayoutClass.mobile;
           return ColoredBox(
             key: Key(
               mobile ? 'playlists-gallery-mobile' : 'playlists-gallery-wide',
@@ -186,43 +187,52 @@ final class _PlaylistsScreenState extends State<PlaylistsScreen> {
                   Expanded(
                     child: !state.loading && state.items.isEmpty
                         ? const AppEmptyState(message: '还没有歌单')
-                        : GridView.builder(
-                            key: const Key('playlists-screen'),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: mobile
-                                  ? 2
-                                  : (constraints.maxWidth / 270).floor().clamp(
-                                      2,
-                                      5,
+                        : LayoutBuilder(
+                            builder: (context, gridConstraints) {
+                              final columns = playlistGalleryColumnCount(
+                                availableWidth: gridConstraints.maxWidth,
+                                spacing: AppSpacing.md,
+                              );
+                              final itemExtent = playlistGalleryItemExtent(
+                                availableWidth: gridConstraints.maxWidth,
+                                spacing: AppSpacing.md,
+                                columns: columns,
+                              );
+                              return GridView.builder(
+                                key: const Key('playlists-screen'),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: columns,
+                                      crossAxisSpacing: AppSpacing.md,
+                                      mainAxisSpacing: AppSpacing.md,
+                                      childAspectRatio:
+                                          playlistGalleryChildAspectRatio(
+                                            itemExtent,
+                                          ),
                                     ),
-                              crossAxisSpacing: AppSpacing.md,
-                              mainAxisSpacing: AppSpacing.md,
-                              // Artwork is square and the two metadata rows need
-                              // another 64 px. Keep enough vertical room at both
-                              // reference widths instead of clipping the card.
-                              childAspectRatio: mobile ? .76 : .84,
-                            ),
-                            itemCount: state.items.length,
-                            itemBuilder: (context, index) {
-                              final playlist = state.items[index];
-                              final picture = playlist.tracks
-                                  .map((track) => track.raw['pic'])
-                                  .whereType<String>()
-                                  .firstOrNull;
-                              return PlaylistCard(
-                                key: Key('playlist-${playlist.id}'),
-                                playlist: playlist,
-                                imageUrl: picture == null
-                                    ? null
-                                    : Uri.tryParse(picture),
-                                variant: PlaylistCardVariant.gallery,
-                                onPressed: () => widget.onOpen(playlist.id),
-                                onDelete: playlist.isBuiltIn
-                                    ? null
-                                    : () => _delete(
-                                        playlist.id,
-                                        playlist.displayName,
-                                      ),
+                                itemCount: state.items.length,
+                                itemBuilder: (context, index) {
+                                  final playlist = state.items[index];
+                                  final picture = playlist.tracks
+                                      .map((track) => track.raw['pic'])
+                                      .whereType<String>()
+                                      .firstOrNull;
+                                  return PlaylistCard(
+                                    key: Key('playlist-${playlist.id}'),
+                                    playlist: playlist,
+                                    imageUrl: picture == null
+                                        ? null
+                                        : Uri.tryParse(picture),
+                                    variant: PlaylistCardVariant.gallery,
+                                    onPressed: () => widget.onOpen(playlist.id),
+                                    onDelete: playlist.isBuiltIn
+                                        ? null
+                                        : () => _delete(
+                                            playlist.id,
+                                            playlist.displayName,
+                                          ),
+                                  );
+                                },
                               );
                             },
                           ),

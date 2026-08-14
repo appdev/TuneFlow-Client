@@ -116,7 +116,7 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
       builder: (context, constraints) {
         final state = widget.controller.state;
         final mobile =
-            classifyLayout(constraints.maxWidth) == AppLayoutClass.mobile;
+            classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
         return ColoredBox(
           key: Key(
             mobile ? 'downloads-mobile-layout' : 'downloads-wide-layout',

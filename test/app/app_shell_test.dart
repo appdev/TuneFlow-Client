@@ -7,9 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/app/app.dart';
+import 'package:musicfree_service_client/app/player_providers.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
+import 'package:musicfree_service_client/design/components/app_mobile_dock.dart';
 import 'package:musicfree_service_client/storage/app_preferences.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
 import 'package:musicfree_service_client/features/connection/connection_controller.dart';
@@ -155,19 +158,58 @@ void main() {
       tester.getSize(find.byKey(const Key('desktop-navigation'))).width,
       208,
     );
+    final navigationRect = tester.getRect(
+      find.byKey(const Key('desktop-navigation')),
+    );
+    final leadingTitleSurfaceRect = tester.getRect(
+      find.byKey(const Key('desktop-title-leading-surface')),
+    );
+    expect(leadingTitleSurfaceRect.left, navigationRect.left);
+    expect(leadingTitleSurfaceRect.right, navigationRect.right);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('desktop-back'))).dx,
+      greaterThanOrEqualTo(navigationRect.right),
+    );
+    final contentShellRect = tester.getRect(
+      find.byKey(const Key('desktop-content-shell')),
+    );
+    expect(contentShellRect.left, navigationRect.right);
+    final playerInsetRect = tester.getRect(
+      find.byKey(const Key('desktop-player-inset')),
+    );
+    expect(playerInsetRect.left, contentShellRect.left + 12);
+    expect(playerInsetRect.right, contentShellRect.right - 12);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byKey(const Key('main-shell'))),
+    );
+    await container.read(playerControllerProvider)!.playTracks([
+      Track.fromJson({'id': 'desktop-inset', 'name': '遮挡测试', 'source': 'kw'}),
+    ]);
+    await tester.pump();
+    final activePlayerRect = tester.getRect(
+      find.byKey(const Key('desktop-persistent-player')),
+    );
+    final activePageRect = tester.getRect(find.byKey(const Key('home-route')));
+    expect(
+      activePageRect.bottom,
+      lessThanOrEqualTo(activePlayerRect.top - 12),
+      reason: 'desktop pages must end above the persistent player',
+    );
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.text('Home · TuneFlow'), findsOneWidget);
+    expect(find.text('Home · TuneFlow'), findsNothing);
     expect(preferences.settings.origin, 'http://service.local');
 
-    GoRouter.of(
+    final router = GoRouter.of(
       tester.element(find.byKey(const Key('main-shell'))),
-    ).go('/player');
+    );
+    router.go('/player');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('player-route')), findsOneWidget);
     expect(find.byKey(const Key('desktop-navigation')), findsNothing);
     expect(find.byKey(const Key('desktop-persistent-player')), findsNothing);
 
-    GoRouter.of(tester.element(find.byKey(const Key('main-shell')))).go('/');
+    router.go('/');
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('macos-title-bar')), findsOneWidget);
@@ -188,6 +230,7 @@ void main() {
     expect(find.byKey(const Key('settings-route')), findsOneWidget);
     expect(find.textContaining('插件'), findsNothing);
     expect(find.textContaining('文件夹'), findsNothing);
+
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -261,10 +304,135 @@ void main() {
       expect(size.height, greaterThanOrEqualTo(44), reason: label);
     }
 
+    final container = ProviderScope.containerOf(
+      tester.element(find.byKey(const Key('main-shell'))),
+    );
+    await container.read(playerControllerProvider)!.playTracks([
+      Track.fromJson({'id': 'mobile-back', 'name': '返回测试', 'source': 'kw'}),
+    ]);
+    await tester.pump();
+    final mobilePageRect = tester.getRect(find.byKey(const Key('home-route')));
+    final mobileDockRect = tester.getRect(
+      find.byKey(const Key('mobile-player-dock')),
+    );
+    expect(
+      mobilePageRect.bottom,
+      lessThanOrEqualTo(mobileDockRect.top),
+      reason: 'mobile pages must end above the player and navigation dock',
+    );
     tester.element(find.byKey(const Key('main-shell'))).go('/player');
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('player-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('mobile-player-dock')), findsNothing);
     expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+
+    await tester.tap(find.bySemanticsLabel('返回'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('player-route')), findsNothing);
+    expect(find.byKey(const Key('home-route')), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('returning from player preserves the underlying detail page', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var detailRequests = 0;
+    final repository = ConnectionRepository(
+      (origin) => ServiceApi(
+        origin,
+        client: MockClient((request) async {
+          final value = switch (request.url.path) {
+            '/api/v1/health' => {'status': 'ok'},
+            '/api/v1/capabilities' => {
+              'runtime': 'service',
+              'apiVersion': 'v1',
+              'features': <String, Object?>{},
+            },
+            '/api/v1/events/snapshot' => {'sequence': 0, 'events': <Object?>[]},
+            '/api/v1/catalog/playlists/detail' => () {
+              detailRequests++;
+              return {
+                'source': 'kw',
+                'page': 1,
+                'limit': 30,
+                'total': 1,
+                'hasMore': false,
+                'playlist': {
+                  'id': 'list-1',
+                  'kind': 'playlist',
+                  'name': '测试歌单',
+                  'source': 'kw',
+                },
+                'tracks': [
+                  {'id': 'song-1', 'name': '返回后仍在', 'source': 'kw'},
+                ],
+              };
+            }(),
+            _ => <Object?>[],
+          };
+          return http.Response(
+            jsonEncode({'data': value}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MusicFreeServiceApp(
+        connectionRepository: repository,
+        preferences: MemoryAppPreferences(
+          const AppSettings(origin: 'http://service.local'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final shellContext = tester.element(find.byKey(const Key('main-shell')));
+    shellContext.go(
+      '/square/kw/list-1',
+      extra: const CatalogCollection(
+        id: 'list-1',
+        kind: CatalogSearchKind.playlist,
+        name: '测试歌单',
+        source: 'kw',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('返回后仍在'), findsOneWidget);
+    expect(detailRequests, 1);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byKey(const Key('main-shell'))),
+    );
+    container
+        .read(playerControllerProvider)!
+        .enqueue(
+          Track.fromJson({'id': 'song-1', 'name': '返回后仍在', 'source': 'kw'}),
+        );
+    await tester.pump();
+    tester.widget<AppMobileDock>(find.byType(AppMobileDock)).onOpenPlayer();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('player-route')), findsOneWidget);
+    expect(find.text('返回后仍在'), findsNothing);
+    expect(detailRequests, 1);
+
+    Navigator.of(
+      tester.element(find.byKey(const Key('player-route'))),
+      rootNavigator: true,
+    ).pop();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('player-route')), findsNothing);
+    expect(find.text('返回后仍在'), findsOneWidget);
+    expect(detailRequests, 1);
     debugDefaultTargetPlatformOverride = null;
   });
 

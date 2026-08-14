@@ -6,23 +6,33 @@ import 'design_tokens.dart';
 
 ShadThemeData buildLightTheme([
   AppThemeDefinition definition = AppThemeRegistry.mistSea,
-]) => ShadThemeData(
-  brightness: Brightness.light,
-  colorScheme: _schemeFor(definition.light),
-  textTheme: ShadTextTheme(family: AppTypography.bodyFontFamily),
-  radius: const BorderRadius.all(Radius.circular(AppRadii.control)),
-  breakpoints: ShadBreakpoints(sm: 720, md: 900, lg: 1180),
-);
+]) => _themeFor(definition.light);
 
 ShadThemeData buildDarkTheme([
   AppThemeDefinition definition = AppThemeRegistry.mistSea,
-]) => ShadThemeData(
-  brightness: Brightness.dark,
-  colorScheme: _schemeFor(definition.dark),
-  textTheme: ShadTextTheme(family: AppTypography.bodyFontFamily),
-  radius: const BorderRadius.all(Radius.circular(AppRadii.control)),
-  breakpoints: ShadBreakpoints(sm: 720, md: 900, lg: 1180),
-);
+]) => _themeFor(definition.dark);
+
+ShadThemeData _themeFor(AppThemeVariant variant) {
+  final tokens = variant.tokens;
+  final interactiveDefault = variant.brightness == Brightness.dark
+      ? tokens.foreground
+      : tokens.primaryAction;
+  final restingActionTheme = ShadButtonTheme(
+    foregroundColor: interactiveDefault,
+    hoverForegroundColor: tokens.primaryAction,
+    pressedForegroundColor: tokens.primaryAction,
+  );
+  return ShadThemeData(
+    brightness: variant.brightness,
+    colorScheme: _schemeFor(variant),
+    textTheme: ShadTextTheme(family: AppTypography.bodyFontFamily),
+    radius: const BorderRadius.all(Radius.circular(AppRadii.control)),
+    breakpoints: ShadBreakpoints(sm: 720, md: 900, lg: 1180),
+    outlineButtonTheme: restingActionTheme,
+    ghostButtonTheme: restingActionTheme,
+    linkButtonTheme: restingActionTheme,
+  );
+}
 
 ShadColorScheme _schemeFor(AppThemeVariant variant) {
   final tokens = variant.tokens;
@@ -33,8 +43,8 @@ ShadColorScheme _schemeFor(AppThemeVariant variant) {
     cardForeground: tokens.foreground,
     popover: tokens.surface,
     popoverForeground: tokens.foreground,
-    primary: tokens.accent,
-    primaryForeground: tokens.accentForeground,
+    primary: tokens.primaryAction,
+    primaryForeground: tokens.primaryActionForeground,
     secondary: tokens.surfaceWarm,
     secondaryForeground: tokens.foreground,
     muted: tokens.surfaceWarm,

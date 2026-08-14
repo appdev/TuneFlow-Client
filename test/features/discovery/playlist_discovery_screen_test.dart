@@ -8,6 +8,7 @@ import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/playlist_card.dart';
 import 'package:musicfree_service_client/features/discovery/playlist_discovery_controller.dart';
 import 'package:musicfree_service_client/features/discovery/playlist_discovery_view.dart';
 import 'package:musicfree_service_client/features/search/search_repository.dart';
@@ -162,6 +163,14 @@ void main() {
     expect(find.text('1 / 49'), findsOneWidget);
     expect(find.text('共 1751 个'), findsOneWidget);
     expect(find.byKey(const Key('playlist-categories-toggle')), findsOneWidget);
+    expect(
+      tester
+          .getSize(
+            find.byKey(const Key('playlist-card-kw-digest-8__3677488020')),
+          )
+          .width,
+      lessThanOrEqualTo(playlistGalleryMaxItemExtent),
+    );
 
     await tester.tap(find.byKey(const Key('playlist-categories-toggle')));
     await tester.pump();

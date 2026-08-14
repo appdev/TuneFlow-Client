@@ -2,12 +2,18 @@ name: Build TuneFlow clients
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the compiled artifacts as a GitHub Release
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 env:
-  FLUTTER_VERSION: 3.35.2
+  FLUTTER_VERSION: 3.47.0
 
 jobs:
   android:
@@ -21,6 +27,7 @@ jobs:
           channel: stable
           cache: true
       - name: Restore Android signing key
+        if: ${{ inputs.publish_release }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
@@ -40,13 +47,17 @@ jobs:
           } > android/key.properties
       - name: Get dependencies
         run: flutter pub get
+      - name: Build validation APK
+        if: ${{ !inputs.publish_release }}
+        run: flutter build apk --debug
       - name: Build signed Release APK
+        if: ${{ inputs.publish_release }}
         run: flutter build apk --release
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
           name: tuneflow-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: ${{ inputs.publish_release && 'build/app/outputs/flutter-apk/app-release.apk' || 'build/app/outputs/flutter-apk/app-debug.apk' }}
           if-no-files-found: error
 
   ios:
@@ -200,6 +211,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
+    if: ${{ inputs.publish_release }}
     needs: [android, ios, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:

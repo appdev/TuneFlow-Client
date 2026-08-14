@@ -9,6 +9,8 @@ import 'package:musicfree_service_client/features/player/playback_repository.dar
 import 'package:musicfree_service_client/features/player/service_audio_handler.dart';
 import 'package:musicfree_service_client/features/search/search_repository.dart';
 
+final _fallbackArtUri = Uri.file('/tmp/tuneflow-default-track-artwork.png');
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -25,7 +27,7 @@ void main() {
           final source = await PlaybackRepository(
             connected.api,
           ).resolve(track, quality);
-          final audio = ServiceAudioHandler();
+          final audio = ServiceAudioHandler(fallbackArtUri: _fallbackArtUri);
           try {
             try {
               await audio
@@ -57,7 +59,7 @@ void main() {
         final source = await PlaybackRepository(
           connected.api,
         ).resolve(local.track, 'flac');
-        final audio = ServiceAudioHandler();
+        final audio = ServiceAudioHandler(fallbackArtUri: _fallbackArtUri);
         try {
           await audio
               .playTrack(local.track, source.streamUri, 'flac')

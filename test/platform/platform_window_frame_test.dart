@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/design_tokens.dart';
 import 'package:musicfree_service_client/l10n/app_localizations.dart';
 import 'package:musicfree_service_client/platform/app_platform.dart';
 import 'package:musicfree_service_client/platform/desktop_window_controller.dart';
@@ -35,6 +36,11 @@ void main() {
     expect(find.byKey(const Key('window-minimize')), findsNothing);
     expect(find.byKey(const Key('window-maximize')), findsNothing);
     expect(find.byKey(const Key('window-close')), findsNothing);
+    final titleBar = tester.widget<Container>(
+      find.byKey(const Key('desktop-title-bar')),
+    );
+    final decoration = titleBar.decoration! as BoxDecoration;
+    expect(decoration.border, isNull);
   });
 
   testWidgets('player window chrome keeps only back over the shared canvas', (
@@ -59,6 +65,80 @@ void main() {
     final decoration = titleBar.decoration! as BoxDecoration;
     expect(decoration.color, Colors.transparent);
     expect(decoration.border, isNull);
+  });
+
+  testWidgets('desktop shell title bar continues the sidebar and content', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(AppPlatform.macos, desktopSidebarWidth: 208),
+    );
+
+    final titleBar = tester.widget<Container>(
+      find.byKey(const Key('desktop-title-bar')),
+    );
+    final decoration = titleBar.decoration! as BoxDecoration;
+    expect(decoration.color, AppTokens.light.background);
+    expect(
+      tester.getSize(find.byKey(const Key('desktop-title-leading-surface'))),
+      const Size(208, 38),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('desktop-back'))).dx,
+      greaterThanOrEqualTo(208),
+    );
+  });
+
+  testWidgets('desktop title actions stay clickable inside the drag region', (
+    tester,
+  ) async {
+    var backCount = 0;
+    var forwardCount = 0;
+    await tester.pumpWidget(
+      _harness(
+        AppPlatform.macos,
+        onBack: () => backCount++,
+        onForward: () => forwardCount++,
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('desktop-back')));
+    await tester.tap(find.byKey(const Key('desktop-forward')));
+
+    expect(backCount, 1);
+    expect(forwardCount, 1);
+  });
+
+  testWidgets('desktop shell omits centered page title and global search', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _harness(
+        AppPlatform.macos,
+        location: '/square',
+        onSearch: () {},
+        desktopSidebarWidth: 208,
+      ),
+    );
+
+    expect(find.text('歌单广场 · 音流'), findsNothing);
+    expect(find.bySemanticsLabel('全局搜索'), findsNothing);
+  });
+
+  testWidgets('narrow macOS player leaves back navigation to mobile chrome', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _harness(AppPlatform.macos, location: '/player', onBack: () {}),
+    );
+
+    expect(find.byKey(const Key('desktop-title-bar')), findsOneWidget);
+    expect(find.bySemanticsLabel('返回'), findsNothing);
   });
 
   for (final platform in [AppPlatform.windows, AppPlatform.linux]) {
@@ -93,7 +173,9 @@ Widget _harness(
   AppPlatform platform, {
   String location = '/search',
   VoidCallback? onBack,
+  VoidCallback? onForward,
   VoidCallback? onSearch,
+  double? desktopSidebarWidth,
 }) {
   final controller = DesktopWindowController(_FakeWindowOperations());
   return ShadApp.custom(
@@ -115,7 +197,9 @@ Widget _harness(
             location: location,
             controller: controller,
             onBack: onBack,
+            onForward: onForward,
             onSearch: onSearch,
+            desktopSidebarWidth: desktopSidebarWidth,
             child: const ColoredBox(
               key: Key('window-frame-content'),
               color: Colors.transparent,

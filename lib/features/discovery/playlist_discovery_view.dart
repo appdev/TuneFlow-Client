@@ -70,8 +70,7 @@ final class _PlaylistDiscoveryViewState extends State<PlaylistDiscoveryView> {
     builder: (context, _) {
       final state = widget.controller.state;
       final mobile =
-          classifyLayout(MediaQuery.sizeOf(context).width) ==
-          AppLayoutClass.mobile;
+          classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
       return ColoredBox(
         key: const Key('playlist-square-layout'),
         color: AppTokens.of(context).background,
@@ -288,11 +287,16 @@ final class _PlaylistGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final columns = mobile
-          ? 2
-          : (MediaQuery.sizeOf(context).width > 1180 ? 4 : 3);
       final gap = mobile ? 14.0 : 16.0;
-      final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+      final columns = playlistGalleryColumnCount(
+        availableWidth: constraints.maxWidth,
+        spacing: gap,
+      );
+      final width = playlistGalleryItemExtent(
+        availableWidth: constraints.maxWidth,
+        spacing: gap,
+        columns: columns,
+      );
       return Wrap(
         spacing: gap,
         runSpacing: gap,

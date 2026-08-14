@@ -14,16 +14,16 @@ final class PlayerController extends ChangeNotifier {
     required this.audio,
     String quality = '128k',
     bool showTranslation = true,
-    Future<void> Function(Track track)? recordHistory,
+    Future<void> Function(Track track)? reportPlayback,
   }) : state = PlayerState(quality: quality, showTranslation: showTranslation) {
-    _recordHistory = recordHistory;
+    _reportPlaybackCallback = reportPlayback;
     audio.bindQueueCallbacks(previous: previous, next: next);
     _subscription = audio.snapshots.listen(_onSnapshot);
   }
 
   final PlaybackResolver resolver;
   final AudioPort audio;
-  late final Future<void> Function(Track track)? _recordHistory;
+  late final Future<void> Function(Track track)? _reportPlaybackCallback;
   late final StreamSubscription<AudioSnapshot> _subscription;
   PlayerState state;
   final Random _random = Random();
@@ -74,6 +74,23 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> play(Track track) => playTracks([track]);
+
+  bool updateTrackArtwork(Track track, Uri picture) {
+    final pictureUrl = picture.toString();
+    var changed = false;
+    final queue = state.queue
+        .map((item) {
+          if (item.source != track.source || item.id != track.id) return item;
+          if (item.raw['pic'] == pictureUrl) return item;
+          changed = true;
+          return Track.fromJson({...item.toJson(), 'pic': pictureUrl});
+        })
+        .toList(growable: false);
+    if (!changed) return false;
+    state = state.copyWith(queue: List.unmodifiable(queue));
+    notifyListeners();
+    return true;
+  }
 
   Future<bool> removeAt(int index) async {
     if (index < 0 || index >= state.queue.length) return false;
@@ -227,7 +244,7 @@ final class PlayerController extends ChangeNotifier {
       if (await audio.playCachedTrack(track, state.quality)) {
         state = state.copyWith(error: null);
         notifyListeners();
-        _saveHistory(track);
+        _reportPlayback(track);
         return true;
       }
     } on Object {
@@ -240,7 +257,7 @@ final class PlayerController extends ChangeNotifier {
         await audio.playTrack(track, source.streamUri, state.quality);
         state = state.copyWith(error: null);
         notifyListeners();
-        _saveHistory(track);
+        _reportPlayback(track);
         return true;
       } on PlaybackStreamExpiredException catch (error) {
         lastError = error;
@@ -258,9 +275,14 @@ final class PlayerController extends ChangeNotifier {
     return false;
   }
 
-  void _saveHistory(Track track) {
-    final save = _recordHistory;
-    if (save != null) unawaited(save(track).catchError((_) {}));
+  void _reportPlayback(Track track) {
+    final report = _reportPlaybackCallback;
+    if (report == null) return;
+    try {
+      unawaited(report(track).catchError((_) {}));
+    } on Object {
+      // Playback history is best-effort and must not alter player state.
+    }
   }
 
   void _onSnapshot(AudioSnapshot snapshot) {
@@ -268,7 +290,10 @@ final class PlayerController extends ChangeNotifier {
         snapshot.processing == PlayerProcessing.completed &&
         state.processing != PlayerProcessing.completed;
     state = state.copyWith(
-      playing: snapshot.playing,
+      playing: effectivePlaybackPlaying(
+        playing: snapshot.playing,
+        processing: snapshot.processing,
+      ),
       processing: snapshot.processing,
       position: snapshot.position,
       duration: snapshot.duration,

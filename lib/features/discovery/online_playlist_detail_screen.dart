@@ -37,18 +37,46 @@ final class OnlinePlaylistDetailScreen extends StatefulWidget {
 
 final class _OnlinePlaylistDetailScreenState
     extends State<OnlinePlaylistDetailScreen> {
+  final Map<(String, String), Future<Uri?>> _pictures = {};
+  late OnlinePlaylistDetailController _controller;
+
   @override
   void initState() {
     super.initState();
-    if (widget.controller.state.pages.isEmpty) {
-      unawaited(widget.controller.load());
+    _controller = widget.controller;
+    if (_controller.state.pages.isEmpty) {
+      unawaited(_controller.load());
     }
   }
 
-  Future<void> _run(Future<void> Function() action, {String? success}) async {
+  @override
+  void didUpdateWidget(covariant OnlinePlaylistDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final replacement = widget.controller;
+    if (identical(replacement, _controller)) return;
+    if (replacement.source == _controller.source &&
+        replacement.playlistId == _controller.playlistId) {
+      replacement.dispose();
+      return;
+    }
+    _controller.dispose();
+    _pictures.clear();
+    _controller = replacement;
+    if (_controller.state.pages.isEmpty) {
+      unawaited(_controller.load());
+    }
+  }
+
+  Future<void> _run(
+    Future<void> Function() action, {
+    String? success,
+    String? successTitle,
+  }) async {
     try {
       await action();
-      if (mounted && success != null) {
+      if (mounted && successTitle != null) {
+        showAppMessage(context, title: successTitle);
+      } else if (mounted && success != null) {
         showAppMessage(context, title: '完成', message: success);
       }
     } on Object catch (error) {
@@ -64,9 +92,9 @@ final class _OnlinePlaylistDetailScreenState
   }
 
   Future<void> _playAll() async {
-    await widget.controller.loadAllPages();
+    await _controller.loadAllPages();
     if (!mounted) return;
-    if (widget.controller.state.failedPage != null) {
+    if (_controller.state.failedPage != null) {
       showAppMessage(
         context,
         title: '无法播放全部',
@@ -75,11 +103,49 @@ final class _OnlinePlaylistDetailScreenState
       );
       return;
     }
-    await widget.player.playTracks(widget.controller.state.tracks);
+    final tracks = _controller.state.tracks.toList(growable: false);
+    if (tracks.isEmpty) return;
+    final first = await _withPicture(tracks.first);
+    if (!mounted) return;
+    await widget.player.playTracks([first, ...tracks.skip(1)]);
+  }
+
+  Future<Uri?> _loadPicture(Track track) =>
+      _pictures.putIfAbsent((track.source, track.id), () async {
+        final embedded = track.raw['pic'];
+        Uri? picture;
+        if (embedded is String && embedded.isNotEmpty) {
+          picture = Uri.tryParse(embedded);
+        } else {
+          try {
+            picture = Uri.tryParse(await _controller.catalog.picture(track));
+          } on Object {
+            picture = null;
+          }
+        }
+        if (picture == null ||
+            (picture.scheme != 'http' && picture.scheme != 'https')) {
+          return null;
+        }
+        widget.player.updateTrackArtwork(track, picture);
+        return picture;
+      });
+
+  Future<Track> _withPicture(Track track) async {
+    final embedded = track.raw['pic'];
+    if (embedded is String && embedded.isNotEmpty) return track;
+    final picture = await _loadPicture(track);
+    return picture == null
+        ? track
+        : Track.fromJson({...track.toJson(), 'pic': picture.toString()});
+  }
+
+  Future<void> _play(Track track) async {
+    await widget.player.play(await _withPicture(track));
   }
 
   Future<void> _lyrics(Track track) async {
-    final lyrics = await widget.controller.catalog.lyrics(track);
+    final lyrics = await _controller.catalog.lyrics(track);
     if (!mounted) return;
     await showAppSheet<void>(
       context,
@@ -99,7 +165,7 @@ final class _OnlinePlaylistDetailScreenState
   }
 
   Future<void> _choosePlaylist({Track? track, bool importAll = false}) async {
-    final playlists = await widget.controller.playlists.list();
+    final playlists = await _controller.playlists.list();
     if (!mounted) return;
     await showAppSheet<void>(
       context,
@@ -116,14 +182,13 @@ final class _OnlinePlaylistDetailScreenState
                   onPressed: () {
                     Navigator.of(context).pop();
                     if (importAll) {
-                      unawaited(widget.controller.importAll(playlist.id));
+                      unawaited(_controller.importAll(playlist.id));
                     } else if (track != null) {
                       unawaited(
                         _run(
-                          () => widget.controller.playlists.addTracks(
-                            playlist.id,
-                            [track],
-                          ),
+                          () => _controller.playlists.addTracks(playlist.id, [
+                            track,
+                          ]),
                           success: '已添加到 ${playlist.name}',
                         ),
                       );
@@ -139,16 +204,44 @@ final class _OnlinePlaylistDetailScreenState
     );
   }
 
-  List<TrackAction> _actionsFor(Track track) => buildTrackActions(
-    track: track,
-    player: widget.player,
-    showLyrics: (value) => _run(() => _lyrics(value)),
-    addToPlaylist: (value) => _run(() => _choosePlaylist(track: value)),
-    download: (value, quality) => _run(
-      () => widget.downloads.create(value, quality),
-      success: '已交给 Service 下载',
-    ),
-  );
+  List<TrackAction> _actionsFor(Track track) {
+    final standard = buildTrackActions(
+      track: track,
+      player: widget.player,
+      showLyrics: (value) => _run(() => _lyrics(value)),
+      addToPlaylist: (value) => _run(() => _choosePlaylist(track: value)),
+      download: (value, quality) => _run(
+        () => widget.downloads.create(value, quality),
+        successTitle: '已加入下载队列',
+      ),
+    );
+    return [
+      TrackAction(
+        id: TrackActionId.playNow,
+        label: '立即播放',
+        icon: LucideIcons.play,
+        invoke: () => _play(track),
+      ),
+      TrackAction(
+        id: TrackActionId.playNext,
+        label: '下一首播放',
+        icon: LucideIcons.listStart,
+        invoke: () async => widget.player.playNext(await _withPicture(track)),
+      ),
+      TrackAction(
+        id: TrackActionId.enqueue,
+        label: '添加到播放队列',
+        icon: LucideIcons.listPlus,
+        invoke: () async => widget.player.enqueue(await _withPicture(track)),
+      ),
+      ...standard.where(
+        (action) =>
+            action.id != TrackActionId.playNow &&
+            action.id != TrackActionId.playNext &&
+            action.id != TrackActionId.enqueue,
+      ),
+    ];
+  }
 
   void _more(Track track) {
     unawaited(
@@ -163,24 +256,23 @@ final class _OnlinePlaylistDetailScreenState
 
   @override
   void dispose() {
-    widget.controller.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.controller,
+    listenable: _controller,
     builder: (context, _) {
-      final state = widget.controller.state;
+      final state = _controller.state;
       final playlist = state.playlist;
       final mobile =
-          classifyLayout(MediaQuery.sizeOf(context).width) ==
-          AppLayoutClass.mobile;
+          classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
       if (playlist == null && state.loadingPage != null) {
         return const Center(child: CircularProgressIndicator());
       }
       if (playlist == null) {
-        return _InitialError(error: state.error, retry: widget.controller.load);
+        return _InitialError(error: state.error, retry: _controller.load);
       }
       return ColoredBox(
         color: AppTokens.of(context).background,
@@ -206,7 +298,7 @@ final class _OnlinePlaylistDetailScreenState
                 _ImportStatus(
                   progress: progress,
                   importing: state.importing,
-                  onCancel: widget.controller.cancelImport,
+                  onCancel: _controller.cancelImport,
                 ),
               ],
               if (state.error != null && state.stale) ...[
@@ -226,15 +318,8 @@ final class _OnlinePlaylistDetailScreenState
                   providers: const [],
                   aggregate: false,
                   mobile: mobile,
-                  loadPicture: (track) async {
-                    final embedded = track.raw['pic'];
-                    if (embedded is String && embedded.isNotEmpty) {
-                      return Uri.tryParse(embedded);
-                    }
-                    final url = await widget.controller.catalog.picture(track);
-                    return Uri.tryParse(url);
-                  },
-                  onPlay: widget.player.play,
+                  loadPicture: _loadPicture,
+                  onPlay: (track) => unawaited(_play(track)),
                   onFavorite: (track) =>
                       unawaited(_choosePlaylist(track: track)),
                   actionsFor: _actionsFor,
@@ -250,8 +335,8 @@ final class _OnlinePlaylistDetailScreenState
                         ? null
                         : () => unawaited(
                             state.failedPage != null
-                                ? widget.controller.retryFailedPage()
-                                : widget.controller.loadPage(
+                                ? _controller.retryFailedPage()
+                                : _controller.loadPage(
                                     state.pages.keys.reduce(
                                           (a, b) => a > b ? a : b,
                                         ) +

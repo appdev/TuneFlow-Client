@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../api/models.dart';
 import '../downloads/download_repository.dart';
-import '../client_data/client_data_repository.dart';
 import '../library/library_repository.dart';
+import '../playback_history/playback_history_repository.dart';
 import '../playlists/playlist_repository.dart';
 
 final class HomeState {
@@ -64,7 +64,7 @@ final class HomeController extends ChangeNotifier {
   final PlaylistRepository playlists;
   final DownloadRepository downloads;
   final LibraryRepository library;
-  final ClientDataRepository? history;
+  final PlaybackHistoryRepository? history;
   HomeState state = const HomeState();
 
   Future<void> refresh() async {

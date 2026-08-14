@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -17,6 +18,7 @@ import 'desktop_player_stage.dart';
 import 'lyrics_view.dart';
 import 'mobile_player_controls.dart';
 import 'mobile_queue_sheet.dart';
+import 'mobile_vinyl_record.dart';
 import 'player_backdrop.dart';
 import 'player_controller.dart';
 import 'player_state.dart';
@@ -29,21 +31,23 @@ final class PlayerScreen extends StatefulWidget {
     required this.lyricsLoader,
     required this.wakeLock,
     required this.keepAwake,
+    this.onBack,
+    this.topChromeInset = 0,
   });
 
   final PlayerController controller;
   final Future<Lyrics> Function(Track track) lyricsLoader;
   final WakeLockPort wakeLock;
   final bool keepAwake;
+  final VoidCallback? onBack;
+  final double topChromeInset;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
 final class _PlayerScreenState extends State<PlayerScreen> {
-  late final PageController pages = PageController(
-    initialPage: widget.controller.state.view == PlayerView.lyrics ? 1 : 0,
-  );
+  late final PageController pages = PageController(initialPage: 0);
   String? _artworkKey;
   AppArtworkSource? _artworkSource;
 
@@ -82,7 +86,8 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _queue() {
-    final mobile = MediaQuery.sizeOf(context).width < 720;
+    final mobile =
+        classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
     return showAppSheet<void>(
       context,
       title: '播放队列',
@@ -122,7 +127,8 @@ final class _PlayerScreenState extends State<PlayerScreen> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final mobile =
-              classifyLayout(constraints.maxWidth) == AppLayoutClass.mobile;
+              classifyLayout(MediaQuery.sizeOf(context)) ==
+              AppLayoutClass.mobile;
           final content = mobile
               ? _MobilePlayer(
                   key: const Key('player-mobile-layout'),
@@ -132,6 +138,10 @@ final class _PlayerScreenState extends State<PlayerScreen> {
                   onQueue: _queue,
                   onLyrics: () =>
                       widget.controller.loadLyrics(widget.lyricsLoader),
+                  onBack:
+                      widget.onBack ??
+                      () => unawaited(Navigator.of(context).maybePop()),
+                  topChromeInset: widget.topChromeInset,
                 )
               : Stack(
                   key: const Key('player-wide-layout'),
@@ -180,7 +190,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   );
 }
 
-final class _MobilePlayer extends StatelessWidget {
+final class _MobilePlayer extends StatefulWidget {
   const _MobilePlayer({
     super.key,
     required this.controller,
@@ -188,6 +198,8 @@ final class _MobilePlayer extends StatelessWidget {
     required this.pages,
     required this.onQueue,
     required this.onLyrics,
+    required this.onBack,
+    required this.topChromeInset,
   });
 
   final PlayerController controller;
@@ -195,13 +207,37 @@ final class _MobilePlayer extends StatelessWidget {
   final PageController pages;
   final VoidCallback onQueue;
   final VoidCallback onLyrics;
+  final VoidCallback onBack;
+  final double topChromeInset;
+
+  @override
+  State<_MobilePlayer> createState() => _MobilePlayerState();
+}
+
+final class _MobilePlayerState extends State<_MobilePlayer> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller.state.view != PlayerView.artwork) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.controller.setView(PlayerView.artwork);
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final artworkSource = widget.artworkSource;
+    final pages = widget.pages;
+    final onQueue = widget.onQueue;
+    final onLyrics = widget.onLyrics;
+    final onBack = widget.onBack;
     final state = controller.state;
     final track = state.current!;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, 12 + widget.topChromeInset, 16, 16),
       child: Column(
         children: [
           Row(
@@ -210,7 +246,7 @@ final class _MobilePlayer extends StatelessWidget {
               _MobileGlassIconButton(
                 label: '返回',
                 icon: LucideIcons.chevronDown,
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: onBack,
               ),
               Expanded(
                 child: Center(
@@ -258,17 +294,35 @@ final class _MobilePlayer extends StatelessWidget {
             ),
           Expanded(
             child: PageView(
+              key: const Key('player-mobile-pages'),
               controller: pages,
-              onPageChanged: (index) =>
-                  controller.setView(PlayerView.values[index]),
+              onPageChanged: (index) => controller.setView(
+                index == 0 ? PlayerView.artwork : PlayerView.lyrics,
+              ),
               children: [
                 _MobileNowPlaying(
                   track: track,
                   artworkSource: artworkSource,
-                  state: state,
-                  onRetryLyrics: onLyrics,
+                  rotating:
+                      state.view == PlayerView.artwork &&
+                      state.playing &&
+                      state.processing == PlayerProcessing.ready,
                 ),
-                LyricsView(state: state, verticalPadding: 120, edgeFade: true),
+                SizedBox.expand(
+                  key: const Key('player-mobile-lyrics-page'),
+                  child: state.lyricsError != null
+                      ? AppRetryState(
+                          key: const Key('player-mobile-lyric-error'),
+                          message: '歌词暂不可用',
+                          retryLabel: '重试',
+                          onRetry: onLyrics,
+                        )
+                      : LyricsView(
+                          state: state,
+                          verticalPadding: 28,
+                          edgeFade: true,
+                        ),
+                ),
               ],
             ),
           ),
@@ -322,78 +376,54 @@ final class _MobileNowPlaying extends StatelessWidget {
   const _MobileNowPlaying({
     required this.track,
     required this.artworkSource,
-    required this.state,
-    required this.onRetryLyrics,
+    required this.rotating,
   });
   final Track track;
   final AppArtworkSource artworkSource;
-  final PlayerState state;
-  final VoidCallback onRetryLyrics;
+  final bool rotating;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final artworkSize = (constraints.maxHeight * .46).clamp(132.0, 208.0);
+      final recordSize = math
+          .min(constraints.maxWidth * .78, constraints.maxHeight * .62)
+          .clamp(148.0, 264.0);
       return SingleChildScrollView(
-        padding: const EdgeInsets.only(top: 12),
-        child: Column(
-          children: [
-            AppArtwork(
-              key: const Key('player-mobile-artwork'),
-              source: artworkSource,
-              seed: '${track.source}:${track.id}',
-              semanticLabel: '${track.title}封面',
-              size: artworkSize,
-              borderRadius: AppRadii.panel,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              track.title.isEmpty ? track.id : track.title,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: AppTypography.section,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              track.artist,
-              textAlign: TextAlign.center,
-              style: AppTypography.body.copyWith(
-                color: AppTokens.of(context).foregroundSecondary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (state.lyricsError != null)
-              TextButton.icon(
-                key: const Key('player-mobile-lyric-error'),
-                onPressed: onRetryLyrics,
-                icon: const Icon(LucideIcons.rotateCcw, size: 15),
-                label: const Text('歌词暂不可用'),
-              )
-            else if (state.lyrics == null ||
-                (state.lyrics!.original.isEmpty &&
-                    (state.lyrics!.translation?.isEmpty ?? true)))
-              SizedBox(
-                height: 104,
-                child: Center(
-                  child: Text(
-                    '暂无歌词',
-                    style: AppTypography.body.copyWith(
-                      color: AppTokens.of(context).muted,
-                    ),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox.square(
+                  dimension: recordSize,
+                  child: MobileVinylRecord(
+                    source: artworkSource,
+                    seed: '${track.source}:${track.id}',
+                    semanticLabel: '${track.title}封面',
+                    rotating: rotating,
                   ),
                 ),
-              )
-            else
-              SizedBox(
-                height: 104,
-                child: LyricsView(
-                  state: state,
-                  verticalPadding: 28,
-                  edgeFade: true,
+                const SizedBox(height: 18),
+                Text(
+                  track.title.isEmpty ? track.id : track.title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.section,
                 ),
-              ),
-          ],
+                const SizedBox(height: 3),
+                Text(
+                  track.artist,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.body.copyWith(
+                    color: AppTokens.of(context).foregroundSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     },

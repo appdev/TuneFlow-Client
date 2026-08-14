@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -12,7 +13,9 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../support/memory_app_preferences.dart';
 
 void main() {
-  testWidgets('uses the local Service port on macOS', (tester) async {
+  testWidgets('shows TuneFlow branding and a macOS Service placeholder', (
+    tester,
+  ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     try {
       await tester.pumpWidget(
@@ -20,15 +23,40 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<ShadInputFormField>(
-              find.byKey(const Key('service-origin-field')),
-            )
-            .controller
-            ?.text,
-        'http://127.0.0.1:3124',
+      final field = tester.widget<ShadInputFormField>(
+        find.byKey(const Key('service-origin-field')),
       );
+      expect(
+        find.image(const AssetImage('assets/branding/TuneFlow.png')),
+        findsOneWidget,
+      );
+      expect(find.byIcon(LucideIcons.music2), findsNothing);
+      expect(
+        find.text('输入运行 Service 的电脑地址。Android 模拟器访问本机请使用 10.0.2.2。'),
+        findsNothing,
+      );
+      expect(field.controller?.text, isEmpty);
+      expect(find.text('http://127.0.0.1:3124'), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('shows the Android emulator Service address as a placeholder', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await tester.pumpWidget(
+        MusicFreeServiceApp(preferences: MemoryAppPreferences()),
+      );
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<ShadInputFormField>(
+        find.byKey(const Key('service-origin-field')),
+      );
+      expect(field.controller?.text, isEmpty);
+      expect(find.text('http://10.0.2.2:3124'), findsOneWidget);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

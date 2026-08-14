@@ -33,27 +33,34 @@ final class PlayerBackdrop extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ImageFiltered(
-                  imageFilter: ImageFilter.blur(
-                    sigmaX: 36,
-                    sigmaY: 36,
-                    tileMode: TileMode.mirror,
-                  ),
-                  child: Transform.scale(
-                    scale: 1.16,
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => AppArtwork(
-                        source: source,
-                        seed: source.fallbackSeed,
-                        semanticLabel: '封面背景',
-                        size: constraints.maxWidth,
-                        width: constraints.maxWidth,
-                        height: constraints.maxHeight,
-                        borderRadius: 0,
+                if (source.url == null)
+                  ColoredBox(
+                    key: const Key('player-backdrop-neutral'),
+                    color: AppTokens.of(context).background,
+                  )
+                else
+                  ImageFiltered(
+                    key: const Key('player-backdrop-artwork'),
+                    imageFilter: ImageFilter.blur(
+                      sigmaX: 36,
+                      sigmaY: 36,
+                      tileMode: TileMode.mirror,
+                    ),
+                    child: Transform.scale(
+                      scale: 1.16,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => AppArtwork(
+                          source: source,
+                          seed: source.fallbackSeed,
+                          semanticLabel: '封面背景',
+                          size: constraints.maxWidth,
+                          width: constraints.maxWidth,
+                          height: constraints.maxHeight,
+                          borderRadius: 0,
+                        ),
                       ),
                     ),
                   ),
-                ),
                 ColoredBox(color: AppTokens.of(context).playerVeil),
               ],
             ),

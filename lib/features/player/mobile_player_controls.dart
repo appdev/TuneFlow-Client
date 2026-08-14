@@ -70,7 +70,7 @@ final class MobilePlayerControls extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               SizedBox(
                 key: const Key('player-mobile-quality'),
-                width: 68,
+                width: 92,
                 child: ShadSelect<String>(
                   initialValue: state.quality,
                   options: const [
@@ -80,6 +80,8 @@ final class MobilePlayerControls extends StatelessWidget {
                   ],
                   selectedOptionBuilder: (context, value) => Text(
                     value == 'flac' ? '无损' : value,
+                    maxLines: 1,
+                    softWrap: false,
                     style: AppTypography.metadata,
                   ),
                   onChanged: (value) {

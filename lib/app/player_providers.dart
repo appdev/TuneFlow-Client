@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../features/client_data/client_data_repository.dart';
 import '../features/connection/connection_controller.dart';
+import '../features/playback_history/playback_history_repository.dart';
 import '../features/player/playback_repository.dart';
 import '../features/player/player_controller.dart';
 import '../storage/app_settings_controller.dart';
@@ -19,7 +19,7 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
     audio: ref.read(audioPortProvider),
     quality: quality,
     showTranslation: showTranslation,
-    recordHistory: ClientDataRepository(connected.api).recordPlayback,
+    reportPlayback: PlaybackHistoryRepository(connected.api).recordPlayback,
   );
   ref.onDispose(controller.dispose);
   return controller;

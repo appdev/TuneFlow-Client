@@ -1,9 +1,35 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
 import '../design_tokens.dart';
 import 'artwork.dart';
+
+const double playlistGalleryMaxItemExtent = 260;
+const double playlistGalleryMetadataExtent = 64;
+
+int playlistGalleryColumnCount({
+  required double availableWidth,
+  required double spacing,
+  int minimum = 2,
+}) {
+  if (!availableWidth.isFinite || availableWidth <= 0) return minimum;
+  final columns =
+      ((availableWidth + spacing) / (playlistGalleryMaxItemExtent + spacing))
+          .ceil();
+  return math.max(minimum, columns);
+}
+
+double playlistGalleryItemExtent({
+  required double availableWidth,
+  required double spacing,
+  required int columns,
+}) => (availableWidth - spacing * (columns - 1)) / columns;
+
+double playlistGalleryChildAspectRatio(double itemExtent) =>
+    itemExtent / (itemExtent + playlistGalleryMetadataExtent);
 
 final class PlaylistCard extends StatelessWidget {
   const PlaylistCard({

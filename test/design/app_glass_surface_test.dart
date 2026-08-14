@@ -48,6 +48,34 @@ void main() {
     }
   });
 
+  test('Mist Sea glass uses neutral paper and charcoal optics', () {
+    final light = AppThemeRegistry.mistSea.light.glass;
+    final dark = AppThemeRegistry.mistSea.dark.glass;
+
+    expect(light[AppGlassRole.nav]!.fill, const Color(0xE6FAFAFA));
+    expect(light[AppGlassRole.control]!.fill, const Color(0xD9EAEAEA));
+    expect(light[AppGlassRole.sheet]!.fill, const Color(0xF2FAFAFA));
+    expect(light[AppGlassRole.clear]!.fill, const Color(0xA6FAFAFA));
+    expect(light[AppGlassRole.fallback]!.fill, const Color(0xFFFAFAFA));
+    expect(light[AppGlassRole.fallback]!.border, const Color(0xFFDDDDDD));
+
+    expect(dark[AppGlassRole.nav]!.fill, const Color(0xE6202120));
+    expect(dark[AppGlassRole.control]!.fill, const Color(0xD92B2C2A));
+    expect(dark[AppGlassRole.sheet]!.fill, const Color(0xF2202120));
+    expect(dark[AppGlassRole.clear]!.fill, const Color(0xA6202120));
+    expect(dark[AppGlassRole.fallback]!.fill, const Color(0xFF202120));
+    expect(dark[AppGlassRole.fallback]!.border, const Color(0xFF464743));
+
+    expect(light[AppGlassRole.nav]!.blurSigma, 24);
+    expect(light[AppGlassRole.control]!.blurSigma, 18);
+    expect(light[AppGlassRole.sheet]!.blurSigma, 30);
+    expect(light[AppGlassRole.clear]!.blurSigma, 20);
+    expect(dark[AppGlassRole.nav]!.blurSigma, 24);
+    expect(dark[AppGlassRole.control]!.blurSigma, 18);
+    expect(dark[AppGlassRole.sheet]!.blurSigma, 30);
+    expect(dark[AppGlassRole.clear]!.blurSigma, 20);
+  });
+
   testWidgets('glass surface enables blur in the normal policy', (
     tester,
   ) async {

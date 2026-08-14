@@ -122,8 +122,7 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
   @override
   Widget build(BuildContext context) {
     final mobile =
-        classifyLayout(MediaQuery.sizeOf(context).width) ==
-        AppLayoutClass.mobile;
+        classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
     final charts = widget.kind == DiscoveryKind.charts;
     if (!charts) {
       return PlaylistDiscoveryView(

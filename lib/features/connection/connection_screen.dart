@@ -23,9 +23,7 @@ String defaultServiceOrigin(TargetPlatform platform) => switch (platform) {
 
 final class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   final formKey = GlobalKey<ShadFormState>();
-  late final origin = TextEditingController(
-    text: defaultServiceOrigin(defaultTargetPlatform),
-  );
+  final origin = TextEditingController();
 
   @override
   void dispose() {
@@ -58,16 +56,19 @@ final class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(LucideIcons.music2, size: 64),
+                    Image.asset(
+                      'assets/branding/TuneFlow.png',
+                      key: const Key('connection-brand-logo'),
+                      width: 64,
+                      height: 64,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(LucideIcons.audioLines, size: 64),
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       strings.connectTitle,
                       style: ShadTheme.of(context).textTheme.h3,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      strings.connectDescription,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),
@@ -76,6 +77,9 @@ final class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                       id: 'origin',
                       controller: origin,
                       label: Text(strings.serviceOrigin),
+                      placeholder: Text(
+                        defaultServiceOrigin(defaultTargetPlatform),
+                      ),
                       keyboardType: TextInputType.url,
                       textInputAction: TextInputAction.done,
                       validator: (value) =>

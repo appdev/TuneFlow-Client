@@ -7,6 +7,18 @@ import 'package:musicfree_service_client/design/app_breakpoints.dart';
 import 'package:musicfree_service_client/design/design_tokens.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+double _contrastRatio(Color first, Color second) {
+  final firstLuminance = first.computeLuminance();
+  final secondLuminance = second.computeLuminance();
+  final lighter = firstLuminance > secondLuminance
+      ? firstLuminance
+      : secondLuminance;
+  final darker = firstLuminance > secondLuminance
+      ? secondLuminance
+      : firstLuminance;
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 void main() {
   test('Mist Sea is the complete current theme family', () {
     expect(AppThemeRegistry.current, AppThemeId.mistSea);
@@ -75,6 +87,15 @@ void main() {
     final theme = ShadTheme.of(context);
     expect(theme.brightness, Brightness.dark);
     expect(theme.colorScheme.background, AppTokens.dark.background);
+    expect(theme.colorScheme.primary, const Color(0xFF00E66A));
+    expect(theme.colorScheme.primaryForeground, const Color(0xFF101713));
+    expect(theme.outlineButtonTheme.foregroundColor, AppTokens.dark.foreground);
+    expect(
+      theme.outlineButtonTheme.hoverForegroundColor,
+      AppTokens.dark.primaryAction,
+    );
+    expect(theme.ghostButtonTheme.foregroundColor, AppTokens.dark.foreground);
+    expect(theme.linkButtonTheme.foregroundColor, AppTokens.dark.foreground);
   });
 
   testWidgets('light and dark themes expose distinct semantic surfaces', (
@@ -109,9 +130,99 @@ void main() {
     expect(dark.foreground, isNot(dark.foregroundSecondary));
   });
 
+  test('Mist Sea exposes the approved Neutral Paper palette', () {
+    expect(AppTokens.light.background, const Color(0xFFF6F6F6));
+    expect(AppTokens.light.surface, const Color(0xFFFAFAFA));
+    expect(AppTokens.light.surfaceWarm, const Color(0xFFEAEAEA));
+    expect(AppTokens.light.foreground, const Color(0xFF252525));
+    expect(AppTokens.light.foregroundSecondary, const Color(0xFF494949));
+    expect(AppTokens.light.muted, const Color(0xFF626262));
+    expect(AppTokens.light.border, const Color(0xFFDDDDDD));
+    expect(AppTokens.light.borderSoft, const Color(0xFFEAEAEA));
+    expect(AppTokens.light.accent, const Color(0xFF14745F));
+    expect(AppTokens.light.accentForeground, const Color(0xFFF6F6F6));
+    expect(AppTokens.light.primaryAction, const Color(0xFF14745F));
+    expect(AppTokens.light.primaryActionForeground, const Color(0xFFF6F6F6));
+    expect(AppTokens.light.focusRing, const Color(0xFF008B70));
+    expect(AppTokens.light.success, const Color(0xFF2F7D4A));
+    expect(AppTokens.light.warning, const Color(0xFF966000));
+    expect(AppTokens.light.danger, const Color(0xFFB93B3B));
+    expect(AppTokens.light.overlay, const Color(0x66252525));
+    expect(AppTokens.light.playerVeil, const Color(0xCCF6F6F6));
+  });
+
+  test('Mist Sea exposes the approved Soft Charcoal palette', () {
+    expect(AppTokens.dark.background, const Color(0xFF171817));
+    expect(AppTokens.dark.surface, const Color(0xFF202120));
+    expect(AppTokens.dark.surfaceWarm, const Color(0xFF2B2C2A));
+    expect(AppTokens.dark.foreground, const Color(0xFFECEDEA));
+    expect(AppTokens.dark.foregroundSecondary, const Color(0xFFC6C7C3));
+    expect(AppTokens.dark.muted, const Color(0xFFA0A19D));
+    expect(AppTokens.dark.border, const Color(0xFF464743));
+    expect(AppTokens.dark.borderSoft, const Color(0xFF30312F));
+    expect(AppTokens.dark.accent, const Color(0xFF19D39B));
+    expect(AppTokens.dark.accentForeground, const Color(0xFF101713));
+    expect(AppTokens.dark.primaryAction, const Color(0xFF00E66A));
+    expect(AppTokens.dark.primaryActionForeground, const Color(0xFF101713));
+    expect(AppTokens.dark.focusRing, const Color(0xFF19D39B));
+    expect(AppTokens.dark.success, const Color(0xFF75B987));
+    expect(AppTokens.dark.warning, const Color(0xFFD7A45A));
+    expect(AppTokens.dark.danger, const Color(0xFFE87870));
+    expect(AppTokens.dark.overlay, const Color(0xB3121312));
+    expect(AppTokens.dark.playerVeil, const Color(0xD9171817));
+  });
+
+  test('theme text, focus, and status roles meet contrast contracts', () {
+    for (final tokens in [AppTokens.light, AppTokens.dark]) {
+      expect(
+        _contrastRatio(tokens.foreground, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.foregroundSecondary, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.muted, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.accent, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.accentForeground, tokens.accent),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.primaryActionForeground, tokens.primaryAction),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.focusRing, tokens.background),
+        greaterThanOrEqualTo(3),
+      );
+      expect(
+        _contrastRatio(tokens.success, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.warning, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.danger, tokens.background),
+        greaterThanOrEqualTo(4.5),
+      );
+    }
+  });
+
   test('layout classes match accepted viewports', () {
-    expect(classifyLayout(390), AppLayoutClass.mobile);
-    expect(classifyLayout(1024), AppLayoutClass.narrow);
-    expect(classifyLayout(1440), AppLayoutClass.desktop);
+    expect(classifyLayout(const Size(844, 390)), AppLayoutClass.mobile);
+    expect(classifyLayout(const Size(1200, 600)), AppLayoutClass.mobile);
+    expect(classifyLayout(const Size(601, 900)), AppLayoutClass.narrow);
+    expect(classifyLayout(const Size(899, 601)), AppLayoutClass.narrow);
+    expect(classifyLayout(const Size(900, 601)), AppLayoutClass.desktop);
+    expect(classifyLayout(const Size(1440, 960)), AppLayoutClass.desktop);
   });
 }

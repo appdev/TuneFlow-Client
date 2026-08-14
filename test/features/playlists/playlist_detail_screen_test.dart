@@ -25,6 +25,10 @@ void main() {
   testWidgets('renders playlist metadata from the Service detail', (
     tester,
   ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     final repository = PlaylistRepository(
       ServiceApi(
         ServiceOrigin.parse('http://service.local'),
@@ -87,4 +91,71 @@ void main() {
     expect(find.byType(Image), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  for (final layout in [
+    (name: 'mobile', size: const Size(390, 844)),
+    (name: 'desktop', size: const Size(1200, 900)),
+  ]) {
+    testWidgets(
+      '${layout.name} reorder callback uses Flutter-adjusted destination index',
+      (tester) => _expectAdjustedReorder(tester, layout.size),
+    );
+  }
+}
+
+Future<void> _expectAdjustedReorder(WidgetTester tester, Size size) async {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.view.resetPhysicalSize);
+  int? capturedPosition;
+  List<Object?>? capturedTrackIds;
+  final repository = PlaylistRepository(
+    ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        const tracks = [
+          {'id': 'one', 'name': 'One', 'singer': 'Artist A', 'source': 'kw'},
+          {'id': 'two', 'name': 'Two', 'singer': 'Artist B', 'source': 'kw'},
+        ];
+        if (request.method == 'POST') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          capturedPosition = body['position'] as int;
+          capturedTrackIds = body['trackIds'] as List<Object?>;
+          return http.Response(jsonEncode({'data': tracks}), 200);
+        }
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 'remote-mix',
+              'name': 'Remote Mix',
+              'tracks': tracks,
+            },
+          }),
+          200,
+        );
+      }),
+    ),
+  );
+
+  await tester.pumpWidget(
+    harness(
+      PlaylistDetailScreen(
+        controller: PlaylistDetailController(repository, 'remote-mix'),
+        playTracks: (tracks, {startIndex = 0}) async {},
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+
+  final list = tester.widget<ReorderableListView>(
+    find.byType(ReorderableListView).first,
+  );
+  expect(list.onReorderItem, isNotNull);
+
+  list.onReorderItem!(0, 1);
+  await tester.pumpAndSettle();
+
+  expect(capturedPosition, 1);
+  expect(capturedTrackIds, ['one']);
 }

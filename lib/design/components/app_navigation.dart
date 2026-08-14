@@ -42,10 +42,7 @@ final class AppDesktopNavigation extends StatelessWidget {
     return Container(
       key: const Key('desktop-navigation'),
       width: compact ? 84 : 208,
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        border: Border(right: BorderSide(color: tokens.borderSoft)),
-      ),
+      decoration: BoxDecoration(color: tokens.surface),
       child: SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
@@ -185,22 +182,46 @@ final class _NavigationItem extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: compact ? destination.label : '',
-    child: ShadButton.raw(
-      variant: selected ? ShadButtonVariant.secondary : ShadButtonVariant.ghost,
-      height: 48,
-      padding: compact ? EdgeInsets.zero : null,
-      onPressed: onPressed,
-      leading: compact ? null : Icon(destination.icon, size: 19),
-      child: compact
-          ? Icon(destination.icon, size: 20)
-          : Align(
-              alignment: Alignment.centerLeft,
-              child: Text(destination.label),
-            ),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final content = compact
+        ? Icon(destination.icon, size: 20)
+        : Row(
+            children: [
+              SizedBox(
+                key: ValueKey('desktop-destination-icon-${destination.id}'),
+                width: 24,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Icon(destination.icon, size: 19),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  destination.label,
+                  key: ValueKey('desktop-destination-label-${destination.id}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          );
+    return Tooltip(
+      message: compact ? destination.label : '',
+      child: ShadButton.raw(
+        variant: selected
+            ? ShadButtonVariant.secondary
+            : ShadButtonVariant.ghost,
+        height: 48,
+        expands: !compact,
+        padding: compact
+            ? EdgeInsets.zero
+            : const EdgeInsets.symmetric(horizontal: 12),
+        onPressed: onPressed,
+        child: content,
+      ),
+    );
+  }
 }
 
 final class _MobileNavigationItem extends StatelessWidget {

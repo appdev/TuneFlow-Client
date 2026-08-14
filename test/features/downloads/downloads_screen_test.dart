@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -95,8 +96,13 @@ void main() {
 
     await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
 
-    final image = tester.widget<Image>(find.byType(Image).first);
-    expect((image.image as NetworkImage).url, contains('download.jpg'));
+    final images = tester.widgetList<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(
+      images.map((image) => image.imageUrl),
+      contains(contains('download.jpg')),
+    );
   });
 
   testWidgets('download without persisted artwork resolves its cover', (
@@ -136,8 +142,13 @@ void main() {
     await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
     await tester.pumpAndSettle();
 
-    final image = tester.widget<Image>(find.byType(Image).first);
-    expect((image.image as NetworkImage).url, contains('resolved-cover.jpg'));
+    final images = tester.widgetList<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(
+      images.map((image) => image.imageUrl),
+      contains(contains('resolved-cover.jpg')),
+    );
   });
 
   testWidgets('desktop download status is vertically centered in its row', (

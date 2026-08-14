@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,8 +14,11 @@ import '../features/connection/connection_controller.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/player/service_audio_handler.dart';
 import '../l10n/app_localizations.dart';
+import '../storage/app_image_cache.dart';
+import '../storage/app_image_cache_scope.dart';
 import '../storage/app_preferences.dart';
 import '../storage/app_settings_controller.dart';
+import '../storage/media_cache.dart';
 import 'app_providers.dart';
 import 'app_router.dart';
 import 'player_providers.dart';
@@ -51,12 +56,14 @@ final class _RouterRefresh extends ChangeNotifier {
   void trigger() => notifyListeners();
 }
 
-final class MusicFreeServiceApp extends StatelessWidget {
+final class MusicFreeServiceApp extends StatefulWidget {
   MusicFreeServiceApp({
     super.key,
     ConnectionRepository? connectionRepository,
     AppPreferences? preferences,
     AudioPort? audio,
+    this.mediaCache,
+    this.imageCache,
   }) : connectionRepository = connectionRepository ?? ConnectionRepository(),
        preferences = preferences ?? SharedAppPreferences(),
        audio = audio ?? SilentAudioPort();
@@ -64,13 +71,32 @@ final class MusicFreeServiceApp extends StatelessWidget {
   final ConnectionRepository connectionRepository;
   final AppPreferences preferences;
   final AudioPort audio;
+  final MediaCache? mediaCache;
+  final AppImageCache? imageCache;
+
+  @override
+  State<MusicFreeServiceApp> createState() => _MusicFreeServiceAppState();
+}
+
+final class _MusicFreeServiceAppState extends State<MusicFreeServiceApp> {
+  @override
+  void dispose() {
+    unawaited(widget.imageCache?.dispose());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => ProviderScope(
     overrides: [
-      connectionRepositoryProvider.overrideWithValue(connectionRepository),
-      appPreferencesProvider.overrideWithValue(preferences),
-      audioPortProvider.overrideWithValue(audio),
+      connectionRepositoryProvider.overrideWithValue(
+        widget.connectionRepository,
+      ),
+      appPreferencesProvider.overrideWithValue(widget.preferences),
+      audioPortProvider.overrideWithValue(widget.audio),
+      if (widget.mediaCache case final cache?)
+        mediaCacheProvider.overrideWithValue(cache),
+      if (widget.imageCache case final cache?)
+        appImageCacheProvider.overrideWithValue(cache),
     ],
     child: const _AppView(),
   );
@@ -92,7 +118,7 @@ final class _AppView extends ConsumerWidget {
       AppLanguage.zh => const Locale('zh'),
       AppLanguage.en => const Locale('en'),
     };
-    return ShadApp.custom(
+    final app = ShadApp.custom(
       theme: buildLightTheme(themeDefinition),
       darkTheme: buildDarkTheme(themeDefinition),
       themeMode: themeMode,
@@ -119,5 +145,11 @@ final class _AppView extends ConsumerWidget {
         ),
       ),
     );
+    final imageCache = ref.watch(appImageCacheProvider);
+    Widget result = app;
+    if (imageCache != null) {
+      result = AppImageCacheScope(cache: imageCache, child: result);
+    }
+    return result;
   }
 }

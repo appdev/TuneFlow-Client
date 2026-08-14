@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../app_breakpoints.dart';
 import '../app_theme_definition.dart';
 import '../design_tokens.dart';
 import 'app_button.dart';
@@ -86,12 +87,18 @@ Future<bool> showAppDestructiveDialog(
 Object? showAppMessage(
   BuildContext context, {
   required String title,
-  required String message,
+  String? message,
   bool destructive = false,
 }) {
   final toast = destructive
-      ? ShadToast.destructive(title: Text(title), description: Text(message))
-      : ShadToast(title: Text(title), description: Text(message));
+      ? ShadToast.destructive(
+          title: Text(title),
+          description: message == null ? null : Text(message),
+        )
+      : ShadToast(
+          title: Text(title),
+          description: message == null ? null : Text(message),
+        );
   return ShadSonner.of(context).show(toast);
 }
 
@@ -177,7 +184,9 @@ Future<T?> showAppSheet<T>(
     context: context,
     side: ShadSheetSide.bottom,
     builder: (sheetContext) {
-      final mobile = MediaQuery.sizeOf(sheetContext).width < 720;
+      final mobile =
+          classifyLayout(MediaQuery.sizeOf(sheetContext)) ==
+          AppLayoutClass.mobile;
       return ShadSheet(
         title: Text(title),
         child: mobile

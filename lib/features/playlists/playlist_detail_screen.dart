@@ -102,7 +102,8 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final mobile =
-              classifyLayout(constraints.maxWidth) == AppLayoutClass.mobile;
+              classifyLayout(MediaQuery.sizeOf(context)) ==
+              AppLayoutClass.mobile;
           return ColoredBox(
             key: Key(
               mobile ? 'playlist-detail-mobile' : 'playlist-detail-wide',
@@ -363,11 +364,9 @@ final class _TrackList extends StatelessWidget {
         30,
       ),
       itemCount: detail.tracks.length,
-      onReorder: (oldIndex, newIndex) {
-        var position = newIndex;
-        if (newIndex > oldIndex) position--;
+      onReorderItem: (oldIndex, newIndex) {
         controller.reorder(
-          position: position,
+          position: newIndex,
           trackIds: [detail.tracks[oldIndex].id],
         );
       },
@@ -404,11 +403,9 @@ final class _TrackList extends StatelessWidget {
               child: ReorderableListView.builder(
                 buildDefaultDragHandles: false,
                 itemCount: detail.tracks.length,
-                onReorder: (oldIndex, newIndex) {
-                  var position = newIndex;
-                  if (newIndex > oldIndex) position--;
+                onReorderItem: (oldIndex, newIndex) {
                   controller.reorder(
-                    position: position,
+                    position: newIndex,
                     trackIds: [detail.tracks[oldIndex].id],
                   );
                 },

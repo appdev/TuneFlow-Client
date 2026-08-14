@@ -1,4 +1,7 @@
+import 'package:cached_network_image_ce/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/design_tokens.dart';
@@ -14,8 +17,12 @@ import 'package:musicfree_service_client/design/components/queue_panel.dart';
 import 'package:musicfree_service_client/design/components/playlist_card.dart';
 import 'package:musicfree_service_client/design/components/track_tile.dart';
 import 'package:musicfree_service_client/api/models.dart';
+import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:musicfree_service_client/l10n/app_localizations.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+
+import '../support/fake_app_image_cache.dart';
+import '../support/test_image_cache_manager.dart';
 
 void main() {
   test('typography uses the bundled Chinese UI font', () {
@@ -51,10 +58,94 @@ void main() {
     );
   });
 
+  testWidgets('dark primary AppButton uses the brighter action color', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: ThemeMode.dark,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: AppButton(
+              key: const Key('primary-action'),
+              onPressed: () {},
+              child: const Text('播放'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final context = tester.element(find.byKey(const Key('primary-action')));
+    final colors = ShadTheme.of(context).colorScheme;
+    expect(colors.primary, const Color(0xFF00E66A));
+    expect(colors.primaryForeground, const Color(0xFF101713));
+    expect(AppTokens.of(context).accent, const Color(0xFF19D39B));
+  });
+
+  testWidgets(
+    'dark outline actions stay neutral until pointer hover reveals green',
+    (tester) async {
+      await tester.pumpWidget(
+        ShadApp(
+          theme: buildLightTheme(),
+          darkTheme: buildDarkTheme(),
+          themeMode: ThemeMode.dark,
+          home: Scaffold(
+            body: AppButton(
+              variant: ShadButtonVariant.outline,
+              onPressed: () {},
+              child: const Text('搜索音乐'),
+            ),
+          ),
+        ),
+      );
+
+      final label = find.text('搜索音乐');
+      Color? labelColor() =>
+          DefaultTextStyle.of(tester.element(label)).style.color;
+
+      expect(labelColor(), AppTokens.dark.foreground);
+
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(location: Offset.zero);
+      await pointer.moveTo(tester.getCenter(label));
+      await tester.pumpAndSettle();
+
+      expect(labelColor(), AppTokens.dark.primaryAction);
+      await pointer.removePointer();
+    },
+  );
+
+  testWidgets('light outline actions retain the approved green default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: AppButton(
+            variant: ShadButtonVariant.outline,
+            onPressed: () {},
+            child: const Text('搜索音乐'),
+          ),
+        ),
+      ),
+    );
+
+    final label = find.text('搜索音乐');
+    expect(
+      DefaultTextStyle.of(tester.element(label)).style.color,
+      AppTokens.light.primaryAction,
+    );
+  });
+
   testWidgets('desktop navigation renders the localized TuneFlow brand', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(800, 700);
+    tester.view.physicalSize = const Size(800, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -65,7 +156,12 @@ void main() {
         appBuilder: (context) => MaterialApp(
           theme: Theme.of(context),
           locale: const Locale('en'),
-          localizationsDelegates: const [AppLocalizations.delegate],
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
           supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AppDesktopNavigation(
@@ -88,6 +184,80 @@ void main() {
       tester.widget<Image>(find.byKey(const Key('brand-logo'))).image,
       const AssetImage('assets/branding/TuneFlow.png'),
     );
+    final navigation = tester.widget<Container>(
+      find.byKey(const Key('desktop-navigation')),
+    );
+    final decoration = navigation.decoration! as BoxDecoration;
+    expect(decoration.border, isNull);
+  });
+
+  testWidgets('desktop navigation keeps every icon in one fixed column', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const destinations = [
+      AppDestination(id: 'home', label: '首页', icon: Icons.home),
+      AppDestination(id: 'search', label: '搜索', icon: Icons.search),
+      AppDestination(id: 'square', label: '歌单广场', icon: Icons.grid_view),
+      AppDestination(id: 'charts', label: '排行榜', icon: Icons.bar_chart),
+      AppDestination(id: 'playlists', label: '我的歌单', icon: Icons.favorite),
+      AppDestination(id: 'downloads', label: '下载管理', icon: Icons.download),
+      AppDestination(id: 'settings', label: '设置', icon: Icons.settings),
+    ];
+
+    await tester.pumpWidget(
+      ShadApp.custom(
+        theme: buildLightTheme(),
+        appBuilder: (context) => MaterialApp(
+          theme: Theme.of(context),
+          locale: const Locale('zh'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: AppDesktopNavigation(
+              destinations: destinations,
+              selectedId: 'playlists',
+              onSelected: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final iconLefts = destinations
+        .map(
+          (destination) => tester
+              .getTopLeft(
+                find.byKey(
+                  ValueKey('desktop-destination-icon-${destination.id}'),
+                ),
+              )
+              .dx,
+        )
+        .toList();
+    final labelLefts = destinations
+        .map(
+          (destination) => tester
+              .getTopLeft(
+                find.byKey(
+                  ValueKey('desktop-destination-label-${destination.id}'),
+                ),
+              )
+              .dx,
+        )
+        .toList();
+
+    expect(iconLefts.toSet(), hasLength(1));
+    expect(labelLefts.toSet(), hasLength(1));
   });
 
   testWidgets('loading AppButton disables repeated activation', (tester) async {
@@ -222,6 +392,29 @@ void main() {
     expect(find.text('设置已更新'), findsOneWidget);
   });
 
+  testWidgets('showAppMessage can display a title-only confirmation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        builder: (context, child) => ShadAppBuilder(child: child!),
+        home: Builder(
+          builder: (context) => AppButton(
+            onPressed: () => showAppMessage(context, title: '已加入下载队列'),
+            child: const Text('下载'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('下载'));
+    await tester.pump();
+    expect(find.text('已加入下载队列'), findsOneWidget);
+    expect(find.text('完成'), findsNothing);
+    expect(find.text('已交给 Service 下载'), findsNothing);
+  });
+
   testWidgets('showAppSheet uses a bottom Shad sheet', (tester) async {
     late BuildContext context;
     await tester.pumpWidget(
@@ -279,8 +472,24 @@ void main() {
   });
 
   test('app layout changes at the accepted mobile boundary', () {
-    expect(appLayoutForWidth(719), AppLayout.phone);
-    expect(appLayoutForWidth(720), AppLayout.tablet);
+    expect(appLayoutForSize(const Size(1200, 600)), AppLayout.phone);
+    expect(appLayoutForSize(const Size(601, 900)), AppLayout.tablet);
+  });
+
+  test('playlist gallery adds columns before cards exceed their maximum', () {
+    expect(playlistGalleryColumnCount(availableWidth: 500, spacing: 16), 2);
+    expect(playlistGalleryColumnCount(availableWidth: 800, spacing: 16), 3);
+    expect(playlistGalleryColumnCount(availableWidth: 1324, spacing: 16), 5);
+    final extent = playlistGalleryItemExtent(
+      availableWidth: 1324,
+      spacing: 16,
+      columns: 5,
+    );
+    expect(extent, lessThanOrEqualTo(playlistGalleryMaxItemExtent));
+    expect(
+      playlistGalleryChildAspectRatio(extent),
+      extent / (extent + playlistGalleryMetadataExtent),
+    );
   });
 
   testWidgets('artwork fallback is deterministic and semantically labeled', (
@@ -317,9 +526,10 @@ void main() {
       ),
     );
 
-    final image = tester.widget<Image>(find.byType(Image));
-    final provider = image.image as NetworkImage;
-    expect(provider.headers?['User-Agent'], startsWith('Mozilla/5.0'));
+    final image = tester.widget<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(image.httpHeaders?['User-Agent'], startsWith('Mozilla/5.0'));
   });
 
   testWidgets('track without a picture does not render generated artwork', (
@@ -345,18 +555,27 @@ void main() {
   testWidgets('failed network artwork is replaced by generated artwork', (
     tester,
   ) async {
+    final cache = FakeAppImageCache(
+      manager: TestImageCacheManager(
+        fileStream: Stream<FileResponse>.error(StateError('failed')),
+      ),
+    );
     await tester.pumpWidget(
       ShadApp(
         theme: buildLightTheme(),
-        home: const AppArtwork(
-          imageUrl: 'https://invalid.example.test/missing.jpg',
-          seed: 'failed-cover',
-          semanticLabel: '失败封面',
-          size: 52,
+        home: AppImageCacheScope(
+          cache: cache,
+          child: const AppArtwork(
+            imageUrl: 'https://invalid.example.test/missing.jpg',
+            seed: 'failed-cover',
+            semanticLabel: '失败封面',
+            size: 52,
+          ),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump();
 
     expect(
       find.byKey(const Key('artwork-fallback-failed-cover')),

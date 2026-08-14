@@ -9,13 +9,22 @@ import '../events/event_coordinator.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/settings/settings_controller.dart';
+import '../features/settings/service_settings_repository.dart';
 import '../storage/app_settings_controller.dart';
+import 'app_providers.dart';
 import 'player_providers.dart';
 
 final settingsControllerProvider = Provider<SettingsController?>((ref) {
-  final settings = ref.watch(appSettingsProvider).value;
-  if (settings == null) return null;
-  return SettingsController(
+  final ready = ref.watch(
+    appSettingsProvider.select((settings) => settings.value != null),
+  );
+  if (!ready) return null;
+  final settings = ref.read(appSettingsProvider).value!;
+  final connected = ref.watch(connectionProvider).value;
+  final serviceSettings = connected == null
+      ? null
+      : ServiceSettingsRepository(connected.api);
+  final controller = SettingsController(
     settings: settings,
     save: ref.read(appSettingsProvider.notifier).saveSettings,
     connect: ref.read(connectionProvider.notifier).connect,
@@ -24,7 +33,17 @@ final settingsControllerProvider = Provider<SettingsController?>((ref) {
       await ref.read(playerControllerProvider)?.setQuality(quality);
     },
     diagnostics: ConnectionRepository().diagnostics,
+    mediaCache: ref.read(mediaCacheProvider),
+    imageCache: ref.read(appImageCacheProvider),
+    loadAutoDownloadOnPlay: serviceSettings?.getAutoDownloadOnPlay,
+    updateAutoDownloadOnPlay: serviceSettings?.setAutoDownloadOnPlay,
   );
+  ref.listen(appSettingsProvider, (previous, next) {
+    final updated = next.value;
+    if (updated != null) controller.syncSettings(updated);
+  });
+  ref.onDispose(controller.dispose);
+  return controller;
 });
 
 final class EventInvalidation extends ChangeNotifier {

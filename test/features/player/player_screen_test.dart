@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cached_network_image_ce/cached_network_image.dart';
+import 'package:file/local.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/api/models.dart';
@@ -12,7 +14,11 @@ import 'package:musicfree_service_client/features/player/player_screen.dart';
 import 'package:musicfree_service_client/features/player/player_state.dart';
 import 'package:musicfree_service_client/features/player/service_audio_handler.dart';
 import 'package:musicfree_service_client/features/player/wake_lock_port.dart';
+import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+
+import '../../support/fake_app_image_cache.dart';
+import '../../support/test_image_cache_manager.dart';
 
 final class FakeResolver implements PlaybackResolver {
   @override
@@ -112,6 +118,12 @@ Widget harness(Widget child) => ShadApp.custom(
   ),
 );
 
+Future<void> pumpFiniteAnimations(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump();
+}
+
 void main() {
   testWidgets('mini player is hidden without a queue and opens when visible', (
     tester,
@@ -185,6 +197,11 @@ void main() {
       tester.getSize(find.byKey(const Key('desktop-persistent-player'))).height,
       96,
     );
+    final shell = tester.widget<Material>(
+      find.byKey(const Key('desktop-persistent-player')),
+    );
+    final shellSize = shell.child! as SizedBox;
+    expect(shellSize.child, isA<Padding>());
     expect(
       tester.getSize(find.byKey(const Key('desktop-player-artwork'))),
       const Size.square(52),
@@ -345,6 +362,68 @@ void main() {
     expect(wakeLock.values, [true, false]);
   });
 
+  testWidgets(
+    'cached artwork stays real across desktop and mobile breakpoints',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const imageUrl = 'https://example.test/cached-cover.png';
+      final manager = TestImageCacheManager(
+        cachedFile: FileInfo(
+          const LocalFileSystem().file('assets/branding/TuneFlow.png'),
+          FileSource.Cache,
+          DateTime.utc(2030),
+          imageUrl,
+        ),
+      );
+      final imageCache = FakeAppImageCache(manager: manager);
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      await controller.playTracks([
+        Track.fromJson({
+          'id': 'cached',
+          'name': 'Cached',
+          'source': 'kw',
+          'pic': imageUrl,
+        }),
+      ]);
+      final player = AppImageCacheScope(
+        cache: imageCache,
+        child: PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: ''),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      );
+
+      await tester.pumpWidget(harness(player));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const Key('player-desktop-stage')), findsOneWidget);
+      expect(find.byKey(const Key('artwork-fallback-kw:cached')), findsNothing);
+      expect(find.byType(Image), findsWidgets);
+
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const Key('player-mobile-layout')), findsOneWidget);
+      expect(find.byKey(const Key('artwork-fallback-kw:cached')), findsNothing);
+      expect(find.byType(Image), findsWidgets);
+
+      tester.view.physicalSize = const Size(1200, 800);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const Key('player-desktop-stage')), findsOneWidget);
+      expect(find.byKey(const Key('artwork-fallback-kw:cached')), findsNothing);
+      expect(find.byType(Image), findsWidgets);
+      expect(manager.fileStreamCalls, greaterThan(0));
+    },
+  );
+
   testWidgets('desktop queue opens as a bounded lower-right popover', (
     tester,
   ) async {
@@ -478,7 +557,8 @@ void main() {
 
     expect(find.byKey(const Key('player-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('player-backdrop')), findsOneWidget);
-    expect(find.byType(ImageFiltered), findsOneWidget);
+    expect(find.byKey(const Key('player-backdrop-neutral')), findsOneWidget);
+    expect(find.byType(ImageFiltered), findsNothing);
     expect(find.byType(AppGlassSurface), findsAtLeastNWidgets(2));
     expect(find.byKey(const Key('player-mobile-topbar')), findsOneWidget);
     expect(find.byKey(const Key('player-mobile-progress')), findsOneWidget);
@@ -498,7 +578,6 @@ void main() {
         .5,
       ),
     );
-    expect(find.byKey(const Key('player-mobile-artwork')), findsOneWidget);
     await tester.tap(find.byKey(const Key('player-mobile-playback-mode')));
     await tester.pump();
     expect(controller.state.playbackMode, PlaybackMode.repeatOne);
@@ -511,13 +590,88 @@ void main() {
     expect(find.text('队列'), findsNothing);
     expect(find.text('正在播放'), findsOneWidget);
     expect(find.text('One'), findsWidgets);
+    expect(find.byKey(const Key('player-mobile-vinyl')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-artwork')), findsNothing);
+    expect(find.text('Line').hitTestable(), findsNothing);
     await tester.drag(find.byType(PageView), const Offset(-320, 0));
     await tester.pumpAndSettle();
     expect(controller.state.view, PlayerView.lyrics);
-    await tester.drag(find.byType(PageView), const Offset(-320, 0));
-    await tester.pumpAndSettle();
-    expect(controller.state.view, PlayerView.lyrics);
+    expect(find.text('Line').hitTestable(), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-topbar')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-controls')), findsOneWidget);
+    expect(
+      tester.getRect(find.byKey(const Key('player-mobile-lyrics-page'))),
+      tester.getRect(find.byKey(const Key('player-mobile-pages'))),
+    );
+    await tester.drag(find.byType(PageView), const Offset(320, 0));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(controller.state.view, PlayerView.artwork);
+    expect(find.byKey(const Key('player-mobile-vinyl')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mobile player always opens on the record page', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.playTracks([
+      Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
+    ]);
+    controller.setView(PlayerView.lyrics);
+
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.state.view, PlayerView.artwork);
+    expect(find.byKey(const Key('player-mobile-vinyl')), findsOneWidget);
+    expect(find.text('Line').hitTestable(), findsNothing);
+  });
+
+  testWidgets('mobile empty lyrics appear only after swiping to lyrics', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.playTracks([
+      Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
+    ]);
+
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: ''),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('暂无歌词').hitTestable(), findsNothing);
+    await tester.drag(find.byType(PageView), const Offset(-320, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无歌词').hitTestable(), findsOneWidget);
   });
 
   testWidgets('mobile player keeps transport reachable at 320px', (
@@ -582,6 +736,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('mobile player keeps 320k quality on one line at 320px', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+      quality: '320k',
+    );
+    await controller.playTracks([
+      Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
+    ]);
+
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: ''),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final selectedQuality = find.descendant(
+      of: find.byKey(const Key('player-mobile-quality')),
+      matching: find.text('320k'),
+    );
+    expect(selectedQuality, findsOneWidget);
+    expect(tester.getSize(selectedQuality).height, lessThan(30));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('mobile queue sheet selects and removes tracks independently', (
     tester,
   ) async {
@@ -625,7 +816,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('player-mobile-queue')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(find.byKey(const Key('player-mobile-queue-sheet')), findsOneWidget);
     expect(find.text('3 首'), findsOneWidget);
 
@@ -666,19 +857,19 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('player-mobile-queue')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     await tester.tap(find.byKey(const Key('player-mobile-queue-clear')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(find.text('清空播放队列？'), findsOneWidget);
     expect(find.text('当前播放将停止，此操作无法撤销。'), findsOneWidget);
     await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(controller.state.queue, hasLength(2));
 
     await tester.tap(find.byKey(const Key('player-mobile-queue-clear')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     await tester.tap(find.text('清空').last);
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(controller.state.queue, isEmpty);
     expect(audio.stopPlaybackCalls, 1);
     expect(find.byKey(const Key('player-mobile-queue-sheet')), findsNothing);
@@ -719,7 +910,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('player-mobile-queue')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
 
     expect(find.byKey(const Key('player-mobile-queue-header')), findsOneWidget);
     expect(find.byKey(const Key('player-mobile-queue-list')), findsOneWidget);
@@ -754,11 +945,11 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('player-mobile-queue')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     await tester.tap(find.byKey(const Key('player-mobile-queue-clear')));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     await tester.tap(find.text('清空').last);
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
 
     expect(controller.state.queue, hasLength(1));
     expect(find.byKey(const Key('player-mobile-queue-sheet')), findsOneWidget);
@@ -782,11 +973,16 @@ void main() {
       Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
     ]);
 
+    var lyricAttempts = 0;
     await tester.pumpWidget(
       harness(
         PlayerScreen(
           controller: controller,
-          lyricsLoader: (_) async => throw StateError('no lyrics'),
+          lyricsLoader: (_) async {
+            lyricAttempts++;
+            if (lyricAttempts == 1) throw StateError('no lyrics');
+            return const Lyrics(original: '[00:01]Line');
+          },
           wakeLock: FakeWakeLock(),
           keepAwake: false,
         ),
@@ -794,11 +990,27 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byKey(const Key('player-mobile-lyric-error')), findsOneWidget);
-    expect(find.text('歌词暂不可用'), findsOneWidget);
+    expect(
+      find.byKey(const Key('player-mobile-lyric-error')).hitTestable(),
+      findsNothing,
+    );
+    expect(find.text('歌词暂不可用').hitTestable(), findsNothing);
+    await tester.drag(find.byType(PageView), const Offset(-320, 0));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('player-mobile-lyric-error')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(find.text('歌词暂不可用').hitTestable(), findsOneWidget);
+    expect(find.text('重试').hitTestable(), findsOneWidget);
     expect(find.text('播放失败'), findsNothing);
     expect(find.textContaining('StateError'), findsNothing);
-    expect(find.byKey(const Key('player-mobile-artwork')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-topbar')), findsOneWidget);
+    expect(find.byKey(const Key('player-mobile-controls')), findsOneWidget);
+    await tester.tap(find.text('重试'));
+    await tester.pump();
+    expect(lyricAttempts, 2);
+    expect(find.text('Line'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

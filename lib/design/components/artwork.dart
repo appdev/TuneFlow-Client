@@ -1,6 +1,8 @@
+import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../storage/app_image_cache_scope.dart';
 import '../design_tokens.dart';
 
 const artworkRequestHeaders = {
@@ -12,13 +14,9 @@ const artworkRequestHeaders = {
 @immutable
 final class AppArtworkSource {
   AppArtworkSource.network(String url, {required this.fallbackSeed})
-    : provider = NetworkImage(
-        _normalizeArtworkUrl(url),
-        headers: artworkRequestHeaders,
-      );
+    : url = _normalizeArtworkUrl(url);
 
-  const AppArtworkSource.fallback({required this.fallbackSeed})
-    : provider = null;
+  const AppArtworkSource.fallback({required this.fallbackSeed}) : url = null;
 
   factory AppArtworkSource.fromUrl(
     String? url, {
@@ -27,7 +25,7 @@ final class AppArtworkSource {
       ? AppArtworkSource.fallback(fallbackSeed: fallbackSeed)
       : AppArtworkSource.network(url, fallbackSeed: fallbackSeed);
 
-  final ImageProvider<Object>? provider;
+  final String? url;
   final String fallbackSeed;
 }
 
@@ -53,6 +51,7 @@ final class AppArtwork extends StatelessWidget {
     this.borderRadius = AppRadii.card,
     this.icon = LucideIcons.music2,
     this.showFallback = true,
+    this.fallback,
   });
 
   final String? imageUrl;
@@ -65,13 +64,14 @@ final class AppArtwork extends StatelessWidget {
   final double borderRadius;
   final IconData icon;
   final bool showFallback;
+  final Widget? fallback;
 
   @override
   Widget build(BuildContext context) {
     final resolved =
         source ?? AppArtworkSource.fromUrl(imageUrl, fallbackSeed: seed);
-    final fallback = showFallback
-        ? _ArtworkFallback(seed: resolved.fallbackSeed)
+    final resolvedFallback = showFallback
+        ? fallback ?? _ArtworkFallback(seed: resolved.fallbackSeed, icon: icon)
         : const SizedBox.shrink();
     return Semantics(
       image: true,
@@ -81,13 +81,23 @@ final class AppArtwork extends StatelessWidget {
         child: SizedBox(
           width: width ?? size,
           height: height ?? size,
-          child: resolved.provider == null
-              ? fallback
-              : Image(
-                  image: resolved.provider!,
+          child: resolved.url == null
+              ? resolvedFallback
+              : CachedNetworkImage(
+                  key: ValueKey(resolved.url),
+                  imageUrl: resolved.url!,
+                  cacheKey: resolved.url!,
+                  httpHeaders: artworkRequestHeaders,
+                  cacheManager: AppImageCacheScope.maybeOf(context)?.manager,
                   fit: BoxFit.cover,
                   filterQuality: FilterQuality.medium,
-                  errorBuilder: (_, _, _) => fallback,
+                  disablePlaceholderOnCacheHit: true,
+                  useOldImageOnUrlChange: false,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  placeholderFadeInDuration: Duration.zero,
+                  placeholder: (_, _) => resolvedFallback,
+                  errorBuilder: (_, _, _) => resolvedFallback,
                 ),
         ),
       ),
@@ -96,67 +106,155 @@ final class AppArtwork extends StatelessWidget {
 }
 
 final class _ArtworkFallback extends StatelessWidget {
-  const _ArtworkFallback({required this.seed});
+  const _ArtworkFallback({required this.seed, required this.icon});
 
   final String seed;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    var value = 17;
-    for (final unit in seed.codeUnits) {
-      value = (value * 31 + unit) & 0x7fffffff;
-    }
-    final palette = _palette(seed, value);
-    return DecoratedBox(
-      key: Key('artwork-fallback-$seed'),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          stops: const [0, .55, 1],
-          colors: palette,
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(-.44, -.5),
-                radius: .42,
-                colors: [
-                  const Color(0xFFC6EFF9).withValues(alpha: .68),
-                  Colors.transparent,
-                ],
-              ),
-            ),
+    final shadTheme = ShadTheme.maybeOf(context);
+    final dark =
+        (shadTheme?.brightness ?? Theme.of(context).brightness) ==
+        Brightness.dark;
+    final tokens = shadTheme == null
+        ? (dark ? AppTokens.dark : AppTokens.light)
+        : AppTokens.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return DecoratedBox(
+          key: Key('artwork-fallback-$seed'),
+          decoration: BoxDecoration(
+            color: dark ? tokens.surface : tokens.surfaceWarm,
+            border: Border.all(color: tokens.border),
           ),
-        ],
-      ),
+          child: _RecordFallback(
+            seed: seed,
+            icon: icon,
+            tokens: tokens,
+            dark: dark,
+          ),
+        );
+      },
     );
   }
+}
 
-  List<Color> _palette(String seed, int value) {
-    final normalized = seed.toLowerCase();
-    if (normalized.contains('wind')) {
-      return const [Color(0xFF14323C), Color(0xFF8D4852), Color(0xFFE8A65F)];
+final class _RecordFallback extends StatelessWidget {
+  const _RecordFallback({
+    required this.seed,
+    required this.icon,
+    required this.tokens,
+    required this.dark,
+  });
+
+  final String seed;
+  final IconData icon;
+  final AppTokens tokens;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    key: Key('artwork-fallback-record-$seed'),
+    painter: _VinylArtworkPainter(
+      recordColor: dark ? tokens.accentForeground : tokens.foreground,
+      grooveColor: dark ? tokens.foreground : tokens.accentForeground,
+    ),
+    child: Center(
+      child: FractionallySizedBox(
+        widthFactor: .24,
+        heightFactor: .24,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: tokens.accent,
+          ),
+          child: SizedBox.expand(
+            key: Key('artwork-fallback-symbol-$seed'),
+            child: icon == LucideIcons.music2
+                ? CustomPaint(
+                    key: Key('artwork-fallback-filled-note-$seed'),
+                    painter: _FilledMusicNotePainter(tokens.accentForeground),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Icon(icon, color: tokens.accentForeground),
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+final class _VinylArtworkPainter extends CustomPainter {
+  const _VinylArtworkPainter({
+    required this.recordColor,
+    required this.grooveColor,
+  });
+
+  final Color recordColor;
+  final Color grooveColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide * .36;
+    canvas.drawCircle(center, radius, Paint()..color = recordColor);
+    for (final factor in const [.78, .58, .38]) {
+      canvas.drawCircle(
+        center,
+        radius * factor,
+        Paint()
+          ..color = grooveColor.withValues(alpha: .13)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = (size.shortestSide * .008).clamp(.5, 2).toDouble(),
+      );
     }
-    if (normalized.contains('island') || normalized.contains('forest')) {
-      return const [Color(0xFF202539), Color(0xFF4F7CA5), Color(0xFFD6B465)];
-    }
-    if (normalized.contains('city') || normalized.contains('white')) {
-      return const [Color(0xFF152A27), Color(0xFF357264), Color(0xFFBC747E)];
-    }
-    if (normalized.contains('romance') || normalized.contains('sudden')) {
-      return const [Color(0xFF352342), Color(0xFF755D9F), Color(0xFFDC7F8D)];
-    }
-    final hue = (value % 360).toDouble();
-    final secondaryHue = (hue + 42 + value % 53) % 360;
-    return [
-      HSLColor.fromAHSL(1, hue, .32, .2).toColor(),
-      HSLColor.fromAHSL(1, hue, .38, .36).toColor(),
-      HSLColor.fromAHSL(1, secondaryHue, .52, .58).toColor(),
-    ];
   }
+
+  @override
+  bool shouldRepaint(covariant _VinylArtworkPainter oldDelegate) =>
+      oldDelegate.recordColor != recordColor ||
+      oldDelegate.grooveColor != grooveColor;
+}
+
+final class _FilledMusicNotePainter extends CustomPainter {
+  const _FilledMusicNotePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..addOval(
+        Rect.fromLTWH(
+          size.width * .18,
+          size.height * .57,
+          size.width * .38,
+          size.height * .27,
+        ),
+      )
+      ..addRect(
+        Rect.fromLTWH(
+          size.width * .50,
+          size.height * .20,
+          size.width * .10,
+          size.height * .52,
+        ),
+      )
+      ..moveTo(size.width * .50, size.height * .20)
+      ..lineTo(size.width * .82, size.height * .30)
+      ..lineTo(size.width * .82, size.height * .43)
+      ..lineTo(size.width * .60, size.height * .35)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FilledMusicNotePainter oldDelegate) =>
+      oldDelegate.color != color;
 }
