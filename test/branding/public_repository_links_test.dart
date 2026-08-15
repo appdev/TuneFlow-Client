@@ -28,7 +28,7 @@ void main() {
       readme,
       contains(
         'https://github.com/appdev/TuneFlow-Client/releases/tag/'
-        'v1.0.1%2B2',
+        'v1.0.2%2B3',
       ),
     );
     expect(
