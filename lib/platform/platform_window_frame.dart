@@ -18,6 +18,7 @@ final class PlatformWindowFrame extends StatelessWidget {
     this.onForward,
     this.onSearch,
     this.desktopSidebarWidth,
+    this.playerAccent,
   });
 
   final AppPlatform platform;
@@ -28,6 +29,7 @@ final class PlatformWindowFrame extends StatelessWidget {
   final VoidCallback? onForward;
   final VoidCallback? onSearch;
   final double? desktopSidebarWidth;
+  final Color? playerAccent;
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +103,7 @@ final class PlatformWindowFrame extends StatelessWidget {
             onBack: onBack,
             onForward: onForward,
             onSearch: onSearch,
+            playerAccent: playerCanvas ? playerAccent : null,
           ),
           if (controls != null)
             Positioned(right: 0, top: 0, bottom: 0, child: controls),

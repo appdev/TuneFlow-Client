@@ -5,14 +5,25 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design/components/playback_progress.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_playback_button.dart';
 import '../../design/design_tokens.dart';
+import 'artwork_palette.dart';
+import 'current_track_action_buttons.dart';
+import 'current_track_actions_controller.dart';
 import 'desktop_queue_popover.dart';
 import 'player_controller.dart';
 
 final class DesktopPlayerControls extends StatefulWidget {
-  const DesktopPlayerControls({super.key, required this.controller});
+  const DesktopPlayerControls({
+    super.key,
+    required this.controller,
+    required this.palette,
+    this.actions,
+  });
 
   final PlayerController controller;
+  final ArtworkPalette palette;
+  final CurrentTrackActionsController? actions;
 
   @override
   State<DesktopPlayerControls> createState() => _DesktopPlayerControlsState();
@@ -64,6 +75,13 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                     position: state.position,
                     duration: state.duration,
                     onSeek: controller.seek,
+                    activeTrackColor: widget.palette.vinylAccent,
+                    inactiveTrackColor: readableArtworkInactiveTrack(
+                      widget.palette,
+                    ),
+                    labelColor: widget.palette.foreground.withValues(
+                      alpha: .62,
+                    ),
                   ),
                   Row(
                     key: const Key('player-desktop-transport'),
@@ -72,7 +90,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                       _ControlButton(
                         key: const Key('player-previous'),
                         label: '上一首',
-                        icon: LucideIcons.skipBack,
+                        icon: AppPlaybackIcons.previous,
                         enabled: state.canPrevious,
                         onPressed: controller.previous,
                       ),
@@ -81,8 +99,8 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                         key: const Key('player-play-pause'),
                         label: state.playing ? '暂停' : '播放',
                         icon: state.playing
-                            ? LucideIcons.pause
-                            : LucideIcons.play,
+                            ? AppPlaybackIcons.pause
+                            : AppPlaybackIcons.play,
                         prominent: true,
                         onPressed: state.playing
                             ? controller.pause
@@ -92,7 +110,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                       _ControlButton(
                         key: const Key('player-next'),
                         label: '下一首',
-                        icon: LucideIcons.skipForward,
+                        icon: AppPlaybackIcons.next,
                         enabled: state.canNext,
                         onPressed: controller.next,
                       ),
@@ -100,6 +118,23 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                   ),
                 ],
               ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: AppSpacing.lg, bottom: 8),
+              child: widget.actions == null
+                  ? const SizedBox.shrink()
+                  : CurrentTrackActionButtons(
+                      controller: widget.actions!,
+                      keyPrefix: 'desktop-full',
+                      foreground: widget.palette.foreground,
+                      selectedForeground: widget.palette.foreground,
+                      selectedBackground: widget.palette.vinylAccent.withValues(
+                        alpha: .18,
+                      ),
+                    ),
             ),
           ),
           Align(
@@ -177,8 +212,10 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                     controller: queuePopover,
                     popover: (_) => ListenableBuilder(
                       listenable: controller,
-                      builder: (context, _) =>
-                          DesktopQueuePopover(controller: controller),
+                      builder: (context, _) => DesktopQueuePopover(
+                        controller: controller,
+                        accentColor: widget.palette.vinylAccent,
+                      ),
                     ),
                     child: _ControlButton(
                       key: const Key('player-desktop-queue'),
@@ -215,17 +252,17 @@ final class _ControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
+    final colors = ShadTheme.of(context).colorScheme;
     final button = prominent
         ? Material(
-            color: tokens.foreground,
+            color: colors.primary,
             shape: const CircleBorder(),
             child: InkWell(
               customBorder: const CircleBorder(),
               onTap: enabled ? onPressed : null,
               child: SizedBox.square(
                 dimension: 56,
-                child: Icon(icon, size: 23, color: tokens.background),
+                child: Icon(icon, size: 23, color: Colors.white),
               ),
             ),
           )

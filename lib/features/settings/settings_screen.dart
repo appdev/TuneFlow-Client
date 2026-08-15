@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
@@ -61,7 +62,10 @@ final class _SettingsScreenState extends State<SettingsScreen> {
         showAppMessage(
           context,
           title: '连接失败',
-          message: error.toString(),
+          message: appErrorMessage(
+            error,
+            fallback: '无法更新 Service 设置，请检查地址后重试。',
+          ),
           destructive: true,
         );
       }
@@ -156,7 +160,7 @@ final class _CacheCard extends StatelessWidget {
         showAppMessage(
           context,
           title: '调整失败',
-          message: error.toString(),
+          message: appErrorMessage(error, fallback: '无法调整缓存上限，请稍后重试。'),
           destructive: true,
         );
       }
@@ -182,7 +186,7 @@ final class _CacheCard extends StatelessWidget {
         showAppMessage(
           context,
           title: '清理失败',
-          message: error.toString(),
+          message: appErrorMessage(error, fallback: '无法清理本机缓存，请稍后重试。'),
           destructive: true,
         );
       }
@@ -242,7 +246,10 @@ final class _CacheCard extends StatelessWidget {
             ),
             if (controller.cacheError case final error?) ...[
               const SizedBox(height: AppSpacing.sm),
-              AppNotice.error(title: '缓存操作失败', message: error.toString()),
+              AppNotice.error(
+                title: '缓存操作失败',
+                message: appErrorMessage(error, fallback: '缓存信息暂时无法读取，请稍后重试。'),
+              ),
             ],
             const SizedBox(height: AppSpacing.md),
             LayoutBuilder(
@@ -320,7 +327,10 @@ final class _ConnectionCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               AppNotice.error(
                 title: '诊断失败',
-                message: controller.diagnosticsError.toString(),
+                message: appErrorMessage(
+                  controller.diagnosticsError!,
+                  fallback: '暂时无法检测 Service 状态，请稍后重试。',
+                ),
               ),
             ],
             if (!compact) ...[
@@ -589,7 +599,12 @@ final class _AutoDownloadOnPlaySetting extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             AppNotice.error(
               title: value == null ? 'Service 设置读取失败' : 'Service 设置更新失败',
-              message: error.toString(),
+              message: appErrorMessage(
+                error,
+                fallback: value == null
+                    ? 'Service 设置暂时无法读取，请稍后重试。'
+                    : 'Service 设置暂时无法更新，请稍后重试。',
+              ),
             ),
           ],
         ],

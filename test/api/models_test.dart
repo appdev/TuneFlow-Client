@@ -143,6 +143,70 @@ void main() {
     );
   });
 
+  test('resolved playback bundles parse optional resources compatibly', () {
+    final legacy = ResolvedTrack.fromJson({
+      'url': '/api/v1/streams/legacy',
+      'quality': '128k',
+      'expiresAt': 1000,
+    });
+    final complete = ResolvedTrack.fromJson({
+      'url': '/api/v1/streams/token',
+      'quality': '320k',
+      'expiresAt': 2000,
+      'resources': {
+        'lyrics': {'lyric': '[00:00.00]bundle', 'tlyric': '翻译'},
+        'pictureUrl': '/api/v1/playback/resources/picture-token/picture',
+      },
+      'completeness': 'complete',
+    });
+    final local = ResolvedTrack.fromJson({
+      'url': '/api/v1/library/tracks/file-a/stream',
+      'quality': '128k',
+      'expiresAt': 0,
+      'resources': {
+        'lyricsUrl': '/api/v1/library/tracks/file-a/lyrics',
+        'pictureUrl': '/api/v1/library/tracks/file-a/picture',
+      },
+      'completeness': 'audio-only',
+    });
+
+    expect(legacy.resources, isNull);
+    expect(legacy.completeness, isNull);
+    expect(complete.resources?.lyrics?.original, '[00:00.00]bundle');
+    expect(complete.resources?.pictureUrl, contains('picture-token'));
+    expect(complete.completeness, PlaybackBundleCompleteness.complete);
+    expect(local.resources?.lyricsUrl, contains('/lyrics'));
+    expect(local.completeness, PlaybackBundleCompleteness.audioOnly);
+  });
+
+  test('resolved playback resources reject ambiguous or malformed fields', () {
+    Map<String, Object?> response(Map<String, Object?> resources) => {
+      'url': '/api/v1/streams/token',
+      'quality': '128k',
+      'expiresAt': 1000,
+      'resources': resources,
+      'completeness': 'mixed',
+    };
+
+    expect(
+      () => ResolvedTrack.fromJson(
+        response({
+          'lyrics': {'lyric': 'embedded'},
+          'lyricsUrl': '/api/v1/library/tracks/a/lyrics',
+        }),
+      ),
+      throwsA(isA<ServiceException>()),
+    );
+    expect(
+      () => ResolvedTrack.fromJson(response({'pictureUrl': 3})),
+      throwsA(isA<ServiceException>()),
+    );
+    expect(
+      () => ResolvedTrack.fromJson({...response({}), 'completeness': 'best'}),
+      throwsA(isA<ServiceException>()),
+    );
+  });
+
   test(
     'catalog capabilities and collection pages keep provider feature gates',
     () {
@@ -152,6 +216,7 @@ void main() {
             'id': 'wy',
             'name': '网易云音乐',
             'searchKinds': ['track', 'playlist', 'album'],
+            'albumDetail': true,
           },
         ],
       });
@@ -172,10 +237,36 @@ void main() {
         capabilities.providers.single.searchKinds,
         contains(CatalogSearchKind.album),
       );
+      expect(capabilities.providers.single.albumDetail, isTrue);
       expect(page.items.single.kind, CatalogSearchKind.album);
       expect(page.items.single.total, 12);
     },
   );
+
+  test('album detail pages preserve metadata, tracks, and paging', () {
+    final page = AlbumDetailPage.fromJson({
+      'source': 'wy',
+      'page': 1,
+      'limit': 30,
+      'total': 1,
+      'hasMore': false,
+      'album': {
+        'id': 'album-1',
+        'kind': 'album',
+        'name': '叶惠美',
+        'source': 'wy',
+        'author': '周杰伦',
+      },
+      'tracks': [
+        {'id': 'track-1', 'name': '以父之名', 'source': 'wy'},
+      ],
+    });
+
+    expect(page.album.kind, CatalogSearchKind.album);
+    expect(page.album.author, '周杰伦');
+    expect(page.tracks.single.id, 'track-1');
+    expect(page.hasMore, isFalse);
+  });
 
   test('playlist discovery capabilities are explicit and optional', () {
     final enabled = CatalogCapabilities.fromJson({

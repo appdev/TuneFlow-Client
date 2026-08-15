@@ -4,15 +4,26 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../app/app_error.dart';
 import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/app_theme_definition.dart';
+import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_glass_surface.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
 import '../../design/components/queue_panel.dart';
 import '../../design/design_tokens.dart';
+import '../../storage/app_image_cache_scope.dart';
+import '../playlists/playlist_repository.dart';
+import '../search/adaptive_track_actions.dart';
+import '../search/search_track_metadata.dart';
+import '../search/track_action.dart';
+import 'artwork_palette.dart';
+import 'artwork_palette_controller.dart';
+import 'current_track_actions_controller.dart';
+import 'desktop_dynamic_player_backdrop.dart';
 import 'desktop_player_controls.dart';
 import 'desktop_player_stage.dart';
 import 'lyrics_view.dart';
@@ -31,16 +42,24 @@ final class PlayerScreen extends StatefulWidget {
     required this.lyricsLoader,
     required this.wakeLock,
     required this.keepAwake,
+    this.playlists,
+    this.actions,
     this.onBack,
     this.topChromeInset = 0,
+    this.paletteController,
+    this.onAccentChanged,
   });
 
   final PlayerController controller;
   final Future<Lyrics> Function(Track track) lyricsLoader;
   final WakeLockPort wakeLock;
   final bool keepAwake;
+  final PlaylistRepository? playlists;
+  final CurrentTrackActionsController? actions;
   final VoidCallback? onBack;
   final double topChromeInset;
+  final ArtworkPaletteController? paletteController;
+  final ValueChanged<Color>? onAccentChanged;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -50,6 +69,10 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   late final PageController pages = PageController(initialPage: 0);
   String? _artworkKey;
   AppArtworkSource? _artworkSource;
+  ArtworkPaletteController? _paletteController;
+  var _ownsPaletteController = false;
+  String? _paletteRequestKey;
+  Color? _reportedAccent;
 
   AppArtworkSource _sourceFor(Track track) {
     final url = track.raw['pic'] as String?;
@@ -67,6 +90,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _paletteController = widget.paletteController;
     unawaited(widget.wakeLock.setEnabled(widget.keepAwake));
     unawaited(widget.controller.loadLyrics(widget.lyricsLoader));
     if (widget.controller.state.view == PlayerView.queue) {
@@ -79,8 +103,60 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensurePaletteController();
+  }
+
+  @override
+  void didUpdateWidget(covariant PlayerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.onAccentChanged != widget.onAccentChanged) {
+      _reportedAccent = null;
+    }
+    if (oldWidget.paletteController == widget.paletteController) return;
+    if (_ownsPaletteController) _paletteController?.dispose();
+    _paletteController = widget.paletteController;
+    _ownsPaletteController = false;
+    _paletteRequestKey = null;
+    _ensurePaletteController();
+  }
+
+  void _ensurePaletteController() {
+    if (_paletteController != null) return;
+    final manager = AppImageCacheScope.maybeOf(context)?.manager;
+    _paletteController = ArtworkPaletteController(
+      loadBytes: manager == null
+          ? (_) async => null
+          : (source) => loadArtworkBytes(manager, source),
+    );
+    _ownsPaletteController = true;
+  }
+
+  void _selectPalette(AppArtworkSource source, Brightness brightness) {
+    final key = '${source.url ?? source.fallbackSeed}:${brightness.name}';
+    if (_paletteRequestKey == key) return;
+    _paletteRequestKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _paletteRequestKey != key) return;
+      unawaited(_paletteController!.select(source, brightness: brightness));
+    });
+  }
+
+  void _reportAccent(Color accent) {
+    final callback = widget.onAccentChanged;
+    if (callback == null || _reportedAccent == accent) return;
+    _reportedAccent = accent;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _reportedAccent != accent) return;
+      callback(accent);
+    });
+  }
+
+  @override
   void dispose() {
     pages.dispose();
+    if (_ownsPaletteController) _paletteController?.dispose();
     unawaited(widget.wakeLock.setEnabled(false));
     super.dispose();
   }
@@ -111,83 +187,242 @@ final class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  Future<void> _run(
+    Future<void> Function() operation, {
+    String? success,
+    String? successTitle,
+  }) async {
+    try {
+      await operation();
+      if (mounted && successTitle != null) {
+        showAppMessage(context, title: successTitle);
+      } else if (mounted && success != null) {
+        showAppMessage(context, title: '完成', message: success);
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '操作失败',
+        message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
+        destructive: true,
+      );
+    }
+  }
+
+  Future<void> _choosePlaylist(Track track) async {
+    final playlists = await widget.playlists!.list();
+    if (!mounted) return;
+    await showAppSheet<void>(
+      context,
+      title: '添加到歌单',
+      child: playlists.isEmpty
+          ? const AppEmptyState(message: '还没有歌单')
+          : ListView.builder(
+              shrinkWrap: true,
+              itemCount: playlists.length,
+              itemBuilder: (context, index) {
+                final playlist = playlists[index];
+                return AppButton(
+                  key: Key('player-playlist-${playlist.id}'),
+                  variant: ShadButtonVariant.ghost,
+                  onPressed: () => _run(
+                    () => widget.playlists!.addTracks(playlist.id, [track]),
+                    success: '已添加到 ${playlist.name}',
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(playlist.name),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Future<void> _more(Track track) async {
+    final playlists = widget.playlists;
+    if (playlists == null) return;
+    final metadata = SearchTrackMetadata.fromTrack(track);
+    Future<void> Function()? selectedAction;
+    await showMobileTrackActions(
+      context,
+      track: track,
+      metadata: metadata,
+      actions: [
+        TrackAction(
+          id: TrackActionId.addToPlaylist,
+          label: '添加到歌单',
+          icon: LucideIcons.heartPlus,
+          invoke: () async {
+            selectedAction = () => _run(() => _choosePlaylist(track));
+            Navigator.of(context).pop();
+          },
+        ),
+      ],
+    );
+    await selectedAction?.call();
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.controller,
-    builder: (context, _) {
-      final state = widget.controller.state;
-      final track = state.current;
-      if (track == null) {
-        return const ColoredBox(
-          color: Colors.transparent,
-          child: AppEmptyState(message: '播放队列为空'),
-        );
-      }
-      final artworkSource = _sourceFor(track);
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final mobile =
-              classifyLayout(MediaQuery.sizeOf(context)) ==
-              AppLayoutClass.mobile;
-          final content = mobile
-              ? _MobilePlayer(
-                  key: const Key('player-mobile-layout'),
-                  controller: widget.controller,
-                  artworkSource: artworkSource,
-                  pages: pages,
-                  onQueue: _queue,
-                  onLyrics: () =>
-                      widget.controller.loadLyrics(widget.lyricsLoader),
-                  onBack:
-                      widget.onBack ??
-                      () => unawaited(Navigator.of(context).maybePop()),
-                  topChromeInset: widget.topChromeInset,
-                )
-              : Stack(
-                  key: const Key('player-wide-layout'),
-                  fit: StackFit.expand,
-                  children: [
-                    DesktopPlayerStage(
-                      state: state,
-                      artworkSource: artworkSource,
-                      onRetryLyrics: () =>
-                          widget.controller.loadLyrics(widget.lyricsLoader),
-                    ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 16,
-                      child: DesktopPlayerControls(
-                        controller: widget.controller,
+    builder: (context, _) => ListenableBuilder(
+      listenable: _paletteController!,
+      builder: (context, _) {
+        final state = widget.controller.state;
+        final track = state.current;
+        if (track == null) {
+          return const ColoredBox(
+            color: Colors.transparent,
+            child: AppEmptyState(message: '播放队列为空'),
+          );
+        }
+        final artworkSource = _sourceFor(track);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final mobile =
+                classifyLayout(MediaQuery.sizeOf(context)) ==
+                AppLayoutClass.mobile;
+            final brightness = Theme.of(context).brightness;
+            if (!mobile) _selectPalette(artworkSource, brightness);
+            final palette =
+                _paletteController?.palette ??
+                fallbackArtworkPalette(
+                  artworkSource.fallbackSeed,
+                  brightness: brightness,
+                );
+            if (!mobile) _reportAccent(palette.vinylAccent);
+            final content = mobile
+                ? _MobilePlayer(
+                    key: const Key('player-mobile-layout'),
+                    controller: widget.controller,
+                    artworkSource: artworkSource,
+                    pages: pages,
+                    onQueue: _queue,
+                    onMore: () => unawaited(_more(track)),
+                    onLyrics: () =>
+                        widget.controller.loadLyrics(widget.lyricsLoader),
+                    onBack:
+                        widget.onBack ??
+                        () => unawaited(Navigator.of(context).maybePop()),
+                    topChromeInset: widget.topChromeInset,
+                    actions: widget.actions,
+                  )
+                : Stack(
+                    key: const Key('player-wide-layout'),
+                    fit: StackFit.expand,
+                    children: [
+                      DesktopPlayerStage(
+                        state: state,
+                        artworkSource: artworkSource,
+                        palette: palette,
+                        onRetryLyrics: () =>
+                            widget.controller.loadLyrics(widget.lyricsLoader),
+                      ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 16,
+                        child: DesktopPlayerControls(
+                          controller: widget.controller,
+                          palette: palette,
+                          actions: widget.actions,
+                        ),
+                      ),
+                    ],
+                  );
+            final themedContent = mobile
+                ? content
+                : _DesktopPlayerTheme(palette: palette, child: content);
+            return Stack(
+              key: const Key('player-screen-root'),
+              fit: StackFit.expand,
+              children: [
+                if (mobile)
+                  PlayerBackdrop(
+                    source: artworkSource,
+                    transitionKey: '${track.source}:${track.id}',
+                  )
+                else
+                  DesktopDynamicPlayerBackdrop(
+                    palette: palette,
+                    transitionKey: '${track.source}:${track.id}',
+                  ),
+                SafeArea(child: themedContent),
+                if (!mobile && state.error != null)
+                  Positioned(
+                    top: 46,
+                    left: 24,
+                    right: 24,
+                    child: AppNotice.error(
+                      title: '播放失败',
+                      message: appErrorMessage(
+                        state.error!,
+                        fallback: '歌曲暂时无法播放，请重试或切换音源。',
                       ),
                     ),
-                  ],
-                );
-          return Stack(
-            key: const Key('player-screen-root'),
-            fit: StackFit.expand,
-            children: [
-              PlayerBackdrop(
-                source: artworkSource,
-                transitionKey: '${track.source}:${track.id}',
-              ),
-              SafeArea(child: content),
-              if (!mobile && state.error != null)
-                Positioned(
-                  top: 46,
-                  left: 24,
-                  right: 24,
-                  child: AppNotice.error(
-                    title: '播放失败',
-                    message: state.error.toString(),
                   ),
-                ),
-            ],
-          );
-        },
-      );
-    },
+              ],
+            );
+          },
+        );
+      },
+    ),
   );
+}
+
+final class _DesktopPlayerTheme extends StatelessWidget {
+  const _DesktopPlayerTheme({required this.palette, required this.child});
+
+  final ArtworkPalette palette;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = palette.vinylAccent;
+    final onAccent = contrastRatio(Colors.black, accent) >= 4.5
+        ? Colors.black
+        : Colors.white;
+    final shad = ShadTheme.of(context);
+    final material = Theme.of(context);
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? AppDurations.reducedMotion
+        : const Duration(milliseconds: 560);
+    final shadData = shad.copyWith(
+      colorScheme: shad.colorScheme.copyWith(
+        primary: accent,
+        primaryForeground: onAccent,
+        ring: accent,
+      ),
+      ghostButtonTheme: shad.ghostButtonTheme.copyWith(
+        foregroundColor: accent,
+        hoverForegroundColor: accent,
+        pressedForegroundColor: accent,
+      ),
+      sliderTheme: shad.sliderTheme.copyWith(
+        activeTrackColor: accent,
+        thumbBorderColor: accent,
+      ),
+    );
+    return ShadAnimatedTheme(
+      key: const Key('player-local-shad-theme'),
+      data: shadData,
+      duration: duration,
+      curve: AppCurves.out,
+      child: AnimatedTheme(
+        data: material.copyWith(
+          colorScheme: material.colorScheme.copyWith(
+            primary: accent,
+            onPrimary: onAccent,
+          ),
+        ),
+        duration: duration,
+        curve: AppCurves.out,
+        child: child,
+      ),
+    );
+  }
 }
 
 final class _MobilePlayer extends StatefulWidget {
@@ -197,18 +432,22 @@ final class _MobilePlayer extends StatefulWidget {
     required this.artworkSource,
     required this.pages,
     required this.onQueue,
+    required this.onMore,
     required this.onLyrics,
     required this.onBack,
     required this.topChromeInset,
+    required this.actions,
   });
 
   final PlayerController controller;
   final AppArtworkSource artworkSource;
   final PageController pages;
   final VoidCallback onQueue;
+  final VoidCallback onMore;
   final VoidCallback onLyrics;
   final VoidCallback onBack;
   final double topChromeInset;
+  final CurrentTrackActionsController? actions;
 
   @override
   State<_MobilePlayer> createState() => _MobilePlayerState();
@@ -232,6 +471,7 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
     final artworkSource = widget.artworkSource;
     final pages = widget.pages;
     final onQueue = widget.onQueue;
+    final onMore = widget.onMore;
     final onLyrics = widget.onLyrics;
     final onBack = widget.onBack;
     final state = controller.state;
@@ -262,9 +502,10 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
                 ),
               ),
               _MobileGlassIconButton(
-                label: '播放队列',
+                key: const Key('player-mobile-more'),
+                label: '更多操作',
                 icon: LucideIcons.ellipsis,
-                onPressed: onQueue,
+                onPressed: onMore,
               ),
             ],
           ),
@@ -282,7 +523,11 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
                     color: AppTokens.of(context).danger,
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(child: Text('当前音频暂时无法播放')),
+                  Expanded(
+                    child: Text(
+                      appErrorMessage(state.error!, fallback: '当前音频暂时无法播放'),
+                    ),
+                  ),
                   ShadButton.ghost(
                     height: 36,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -337,6 +582,7 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
             onQualityChanged: (quality) =>
                 unawaited(controller.setQuality(quality)),
             onQueue: onQueue,
+            actions: widget.actions,
           ),
         ],
       ),
@@ -346,6 +592,7 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
 
 final class _MobileGlassIconButton extends StatelessWidget {
   const _MobileGlassIconButton({
+    super.key,
     required this.label,
     required this.icon,
     required this.onPressed,

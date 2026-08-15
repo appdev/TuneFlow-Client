@@ -20,6 +20,8 @@ final class SearchMobileResults extends StatelessWidget {
     required this.onMore,
     required this.onViewAll,
     required this.onRetry,
+    this.onOpenCollection,
+    this.embedded = false,
   });
 
   final SearchState state;
@@ -30,6 +32,8 @@ final class SearchMobileResults extends StatelessWidget {
   final TrackCallback onMore;
   final ValueChanged<SearchView> onViewAll;
   final ValueChanged<CatalogSearchKind> onRetry;
+  final ValueChanged<CatalogCollection>? onOpenCollection;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
@@ -73,6 +77,7 @@ final class SearchMobileResults extends StatelessWidget {
             ? section.error ?? const Object()
             : null,
         onRetry: () => onRetry(CatalogSearchKind.track),
+        embedded: embedded,
       ),
     );
   }
@@ -88,7 +93,9 @@ final class SearchMobileResults extends StatelessWidget {
       return const AppEmptyState(message: '没有找到匹配内容');
     }
     return GridView.builder(
-      controller: scrollController,
+      controller: embedded ? null : scrollController,
+      shrinkWrap: embedded,
+      physics: embedded ? const NeverScrollableScrollPhysics() : null,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 12,
@@ -96,49 +103,65 @@ final class SearchMobileResults extends StatelessWidget {
         childAspectRatio: .78,
       ),
       itemCount: section.items.length,
-      itemBuilder: (_, index) => _CollectionCard(item: section.items[index]),
+      itemBuilder: (_, index) => _CollectionCard(
+        item: section.items[index],
+        onPressed: onOpenCollection == null
+            ? null
+            : () => onOpenCollection!(section.items[index]),
+      ),
     );
   }
 }
 
 final class _CollectionCard extends StatelessWidget {
-  const _CollectionCard({required this.item});
+  const _CollectionCard({required this.item, this.onPressed});
   final CatalogCollection item;
+  final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context) => Container(
-    key: Key('search-collection-${item.source}-${item.id}'),
-    padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: '打开${item.name}',
+    child: Material(
+      key: Key('search-collection-${item.source}-${item.id}'),
       color: AppTokens.of(context).surface,
-      borderRadius: BorderRadius.circular(AppRadii.compactCard),
-      border: Border.all(color: AppTokens.of(context).borderSoft),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: LayoutBuilder(
-            builder: (_, constraints) => AppArtwork(
-              imageUrl: item.imageUrl?.toString(),
-              seed: '${item.source}:${item.id}',
-              semanticLabel: '${item.name}封面',
-              size: constraints.maxWidth,
-              width: constraints.maxWidth,
-              height: constraints.maxHeight,
-            ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.compactCard),
+        side: BorderSide(color: AppTokens.of(context).borderSoft),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(AppRadii.compactCard),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (_, constraints) => AppArtwork(
+                    imageUrl: item.imageUrl?.toString(),
+                    seed: '${item.source}:${item.id}',
+                    semanticLabel: '${item.name}封面',
+                    size: constraints.maxWidth,
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (item.author.isNotEmpty)
+                Text(
+                  item.author,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.metadata,
+                ),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
-        Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        if (item.author.isNotEmpty)
-          Text(
-            item.author,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTypography.metadata,
-          ),
-      ],
+      ),
     ),
   );
 }

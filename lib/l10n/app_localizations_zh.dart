@@ -28,6 +28,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get connecting => '连接中…';
 
   @override
+  String get connectingTitle => '正在连接音流服务';
+
+  @override
   String get disconnect => '断开连接';
 
   @override

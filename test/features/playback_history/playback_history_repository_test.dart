@@ -13,7 +13,7 @@ http.Response data(Object? value) =>
 
 void main() {
   test(
-    'record playback posts the complete track to the history route',
+    'start posts only the complete track and platform and returns playback id',
     () async {
       late http.Request call;
       final repository = PlaybackHistoryRepository(
@@ -22,11 +22,14 @@ void main() {
           client: MockClient((request) async {
             call = request;
             return data({
+              'playbackId': 'play-1',
               'track': jsonDecode(request.body)['track'],
-              'playedAt': 123,
+              'platform': 'android',
+              'startedAt': 123,
             });
           }),
         ),
+        platform: 'android',
       );
       final track = Track.fromJson({
         'id': 'history-1',
@@ -35,13 +38,51 @@ void main() {
         'providerOnly': {'albumId': 'a1'},
       });
 
-      await repository.recordPlayback(track);
+      final playbackId = await repository.start(track);
 
+      expect(playbackId, 'play-1');
       expect(call.method, 'POST');
       expect(call.url.path, '/api/v1/playback/history');
-      expect(jsonDecode(call.body), {'track': track.toJson()});
+      expect(jsonDecode(call.body), {
+        'track': track.toJson(),
+        'platform': 'android',
+      });
     },
   );
+
+  test('end patches terminal playback facts in seconds', () async {
+    late http.Request call;
+    final repository = PlaybackHistoryRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          call = request;
+          return data({
+            'playbackId': 'play/1',
+            'track': {'id': 'history-1', 'source': 'kw'},
+            'platform': 'android',
+            'startedAt': 123,
+          });
+        }),
+      ),
+      platform: 'android',
+    );
+
+    await repository.end(
+      'play/1',
+      completed: false,
+      position: const Duration(milliseconds: 12500),
+      duration: const Duration(seconds: 180),
+    );
+
+    expect(call.method, 'PATCH');
+    expect(call.url.path, '/api/v1/playback/history/play%2F1');
+    expect(jsonDecode(call.body), {
+      'completed': false,
+      'lastPositionSeconds': 12.5,
+      'durationSeconds': 180.0,
+    });
+  });
 
   test(
     'read playback history preserves metadata and skips malformed entries',
@@ -58,7 +99,7 @@ void main() {
                   'name': 'Night Wind',
                   'providerOnly': {'albumId': 'a1'},
                 },
-                'playedAt': 123,
+                'startedAt': 123,
               },
               {
                 'track': {'id': 'broken', 'source': 'kw'},
@@ -66,6 +107,7 @@ void main() {
             ]),
           ),
         ),
+        platform: 'linux',
       );
 
       final history = await repository.readPlaybackHistory();

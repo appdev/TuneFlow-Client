@@ -13,6 +13,9 @@ final class PlaybackProgress extends StatelessWidget {
     this.hitExtent = 28,
     this.trackHeight = 4,
     this.thumbDiameter = 12,
+    this.activeTrackColor,
+    this.inactiveTrackColor,
+    this.labelColor,
   });
 
   final Duration position;
@@ -22,6 +25,9 @@ final class PlaybackProgress extends StatelessWidget {
   final double hitExtent;
   final double trackHeight;
   final double thumbDiameter;
+  final Color? activeTrackColor;
+  final Color? inactiveTrackColor;
+  final Color? labelColor;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +35,9 @@ final class PlaybackProgress extends StatelessWidget {
     final maximum = durationMs <= 0 ? 1.0 : durationMs.toDouble();
     final value = position.inMilliseconds.clamp(0, maximum.toInt()).toDouble();
     final tokens = AppTokens.of(context);
-    final timeStyle = AppTypography.counter.copyWith(color: tokens.muted);
+    final timeStyle = AppTypography.counter.copyWith(
+      color: labelColor ?? tokens.muted,
+    );
     return SizedBox(
       key: const Key('playback-progress'),
       height: hitExtent,
@@ -72,8 +80,9 @@ final class PlaybackProgress extends StatelessWidget {
                         enabled: durationMs > 0,
                         trackHeight: trackHeight,
                         thumbRadius: thumbDiameter / 2,
-                        activeTrackColor: tokens.accent,
-                        inactiveTrackColor: tokens.surfaceWarm,
+                        activeTrackColor: activeTrackColor ?? tokens.accent,
+                        inactiveTrackColor:
+                            inactiveTrackColor ?? tokens.playbackTrackInactive,
                         onChanged: (next) =>
                             onSeek(Duration(milliseconds: next.round())),
                       ),

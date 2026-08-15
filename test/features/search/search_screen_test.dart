@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +12,7 @@ import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
 import 'package:musicfree_service_client/design/components/artwork.dart';
+import 'package:musicfree_service_client/features/catalog/catalog_track_list.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
@@ -24,6 +27,7 @@ import 'package:musicfree_service_client/features/search/search_repository.dart'
 import 'package:musicfree_service_client/features/search/search_mobile_results.dart';
 import 'package:musicfree_service_client/features/search/search_screen.dart';
 import 'package:musicfree_service_client/features/search/search_track_artwork.dart';
+import 'package:musicfree_service_client/features/search/track_action.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -410,6 +414,10 @@ void main() {
   testWidgets('shows Web-equivalent provider tabs and aggregate search', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: MockClient(
@@ -471,6 +479,10 @@ void main() {
   testWidgets('search history uses the active source without storing one', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     SharedPreferences.resetStatic();
     SharedPreferences.setMockInitialValues({
       SearchHistoryRepository.storageKey: ['晚风', '挪威的森林'],
@@ -537,9 +549,12 @@ void main() {
       tester.getTopLeft(find.byKey(const Key('search-field'))).dx,
     );
     final historyItem = find.byKey(const Key('search-history-item-0'));
-    final gesture = await tester.startGesture(tester.getCenter(historyItem));
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: tester.getCenter(historyItem));
+    await gesture.down(tester.getCenter(historyItem));
     await tester.pump();
     await gesture.up();
+    await gesture.removePointer();
     await tester.pump();
 
     expect(
@@ -555,6 +570,10 @@ void main() {
   testWidgets('switching provider tabs replaces results with that source', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final searchedSources = <String>[];
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
@@ -648,15 +667,28 @@ void main() {
     expect(searchedSources, ['kw', 'kg', 'tx', 'wy', 'mg']);
   });
 
-  testWidgets('searches with Shad input, renders results, and plays a track', (
+  testWidgets('playing a search result preserves the result queue', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: MockClient(
         (request) async => http.Response(
           jsonEncode({
             'data': switch (request.url.path) {
+              final path when path.endsWith('/catalog/capabilities') => {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track'],
+                  },
+                ],
+              },
               final path when path.endsWith('/tracks/search') => {
                 'list': [
                   {
@@ -665,8 +697,15 @@ void main() {
                     'singer': 'Artist',
                     'source': 'kw',
                   },
+                  {
+                    'id': 'two',
+                    'name': 'Two',
+                    'singer': 'Artist',
+                    'source': 'kw',
+                    'pic': 'https://example.test/two.jpg',
+                  },
                 ],
-                'total': 1,
+                'total': 2,
               },
               final path when path.endsWith('/tracks/picture') => {
                 'url': 'https://example.test/one.jpg',
@@ -679,11 +718,12 @@ void main() {
       ),
     );
     final player = testPlayer();
+    final controller = feature.SearchController(SearchRepository(api));
 
     await tester.pumpWidget(
       harness(
         SearchScreen(
-          controller: feature.SearchController(SearchRepository(api)),
+          controller: controller,
           playlists: PlaylistRepository(api),
           downloads: DownloadRepository(api),
           player: player,
@@ -692,8 +732,8 @@ void main() {
     );
     expect(find.text('输入关键词搜索音乐'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('search-field')), 'one');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await controller.loadCapabilities();
+    await controller.search(source: 'kw', query: 'one');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('search-track-kw-one')));
     await tester.pump(const Duration(milliseconds: 50));
@@ -702,8 +742,114 @@ void main() {
 
     expect(find.byKey(const Key('search-track-kw-one')), findsOneWidget);
     expect(player.state.current?.id, 'one');
+    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.currentIndex, 0);
     expect(player.state.current?.raw['pic'], 'https://example.test/one.jpg');
     expect(find.byKey(const Key('search-wide-layout')), findsOneWidget);
+
+    final secondRow = tester
+        .widgetList<CatalogTrackRow>(find.byType(CatalogTrackRow))
+        .singleWhere((row) => row.track.id == 'two');
+    await secondRow.actions
+        .singleWhere((action) => action.id == TrackActionId.playNow)
+        .invoke();
+
+    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.currentIndex, 1);
+  });
+
+  testWidgets('search playback uses the list visible when playback starts', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final pictureResponse = Completer<http.Response>();
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/catalog/capabilities')) {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track'],
+                  },
+                ],
+              },
+            }),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/tracks/picture')) {
+          return pictureResponse.future;
+        }
+        if (request.url.path.endsWith('/tracks/search')) {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          final next = body['text'] == 'next';
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'list': next
+                    ? [
+                        {'id': 'three', 'name': 'Three', 'source': 'kw'},
+                        {'id': 'four', 'name': 'Four', 'source': 'kw'},
+                      ]
+                    : [
+                        {'id': 'one', 'name': 'One', 'source': 'kw'},
+                        {
+                          'id': 'two',
+                          'name': 'Two',
+                          'source': 'kw',
+                          'pic': 'https://example.test/two.jpg',
+                        },
+                      ],
+                'total': 2,
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response(jsonEncode({'data': <Object?>[]}), 200);
+      }),
+    );
+    final player = testPlayer();
+    final controller = feature.SearchController(SearchRepository(api));
+
+    await tester.pumpWidget(
+      harness(
+        SearchScreen(
+          controller: controller,
+          playlists: PlaylistRepository(api),
+          downloads: DownloadRepository(api),
+          player: player,
+        ),
+      ),
+    );
+    await controller.loadCapabilities();
+    await controller.search(source: 'kw', query: 'first');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('search-track-kw-one')));
+    await tester.pump();
+    await controller.search(source: 'kw', query: 'next');
+    await tester.pump();
+    pictureResponse.complete(
+      http.Response(
+        jsonEncode({
+          'data': {'url': 'https://example.test/one.jpg'},
+        }),
+        200,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.currentIndex, 0);
   });
 
   testWidgets('mobile search renders touch rows without a desktop table', (
@@ -732,6 +878,7 @@ void main() {
     );
 
     expect(find.byKey(const Key('search-mobile-layout')), findsOneWidget);
+    expect(find.byKey(const Key('search-mobile-scroll')), findsOneWidget);
     expect(find.byKey(const Key('search-field')), findsOneWidget);
     expect(
       find.descendant(
@@ -951,6 +1098,7 @@ void main() {
   testWidgets(
     'mobile defaults to all sources and keeps collection tabs usable',
     (tester) async {
+      CatalogCollection? openedCollection;
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -1013,6 +1161,7 @@ void main() {
             playlists: PlaylistRepository(api),
             downloads: DownloadRepository(api),
             player: testPlayer(),
+            onOpenCollection: (collection) => openedCollection = collection,
           ),
         ),
       );
@@ -1037,6 +1186,8 @@ void main() {
 
       expect(searches, contains(('/api/v1/catalog/albums/search', 'wy')));
       expect(find.text('叶惠美'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('search-collection-wy-jay-album')));
+      expect(openedCollection?.id, 'jay-album');
     },
   );
 

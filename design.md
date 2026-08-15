@@ -1,4 +1,4 @@
-<!-- Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 -->
+<!-- Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 -->
 
 # Design — TuneFlow 音流
 
@@ -11,7 +11,7 @@ invent page-local themes or raw colours.
 - Genre: atmospheric, restrained and soft.
 - Catalog origin: Bloom family, adapted for a persistent cross-platform app.
 - Product theme ID: `mistSea`（雾海）.
-- Pre-emit critique: Philosophy 5 · Hierarchy 4 · Execution 4 · Specificity 5 · Restraint 5 · Variety 4.
+- Pre-emit critique: Philosophy 5 · Hierarchy 5 · Execution 5 · Specificity 5 · Restraint 5 · Variety 4.
 
 ## Audience and primary job
 
@@ -168,42 +168,76 @@ to tokens and `ShadThemeData`. A future theme picker may persist `AppThemeId`
 without changing any screen implementation. This release does not expose a
 theme-family picker.
 
+`ThemeMode.system` follows the host brightness at runtime on mobile, Windows,
+Linux, and macOS. Explicit light or dark selections remain fixed when the host
+changes. Both the Material and shadcn theme layers must resolve to the same
+brightness.
+
 ## Theme — Mist Sea / light
 
-- `paper`: `oklch(96.5% 0.012 175)`
-- `paper-2`: `oklch(93% 0.016 175)`
-- `paper-3`: `oklch(89% 0.020 175)`
-- `ink`: `oklch(18% 0.018 175)`
-- `ink-2`: `oklch(31% 0.018 175)`
-- `muted`: `oklch(49% 0.016 175)`
-- `rule`: `oklch(84% 0.018 175)`
-- `rule-2`: `oklch(70% 0.022 175)`
-- `accent`: `oklch(48% 0.085 175)`
-- `accent-ink`: `oklch(97% 0.010 175)`
-- `focus`: `oklch(57% 0.120 175)`
-- `success`: `oklch(52% 0.110 150)`
-- `warning`: `oklch(62% 0.120 75)`
-- `danger`: `oklch(56% 0.170 25)`
+Neutral Paper takes its canvas and text hierarchy from the approved visual
+reference while preserving TuneFlow's restrained Mist Mint identity.
+
+- `paper`: `#F6F6F6`
+- `paper-2`: `#FAFAFA`
+- `paper-3`: `#EAEAEA`
+- `ink`: `#252525`
+- `ink-2`: `#494949`
+- `muted`: `#626262`
+- `rule`: `#DDDDDD`
+- `rule-2`: `#EAEAEA`
+- `accent`: `#14745F`
+- `accent-ink`: `#F6F6F6`
+- `primary-action`: `#14745F`
+- `primary-action-ink`: `#F6F6F6`
+- `focus`: `#008B70`
+- `success`: `#2F7D4A`
+- `warning`: `#966000`
+- `danger`: `#B93B3B`
+- `overlay`: `#66252525`
+- `player-veil`: `#CCF6F6F6`
+- `playback-action`: `#14745F`
+- `playback-action-ink`: `#FFFFFF`
+- `playback-track-inactive`: `#8A8A8A`
 
 ## Theme — Mist Sea / dark
 
-- `paper`: `oklch(14% 0.014 175)`
-- `paper-2`: `oklch(18% 0.016 175)`
-- `paper-3`: `oklch(23% 0.018 175)`
-- `ink`: `oklch(94% 0.010 175)`
-- `ink-2`: `oklch(80% 0.012 175)`
-- `muted`: `oklch(66% 0.014 175)`
-- `rule`: `oklch(30% 0.018 175)`
-- `rule-2`: `oklch(43% 0.022 175)`
-- `accent`: `oklch(74% 0.085 175)`
-- `accent-ink`: `oklch(15% 0.018 175)`
-- `focus`: `oklch(80% 0.110 175)`
-- `success`: `oklch(74% 0.100 150)`
-- `warning`: `oklch(78% 0.110 75)`
-- `danger`: `oklch(72% 0.150 25)`
+Soft Charcoal removes the previous green-black cast and raises ordinary panels
+through neutral luminance rather than hue. Interactive color has two deliberate
+levels: vivid green is reserved for primary actions; mint teal marks navigation,
+links, playback progress, and other ordinary controls.
 
-The accent occupies at most 3–5% of a viewport. Album art may carry any colour;
-UI chrome may not borrow arbitrary cover colours.
+- `paper`: `#171817`
+- `paper-2`: `#202120`
+- `paper-3`: `#2B2C2A`
+- `ink`: `#ECEDEA`
+- `ink-2`: `#C6C7C3`
+- `muted`: `#A0A19D`
+- `rule`: `#464743`
+- `rule-2`: `#30312F`
+- `accent`: `#19D39B`
+- `accent-ink`: `#101713`
+- `primary-action`: `#00E66A`
+- `primary-action-ink`: `#101713`
+- `focus`: `#19D39B`
+- `success`: `#75B987`
+- `warning`: `#D7A45A`
+- `danger`: `#E87870`
+- `overlay`: `#B3121312`
+- `player-veil`: `#D9171817`
+- `playback-action`: `#14745F`
+- `playback-action-ink`: `#FFFFFF`
+- `playback-track-inactive`: `#737570`
+
+The combined interactive colors occupy at most about 3% of an ordinary
+viewport. Primary-action green fills enabled play, connect, save, and confirm
+controls. At rest, outline, ghost, and link controls use the neutral ink color;
+their content changes to primary-action green on hover, focus, press, or an
+explicit selected state. Progress and active playback indicators may use the
+quieter accent. Disabled controls remain neutral. Album art may carry any
+colour; UI chrome may not borrow arbitrary
+cover colours. Required text reaches at least 4.5:1 contrast, and focus or
+functional boundaries reach at least 3:1 when they are the only visible cue.
 
 ## Typography
 
@@ -254,6 +288,10 @@ and more-action behaviour remains. The redesign may change typography, spacing,
 dividers, hover/focus/pressed/selected/playing/loading colours, but it must not
 move fields or change the row geometry between states.
 
+The local-library variant reuses the same favourite-to-playlist flow on desktop
+and mobile, while retaining its Service-file delete action as the final trailing
+control. Choosing favourite never starts row playback.
+
 ## Immersive player
 
 - Background source: the current track's `raw['pic']` URL. The sharp and blurred
@@ -267,8 +305,15 @@ move fields or change the row geometry between states.
   controls. The blurred image is decorative and excluded from semantics.
 - Transition on track change: opacity crossfade only. No zoom, drift, parallax,
   or animated gradient.
-- Missing or failed artwork: reuse the deterministic seed artwork for both
-  sharp and blurred layers.
+- Missing or failed track artwork: use one centered vinyl-record structure in
+  both brightness modes, with a filled single music note in the center label.
+  Light and dark modes keep identical geometry and use their semantic palette;
+  dark mode uses the approved balanced charcoal/near-black/Mist Mint treatment.
+  The seed never changes fallback pixels. Do not show a logo, waveform, or
+  `TUNEFLOW` wordmark.
+- Missing player artwork: show the default cover only in the foreground. The
+  player backdrop remains the normal theme canvas and veil; never enlarge or
+  blur placeholder graphics.
 - Desktop: artwork and metadata left, lyrics right, controls anchored below.
 - Mobile: cover / lyrics / queue remain swipeable views; lyrics are the primary
   reading surface. Navigation chrome remains hidden until exit.
@@ -276,6 +321,32 @@ move fields or change the row geometry between states.
 ## Interaction and motion
 
 - Touch targets: 44 px minimum.
+- Ordinary interface icons use Lucide. Playback transport controls are one
+  deliberate Material Rounded family: previous, play, pause, and next must not
+  mix icon families within the same control cluster.
+- Native AppKit surfaces cannot consume Flutter `IconData` directly. Their
+  checked-in template assets must be exported from the same families: Material
+  Rounded for previous/play/pause/next and Lucide for ordinary actions such as
+  favorite. Native call sites use semantic asset names and do not select SF
+  Symbols or introduce another icon family.
+- The macOS status item uses a dedicated monochrome TuneFlow brand mark, not a
+  scaled application icon or generic music note. Its simplified 18 pt geometry
+  fills the optical canvas and remains a template image so macOS controls its
+  foreground colour in light, dark, and high-contrast menu bars.
+- macOS transport template assets use an 18 pt canvas with a 13–15 pt visible
+  glyph height. Resource tests must check visible alpha bounds, not only the
+  nominal image size, so play and pause remain balanced with the brand mark.
+- The status item recomputes its intrinsic width whenever the track title or
+  visible controls change. A shorter title must release its previous width;
+  stretched stack geometry is never reused as the next intrinsic measurement.
+- Play and pause glyphs are solid. Filled playback actions use
+  `playback-action` with white `playback-action-ink`; unfilled playback actions
+  keep the ordinary neutral foreground.
+- Click and tap feedback is flat: no expanding ink or water-ripple animation.
+  Hover, focus, pressed tint, loading, disabled state, and semantics remain.
+- Playback progress uses `playback-track-inactive` by default. On artwork-driven
+  player backgrounds, derive the inactive track from the readable foreground
+  until it reaches at least 3:1 against both gradient endpoints.
 - Focus rings: immediate and clearly visible; never animated.
 - Durations: press 100–120 ms; hover/state 180 ms; sheet/page transition up to
   280 ms. Reduced motion uses opacity only and lasts no more than 150 ms.
@@ -309,17 +380,20 @@ mirror it and must remain generated from the same values.
 
 ```css
 :root {
-  --color-paper: oklch(96.5% 0.012 175);
-  --color-paper-2: oklch(93% 0.016 175);
-  --color-paper-3: oklch(89% 0.020 175);
-  --color-ink: oklch(18% 0.018 175);
-  --color-ink-2: oklch(31% 0.018 175);
-  --color-muted: oklch(49% 0.016 175);
-  --color-rule: oklch(84% 0.018 175);
-  --color-rule-2: oklch(70% 0.022 175);
-  --color-accent: oklch(48% 0.085 175);
-  --color-accent-ink: oklch(97% 0.010 175);
-  --color-focus: oklch(57% 0.120 175);
+  --color-paper: #f6f6f6;
+  --color-paper-2: #fafafa;
+  --color-paper-3: #eaeaea;
+  --color-ink: #252525;
+  --color-ink-2: #494949;
+  --color-muted: #626262;
+  --color-rule: #dddddd;
+  --color-rule-2: #eaeaea;
+  --color-accent: #14745f;
+  --color-accent-ink: #f6f6f6;
+  --color-playback-action: #14745f;
+  --color-playback-action-ink: #ffffff;
+  --color-playback-track-inactive: #8a8a8a;
+  --color-focus: #008b70;
   --font-display: "Noto Serif SC", serif;
   --font-body: "Noto Sans SC", sans-serif;
   --font-outlier: "IBM Plex Mono", monospace;
@@ -333,17 +407,20 @@ mirror it and must remain generated from the same values.
 }
 
 .dark {
-  --color-paper: oklch(14% 0.014 175);
-  --color-paper-2: oklch(18% 0.016 175);
-  --color-paper-3: oklch(23% 0.018 175);
-  --color-ink: oklch(94% 0.010 175);
-  --color-ink-2: oklch(80% 0.012 175);
-  --color-muted: oklch(66% 0.014 175);
-  --color-rule: oklch(30% 0.018 175);
-  --color-rule-2: oklch(43% 0.022 175);
-  --color-accent: oklch(74% 0.085 175);
-  --color-accent-ink: oklch(15% 0.018 175);
-  --color-focus: oklch(80% 0.110 175);
+  --color-paper: #171817;
+  --color-paper-2: #202120;
+  --color-paper-3: #2b2c2a;
+  --color-ink: #ecedea;
+  --color-ink-2: #c6c7c3;
+  --color-muted: #a0a19d;
+  --color-rule: #464743;
+  --color-rule-2: #30312f;
+  --color-accent: #19d39b;
+  --color-accent-ink: #101713;
+  --color-playback-action: #14745f;
+  --color-playback-action-ink: #ffffff;
+  --color-playback-track-inactive: #737570;
+  --color-focus: #19d39b;
 }
 ```
 
@@ -356,14 +433,18 @@ palette by hand.
 ### DTCG mapping
 
 Use the role names above under `color`, `font`, `space`, `radius`, and `duration`;
-each entry carries `$type` and the exact OKLCH or dimension value. Generate this
-from the Flutter theme registry when a token pipeline is introduced.
+each entry carries `$type` and the exact sRGB hex or dimension value. Generate
+this from the Flutter theme registry when a token pipeline is introduced.
 
 ### shadcn/ui mapping
 
 `paper → background`, `ink → foreground`, `paper-2 → card/popover`,
-`accent → primary`, `accent-ink → primary-foreground`, `rule → border/input`,
-and `focus → ring`. Use space-separated OKLCH triples.
+`primary-action → primary`, `primary-action-ink → primary-foreground`,
+`ink → outline/ghost/link resting foreground`,
+`primary-action → outline/ghost/link hover and pressed foreground`,
+`accent → progress and active playback state`, `rule → border/input`, and
+`focus → ring`. Preserve the exact sRGB values above when translating them to
+the consuming library's preferred syntax.
 
 ## Shared and variable rules
 

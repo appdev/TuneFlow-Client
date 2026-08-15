@@ -5,11 +5,13 @@ import 'package:flutter/material.dart' hide SearchController;
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
 import '../../design/components/app_glass_surface.dart';
+import '../../design/components/app_playback_button.dart';
 import '../../design/components/app_states.dart';
 import '../../design/app_theme_definition.dart';
 import '../../design/design_tokens.dart';
@@ -33,6 +35,7 @@ final class SearchScreen extends StatefulWidget {
     required this.downloads,
     required this.player,
     this.onSettings,
+    this.onOpenCollection,
     SearchHistoryRepository? history,
   }) : history = history ?? SearchHistoryRepository();
 
@@ -41,6 +44,7 @@ final class SearchScreen extends StatefulWidget {
   final DownloadRepository downloads;
   final PlayerController player;
   final VoidCallback? onSettings;
+  final ValueChanged<CatalogCollection>? onOpenCollection;
   final SearchHistoryRepository history;
 
   @override
@@ -51,6 +55,7 @@ final class _SearchScreenState extends State<SearchScreen> {
   final query = TextEditingController();
   final searchFocus = FocusNode();
   final scroll = ScrollController();
+  final searchTapGroup = Object();
   String selectedSource = 'kw';
   var mobileLayout = false;
   List<String> historyItems = const [];
@@ -141,16 +146,27 @@ final class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _play(Track track) async {
+    final tracks = [...widget.controller.state.tracks];
+    final index = tracks.indexWhere(
+      (item) => item.source == track.source && item.id == track.id,
+    );
+    var playable = track;
     final embedded = track.raw['pic'];
-    if (embedded is String && embedded.isNotEmpty) {
-      await widget.player.play(track);
+    if (embedded is! String || embedded.isEmpty) {
+      final picture = await widget.controller.loadPicture(track);
+      if (picture != null) {
+        playable = Track.fromJson({
+          ...track.toJson(),
+          'pic': picture.toString(),
+        });
+      }
+    }
+    if (index < 0) {
+      await widget.player.play(playable);
       return;
     }
-    final picture = await widget.controller.loadPicture(track);
-    final playable = picture == null
-        ? track
-        : Track.fromJson({...track.toJson(), 'pic': picture.toString()});
-    await widget.player.play(playable);
+    tracks[index] = playable;
+    await widget.player.playTracks(tracks, startIndex: index);
   }
 
   Future<void> _run(
@@ -170,7 +186,7 @@ final class _SearchScreenState extends State<SearchScreen> {
         showAppMessage(
           context,
           title: '操作失败',
-          message: error.toString(),
+          message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
           destructive: true,
         );
       }
@@ -226,16 +242,27 @@ final class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  List<TrackAction> _actionsFor(Track track) => buildTrackActions(
-    track: track,
-    player: widget.player,
-    showLyrics: (value) => _run(() => _lyrics(value)),
-    addToPlaylist: (value) => _run(() => _choosePlaylist(value)),
-    download: (value, quality) => _run(
-      () => widget.downloads.create(value, quality),
-      successTitle: '已加入下载队列',
-    ),
-  );
+  List<TrackAction> _actionsFor(Track track) {
+    final standard = buildTrackActions(
+      track: track,
+      player: widget.player,
+      showLyrics: (value) => _run(() => _lyrics(value)),
+      addToPlaylist: (value) => _run(() => _choosePlaylist(value)),
+      download: (value, quality) => _run(
+        () => widget.downloads.create(value, quality),
+        successTitle: '已加入下载队列',
+      ),
+    );
+    return [
+      TrackAction(
+        id: TrackActionId.playNow,
+        label: '立即播放',
+        icon: AppPlaybackIcons.play,
+        invoke: () => _play(track),
+      ),
+      ...standard.where((action) => action.id != TrackActionId.playNow),
+    ];
+  }
 
   void _more(Track track) {
     unawaited(
@@ -360,124 +387,156 @@ final class _SearchScreenState extends State<SearchScreen> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (mobile) ...[
-                          _MobileSearchMasthead(onSettings: widget.onSettings),
-                          const SizedBox(height: 28),
-                          Text(
-                            '搜索',
-                            key: const Key('search-page-title'),
-                            style: AppTypography.mobilePageTitle,
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-                        _SearchBar(
-                          mobile: mobile,
-                          state: state,
-                          controller: query,
-                          focusNode: searchFocus,
-                          onSearch: _search,
-                        ),
-                        if (mobile && showHistory) ...[
-                          const SizedBox(height: 8),
-                          SearchHistoryPanel(
-                            items: historyItems,
-                            mobile: true,
-                            onSelected: (value) =>
-                                unawaited(_selectHistory(value)),
-                            onRemoved: (value) =>
-                                unawaited(_removeHistory(value)),
-                            onCleared: () => unawaited(_clearHistory()),
-                          ),
-                        ],
-                        if (mobile) ...[
-                          const SizedBox(height: 20),
-                          _MobileSearchFilters(
-                            state: state,
-                            sourceLabel: _sourceLabel(state, selectedSource),
-                            onViewSelected: (view) =>
-                                unawaited(_selectMobileView(view, state)),
-                            onSourcePressed: () =>
-                                unawaited(_chooseSource(state)),
-                          ),
-                          if (!showHistory && state.query.isNotEmpty) ...[
-                            const SizedBox(height: 28),
-                            _MobileResultsHeading(state: state),
-                            const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final contents = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (mobile) ...[
+                              _MobileSearchMasthead(
+                                onSettings: widget.onSettings,
+                              ),
+                              const SizedBox(height: 28),
+                              Text(
+                                '搜索',
+                                key: const Key('search-page-title'),
+                                style: AppTypography.mobilePageTitle,
+                              ),
+                              const SizedBox(height: 20),
+                            ],
+                            _SearchBar(
+                              mobile: mobile,
+                              state: state,
+                              controller: query,
+                              focusNode: searchFocus,
+                              tapRegionGroupId: searchTapGroup,
+                              onSearch: _search,
+                            ),
+                            if (mobile && showHistory) ...[
+                              const SizedBox(height: 8),
+                              TapRegion(
+                                groupId: searchTapGroup,
+                                child: SearchHistoryPanel(
+                                  items: historyItems,
+                                  mobile: true,
+                                  onSelected: (value) =>
+                                      unawaited(_selectHistory(value)),
+                                  onRemoved: (value) =>
+                                      unawaited(_removeHistory(value)),
+                                  onCleared: () => unawaited(_clearHistory()),
+                                ),
+                              ),
+                            ],
+                            if (mobile) ...[
+                              const SizedBox(height: 20),
+                              _MobileSearchFilters(
+                                state: state,
+                                sourceLabel: _sourceLabel(
+                                  state,
+                                  selectedSource,
+                                ),
+                                onViewSelected: (view) =>
+                                    unawaited(_selectMobileView(view, state)),
+                                onSourcePressed: () =>
+                                    unawaited(_chooseSource(state)),
+                              ),
+                              if (!showHistory && state.query.isNotEmpty) ...[
+                                const SizedBox(height: 28),
+                                _MobileResultsHeading(state: state),
+                                const SizedBox(height: 8),
+                              ],
+                            ] else ...[
+                              const SizedBox(height: 18),
+                              _SourceTabs(
+                                state: state,
+                                selected: selectedSource,
+                                onSelected: (source) {
+                                  setState(() => selectedSource = source);
+                                  unawaited(_search());
+                                },
+                              ),
+                              _ViewTabs(
+                                controller: widget.controller,
+                                state: state,
+                                onSelected: (view) => unawaited(
+                                  widget.controller.selectView(view),
+                                ),
+                              ),
+                            ],
+                            if (!(mobile && showHistory))
+                              mobile
+                                  ? SearchMobileResults(
+                                      state: state,
+                                      scrollController: scroll,
+                                      embedded: true,
+                                      loadPicture:
+                                          widget.controller.loadPicture,
+                                      onPlay: (track) =>
+                                          unawaited(_run(() => _play(track))),
+                                      onFavorite: (track) => unawaited(
+                                        _run(() => _choosePlaylist(track)),
+                                      ),
+                                      onMore: _more,
+                                      onViewAll: (view) => unawaited(
+                                        widget.controller.selectView(view),
+                                      ),
+                                      onRetry: (kind) => unawaited(
+                                        widget.controller.retrySection(kind),
+                                      ),
+                                      onOpenCollection:
+                                          widget.onOpenCollection ?? (_) {},
+                                    )
+                                  : Expanded(
+                                      child: SearchDesktopResults(
+                                        state: state,
+                                        scrollController: scroll,
+                                        loadPicture:
+                                            widget.controller.loadPicture,
+                                        onPlay: (track) =>
+                                            unawaited(_run(() => _play(track))),
+                                        onFavorite: (track) => unawaited(
+                                          _run(() => _choosePlaylist(track)),
+                                        ),
+                                        actionsFor: _actionsFor,
+                                        onViewAll: (view) => unawaited(
+                                          widget.controller.selectView(view),
+                                        ),
+                                        onPage: (page) =>
+                                            unawaited(_page(page)),
+                                        onRetry: (kind) => unawaited(
+                                          widget.controller.retrySection(kind),
+                                        ),
+                                        onOpenCollection:
+                                            widget.onOpenCollection ?? (_) {},
+                                      ),
+                                    ),
                           ],
-                        ] else ...[
-                          const SizedBox(height: 18),
-                          _SourceTabs(
-                            state: state,
-                            selected: selectedSource,
-                            onSelected: (source) {
-                              setState(() => selectedSource = source);
-                              unawaited(_search());
-                            },
-                          ),
-                          _ViewTabs(
-                            controller: widget.controller,
-                            state: state,
-                            onSelected: (view) =>
-                                unawaited(widget.controller.selectView(view)),
-                          ),
-                        ],
-                        if (!(mobile && showHistory))
-                          Expanded(
-                            child: mobile
-                                ? SearchMobileResults(
-                                    state: state,
-                                    scrollController: scroll,
-                                    loadPicture: widget.controller.loadPicture,
-                                    onPlay: (track) =>
-                                        unawaited(_run(() => _play(track))),
-                                    onFavorite: (track) => unawaited(
-                                      _run(() => _choosePlaylist(track)),
-                                    ),
-                                    onMore: _more,
-                                    onViewAll: (view) => unawaited(
-                                      widget.controller.selectView(view),
-                                    ),
-                                    onRetry: (kind) => unawaited(
-                                      widget.controller.retrySection(kind),
-                                    ),
-                                  )
-                                : SearchDesktopResults(
-                                    state: state,
-                                    scrollController: scroll,
-                                    loadPicture: widget.controller.loadPicture,
-                                    onPlay: (track) =>
-                                        unawaited(_run(() => _play(track))),
-                                    onFavorite: (track) => unawaited(
-                                      _run(() => _choosePlaylist(track)),
-                                    ),
-                                    actionsFor: _actionsFor,
-                                    onViewAll: (view) => unawaited(
-                                      widget.controller.selectView(view),
-                                    ),
-                                    onPage: (page) => unawaited(_page(page)),
-                                    onRetry: (kind) => unawaited(
-                                      widget.controller.retrySection(kind),
-                                    ),
-                                  ),
-                          ),
-                      ],
+                        );
+                        return mobile
+                            ? SingleChildScrollView(
+                                key: const Key('search-mobile-scroll'),
+                                controller: scroll,
+                                child: contents,
+                              )
+                            : contents;
+                      },
                     ),
                     if (!mobile && showHistory)
                       Positioned(
                         top: 48,
                         left: 0,
                         width: 610,
-                        child: SearchHistoryPanel(
-                          items: historyItems,
-                          mobile: false,
-                          onSelected: (value) =>
-                              unawaited(_selectHistory(value)),
-                          onRemoved: (value) =>
-                              unawaited(_removeHistory(value)),
-                          onCleared: () => unawaited(_clearHistory()),
+                        child: TapRegion(
+                          groupId: searchTapGroup,
+                          child: SearchHistoryPanel(
+                            items: historyItems,
+                            mobile: false,
+                            onSelected: (value) =>
+                                unawaited(_selectHistory(value)),
+                            onRemoved: (value) =>
+                                unawaited(_removeHistory(value)),
+                            onCleared: () => unawaited(_clearHistory()),
+                          ),
                         ),
                       ),
                   ],
@@ -497,12 +556,14 @@ final class _SearchBar extends StatelessWidget {
     required this.state,
     required this.controller,
     required this.focusNode,
+    required this.tapRegionGroupId,
     required this.onSearch,
   });
   final bool mobile;
   final SearchState state;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final Object tapRegionGroupId;
   final Future<void> Function() onSearch;
 
   @override
@@ -520,6 +581,7 @@ final class _SearchBar extends StatelessWidget {
               key: const Key('search-field'),
               controller: controller,
               focusNode: focusNode,
+              groupId: tapRegionGroupId,
               placeholder: '搜索音乐',
               surface: mobile
                   ? AppFieldSurface.glass

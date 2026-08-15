@@ -82,7 +82,7 @@ void main() {
             repository: SearchRepository(api),
             kind: DiscoveryKind.charts,
             onSearch: () {},
-            playTracks: (_) async {},
+            playTracks: (_, {startIndex = 0}) async {},
             playlists: PlaylistRepository(api),
           ),
         ),
@@ -98,6 +98,93 @@ void main() {
       find.byKey(const Key('leaderboard-favorite-kw-track-1')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('playing a leaderboard track preserves its queue and index', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.url.path == '/api/v1/catalog/capabilities') {
+          return _data({
+            'sources': [
+              {
+                'id': 'kw',
+                'name': '酷我音乐',
+                'searchKinds': ['track'],
+                'leaderboards': true,
+              },
+            ],
+          });
+        }
+        if (request.url.path == '/api/v1/catalog/leaderboards') {
+          return _data({
+            'source': 'kw',
+            'list': [
+              {
+                'id': 'rise',
+                'providerId': 'rise',
+                'name': '飙升榜',
+                'source': 'kw',
+              },
+            ],
+          });
+        }
+        if (request.url.path == '/api/v1/catalog/leaderboards/tracks') {
+          return _data({
+            'list': [
+              {'songmid': 'one', 'name': 'One', 'source': 'kw'},
+              {'songmid': 'two', 'name': 'Two', 'source': 'kw'},
+              {'songmid': 'three', 'name': 'Three', 'source': 'kw'},
+            ],
+            'total': 3,
+          });
+        }
+        throw StateError('Unexpected request: ${request.url}');
+      }),
+    );
+    List<String> queued = const [];
+    var selectedIndex = -1;
+
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        builder: (context, child) => ShadAppBuilder(child: child!),
+        home: Scaffold(
+          body: DiscoveryScreen(
+            repository: SearchRepository(api),
+            kind: DiscoveryKind.charts,
+            onSearch: () {},
+            playTracks: (tracks, {startIndex = 0}) async {
+              queued = tracks.map((track) => track.id).toList();
+              selectedIndex = startIndex;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Two'));
+    await tester.pump();
+
+    expect(queued, ['one', 'two', 'three']);
+    expect(selectedIndex, 1);
+
+    queued = const [];
+    selectedIndex = -1;
+    await tester.tap(find.byKey(const Key('leaderboard-more-kw-two')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('track-action-playNow')));
+    await tester.pump();
+
+    expect(queued, ['one', 'two', 'three']);
+    expect(selectedIndex, 1);
   });
 
   testWidgets('leaderboard reports a localized playlist add failure', (

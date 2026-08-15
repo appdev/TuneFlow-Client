@@ -11,6 +11,7 @@ import 'features/player/notification_artwork.dart';
 import 'features/player/service_audio_handler.dart';
 import 'platform/app_platform.dart';
 import 'platform/desktop_window_bootstrap.dart';
+import 'platform/macos_menu_bar.dart';
 import 'storage/app_image_cache.dart';
 import 'storage/app_preferences.dart';
 import 'storage/media_cache.dart';
@@ -37,12 +38,21 @@ Future<void> main() async {
   }
   AppImageCache? imageCache;
   CeAppImageCache? imageCacheCandidate;
+  final persistentImageDirectory = Directory(
+    '${support.path}${Platform.pathSeparator}image-cache',
+  );
   try {
     final appCache = await getApplicationCacheDirectory();
+    await copyLegacyImageCacheIfNeeded(
+      legacy: Directory('${appCache.path}${Platform.pathSeparator}image-cache'),
+      persistent: persistentImageDirectory,
+    );
+  } on Object catch (error) {
+    debugPrint('Legacy image cache migration skipped: $error');
+  }
+  try {
     imageCacheCandidate = CeAppImageCache(
-      cacheBaseDirectory: Directory(
-        '${appCache.path}${Platform.pathSeparator}image-cache',
-      ),
+      cacheBaseDirectory: persistentImageDirectory,
       metadataBaseDirectory: Directory(
         '${support.path}${Platform.pathSeparator}image-cache-metadata',
       ),
@@ -92,6 +102,7 @@ Future<void> main() async {
       audio: audio,
       mediaCache: mediaCache,
       imageCache: imageCache,
+      macOSMenuBar: Platform.isMacOS ? MethodChannelMacOSMenuBarPort() : null,
     ),
   );
 }

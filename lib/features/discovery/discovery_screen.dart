@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_glass_surface.dart';
 import '../../design/components/app_mobile_chrome.dart';
+import '../../design/components/app_playback_button.dart';
+import '../../design/components/track_actions.dart';
 import '../../design/app_theme_definition.dart';
 import '../../design/components/app_states.dart';
 import '../../design/design_tokens.dart';
@@ -32,14 +35,16 @@ final class DiscoveryScreen extends StatefulWidget {
     this.onOpenPlaylist,
     this.playTracks,
     this.playlists,
+    this.embedded = false,
   });
 
   final SearchRepository repository;
   final DiscoveryKind kind;
   final VoidCallback onSearch;
   final ValueChanged<CatalogCollection>? onOpenPlaylist;
-  final Future<void> Function(List<Track> tracks)? playTracks;
+  final PlayTracks? playTracks;
   final PlaylistRepository? playlists;
+  final bool embedded;
 
   @override
   State<DiscoveryScreen> createState() => _DiscoveryScreenState();
@@ -127,6 +132,7 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
     if (!charts) {
       return PlaylistDiscoveryView(
         controller: playlistController!,
+        embedded: widget.embedded,
         onOpenPlaylist:
             widget.onOpenPlaylist ?? (playlist) => widget.onSearch(),
       );
@@ -146,7 +152,10 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
               children: [
                 AppNotice.error(
                   title: '无法读取平台能力',
-                  message: snapshot.error.toString(),
+                  message: appErrorMessage(
+                    snapshot.error!,
+                    fallback: '暂时无法读取音源能力，请稍后重试。',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 AppButton(
@@ -163,15 +172,20 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
           if (providers.isEmpty) return const _Unavailable();
           selectedProvider ??= providers.first.id;
           return ListView(
+            key: PageStorageKey(
+              widget.embedded ? 'charts-embedded-scroll' : 'charts-scroll',
+            ),
             padding: EdgeInsets.fromLTRB(
               mobile ? 16 : 38,
-              mobile ? 20 : 34,
+              widget.embedded ? 8 : (mobile ? 20 : 34),
               mobile ? 16 : 38,
               48,
             ),
             children: [
-              _PageHeader(charts: charts, mobile: mobile),
-              const SizedBox(height: 18),
+              if (!widget.embedded) ...[
+                _PageHeader(charts: charts, mobile: mobile),
+                const SizedBox(height: 18),
+              ],
               _ProviderChips(
                 providers: providers,
                 selected: selectedProvider!,
@@ -266,7 +280,7 @@ final class _LeaderboardView extends StatefulWidget {
   final SearchRepository repository;
   final String source;
   final bool mobile;
-  final Future<void> Function(List<Track> tracks)? playTracks;
+  final PlayTracks? playTracks;
   final Future<void> Function(Track track)? onFavorite;
 
   @override
@@ -286,6 +300,11 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
         page: 1,
       );
 
+  Future<void> playTrack(List<Track> tracks, int index) async {
+    final play = widget.playTracks;
+    if (play != null) await play(tracks, startIndex: index);
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<LeaderboardPage>(
     future: boards,
@@ -296,7 +315,10 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
       if (snapshot.hasError) {
         return AppNotice.error(
           title: '排行榜加载失败',
-          message: snapshot.error.toString(),
+          message: appErrorMessage(
+            snapshot.error!,
+            fallback: '排行榜暂时无法加载，请稍后重试。',
+          ),
         );
       }
       if (snapshot.data!.items.isEmpty) return const Text('当前音源没有返回排行榜');
@@ -354,7 +376,10 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
         if (snapshot.hasError) {
           return AppNotice.error(
             title: '榜单歌曲加载失败',
-            message: snapshot.error.toString(),
+            message: appErrorMessage(
+              snapshot.error!,
+              fallback: '榜单歌曲暂时无法加载，请稍后重试。',
+            ),
           );
         }
         final items = snapshot.data!.tracks;
@@ -397,7 +422,7 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
                   track: entry.$2,
                   onPlay: widget.playTracks == null
                       ? null
-                      : () => unawaited(widget.playTracks!([entry.$2])),
+                      : () => unawaited(playTrack(items, entry.$1)),
                   onFavorite: widget.onFavorite == null
                       ? null
                       : () => unawaited(widget.onFavorite!(entry.$2)),
@@ -411,8 +436,8 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
                           TrackAction(
                             id: TrackActionId.playNow,
                             label: '立即播放',
-                            icon: LucideIcons.play,
-                            invoke: () => widget.playTracks!([entry.$2]),
+                            icon: AppPlaybackIcons.play,
+                            invoke: () => playTrack(items, entry.$1),
                           ),
                         if (widget.onFavorite != null)
                           TrackAction(
@@ -439,8 +464,8 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
                     return embedded is String ? Uri.tryParse(embedded) : null;
                   },
                   onPlay: () {
-                    if (widget.playTracks case final play?) {
-                      unawaited(play([entry.$2]));
+                    if (widget.playTracks != null) {
+                      unawaited(playTrack(items, entry.$1));
                     }
                   },
                   onFavorite: widget.onFavorite == null
@@ -451,8 +476,8 @@ final class _LeaderboardViewState extends State<_LeaderboardView> {
                       TrackAction(
                         id: TrackActionId.playNow,
                         label: '立即播放',
-                        icon: LucideIcons.play,
-                        invoke: () => widget.playTracks!([entry.$2]),
+                        icon: AppPlaybackIcons.play,
+                        invoke: () => playTrack(items, entry.$1),
                       ),
                     if (widget.onFavorite != null)
                       TrackAction(

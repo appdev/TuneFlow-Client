@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
 import '../../design/components/app_states.dart';
+import '../../design/components/app_playback_button.dart';
 import '../../design/components/artwork.dart';
 import '../../design/design_tokens.dart';
 import '../catalog/catalog_track_list.dart';
@@ -26,6 +27,7 @@ final class SearchDesktopResults extends StatelessWidget {
     required this.onViewAll,
     required this.onPage,
     required this.onRetry,
+    this.onOpenCollection,
   });
 
   final SearchState state;
@@ -37,6 +39,7 @@ final class SearchDesktopResults extends StatelessWidget {
   final ValueChanged<SearchView> onViewAll;
   final ValueChanged<int> onPage;
   final ValueChanged<CatalogSearchKind> onRetry;
+  final ValueChanged<CatalogCollection>? onOpenCollection;
 
   @override
   Widget build(BuildContext context) {
@@ -164,8 +167,12 @@ final class SearchDesktopResults extends StatelessWidget {
               mainAxisSpacing: 16,
             ),
             itemCount: section.items.length,
-            itemBuilder: (_, index) =>
-                _DesktopCollectionCard(item: section.items[index]),
+            itemBuilder: (_, index) => _DesktopCollectionCard(
+              item: section.items[index],
+              onPressed: onOpenCollection == null
+                  ? null
+                  : () => onOpenCollection!(section.items[index]),
+            ),
           ),
         ),
         _Pagination(section: section, onPage: onPage, unit: '项'),
@@ -527,11 +534,11 @@ final class _DesktopBestMatch extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton.filled(
+            AppPlaybackIconButton(
               tooltip: '播放',
               onPressed: () => onPlay(track),
-              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-              icon: const Icon(LucideIcons.play, size: 18),
+              dimension: 40,
+              child: const AppPlaybackGlyph.play(size: 18),
             ),
           ],
         ),
@@ -567,37 +574,49 @@ final class _DesktopSectionTitle extends StatelessWidget {
 }
 
 final class _DesktopCollectionCard extends StatelessWidget {
-  const _DesktopCollectionCard({required this.item});
+  const _DesktopCollectionCard({required this.item, this.onPressed});
   final CatalogCollection item;
+  final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: '打开${item.name}',
+    child: Material(
+      key: Key('search-collection-${item.source}-${item.id}'),
       color: AppTokens.of(context).surface,
-      border: Border.all(color: AppTokens.of(context).borderSoft),
-      borderRadius: BorderRadius.circular(AppRadii.compactCard),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: LayoutBuilder(
-            builder: (_, constraints) => AppArtwork(
-              imageUrl: item.imageUrl?.toString(),
-              seed: '${item.source}:${item.id}',
-              semanticLabel: '${item.name}封面',
-              size: constraints.maxWidth,
-              width: constraints.maxWidth,
-              height: constraints.maxHeight,
-            ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.compactCard),
+        side: BorderSide(color: AppTokens.of(context).borderSoft),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(AppRadii.compactCard),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (_, constraints) => AppArtwork(
+                    imageUrl: item.imageUrl?.toString(),
+                    seed: '${item.source}:${item.id}',
+                    semanticLabel: '${item.name}封面',
+                    size: constraints.maxWidth,
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (item.author.isNotEmpty)
+                Text(item.author, maxLines: 1, style: AppTypography.metadata),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        if (item.author.isNotEmpty)
-          Text(item.author, maxLines: 1, style: AppTypography.metadata),
-      ],
+      ),
     ),
   );
 }

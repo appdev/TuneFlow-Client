@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
+import 'package:musicfree_service_client/features/library/library_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_detail_controller.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlists_controller.dart';
@@ -18,6 +20,13 @@ PlaylistRepository repositoryWith(
   ServiceApi(
     ServiceOrigin.parse('http://service.local'),
     client: MockClient(handler),
+  ),
+);
+
+LibraryRepository emptyLibrary() => LibraryRepository(
+  ServiceApi(
+    ServiceOrigin.parse('http://service.local'),
+    client: MockClient((_) async => data(<Object?>[])),
   ),
 );
 
@@ -45,6 +54,7 @@ void main() {
             ],
           });
         }),
+        library: emptyLibrary(),
       );
 
       await controller.refresh();
@@ -71,6 +81,7 @@ void main() {
                 ])
               : data({'id': 'one', 'name': 'One', 'tracks': <Object?>[]});
         }),
+        library: emptyLibrary(),
       );
 
       await controller.refresh();
@@ -103,6 +114,7 @@ void main() {
           'tracks': <Object?>[],
         });
       }),
+      library: emptyLibrary(),
       idFactory: () => 'flutter_test',
     );
 
@@ -118,6 +130,20 @@ void main() {
       'GET /api/v1/playlists',
       'GET /api/v1/playlists/list-2',
     ]);
+  });
+
+  test('refresh completes quietly when disposed while loading', () async {
+    final response = Completer<http.Response>();
+    final controller = PlaylistsController(
+      repositoryWith((_) => response.future),
+      library: emptyLibrary(),
+    );
+
+    final refresh = controller.refresh();
+    controller.dispose();
+    response.complete(data(<Object?>[]));
+
+    await expectLater(refresh, completes);
   });
 
   test(
@@ -159,6 +185,121 @@ void main() {
         'position': 1,
         'trackIds': ['track-2-a'],
       });
+    },
+  );
+
+  test('refresh loads playlists and local library independently', () async {
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.url.path == '/api/v1/library/tracks') {
+          return data([
+            {
+              'id': 'file-1',
+              'musicInfo': {'id': 'song-1', 'name': 'Local', 'source': 'kw'},
+              'size': 12,
+              'extension': 'mp3',
+              'streamUrl': '/api/v1/library/tracks/file-1/stream',
+            },
+          ]);
+        }
+        if (request.url.path == '/api/v1/playlists') {
+          return data([
+            {'id': 'love', 'name': 'list__name_love'},
+          ]);
+        }
+        return data({'id': 'love', 'name': 'love', 'tracks': <Object?>[]});
+      }),
+    );
+    final controller = PlaylistsController(
+      PlaylistRepository(api),
+      library: LibraryRepository(api),
+    );
+
+    await controller.refresh();
+
+    expect(controller.state.items.single.id, 'love');
+    expect(controller.state.library.single.track.title, 'Local');
+    expect(controller.state.playlistError, isNull);
+    expect(controller.state.libraryError, isNull);
+  });
+
+  test('refresh keeps each successful resource when the other fails', () async {
+    var failPlaylists = false;
+    var failLibrary = true;
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.url.path == '/api/v1/library/tracks') {
+          if (failLibrary) throw StateError('library offline');
+          return data([
+            {
+              'id': 'file-1',
+              'musicInfo': {'id': 'song-1', 'name': 'Local', 'source': 'kw'},
+              'size': 12,
+              'extension': 'mp3',
+              'streamUrl': '/api/v1/library/tracks/file-1/stream',
+            },
+          ]);
+        }
+        if (failPlaylists) throw StateError('playlists offline');
+        if (request.url.path == '/api/v1/playlists') {
+          return data([
+            {'id': 'love', 'name': 'list__name_love'},
+          ]);
+        }
+        return data({'id': 'love', 'name': 'love', 'tracks': <Object?>[]});
+      }),
+    );
+    final controller = PlaylistsController(
+      PlaylistRepository(api),
+      library: LibraryRepository(api),
+    );
+
+    await controller.refresh();
+    expect(controller.state.items.single.id, 'love');
+    expect(controller.state.library, isEmpty);
+    expect(controller.state.libraryError, isNotNull);
+
+    failLibrary = false;
+    failPlaylists = true;
+    await controller.refresh();
+
+    expect(controller.state.items.single.id, 'love');
+    expect(controller.state.library.single.track.id, 'song-1');
+    expect(controller.state.playlistError, isNotNull);
+    expect(controller.state.libraryError, isNull);
+    expect(controller.state.stale, isTrue);
+  });
+
+  test(
+    'playing one playlist track keeps the playlist queue and index',
+    () async {
+      final controller = PlaylistDetailController(
+        repositoryWith(
+          (_) async => data({
+            'id': 'p1',
+            'name': 'Mix',
+            'tracks': [
+              {'id': 'a', 'name': 'A', 'source': 'kw'},
+              {'id': 'b', 'name': 'B', 'source': 'kw'},
+              {'id': 'c', 'name': 'C', 'source': 'kw'},
+            ],
+          }),
+        ),
+        'p1',
+      );
+      List<String> queued = const [];
+      var selectedIndex = -1;
+
+      await controller.refresh();
+      await controller.playOne((tracks, {startIndex = 0}) async {
+        queued = tracks.map((track) => track.id).toList();
+        selectedIndex = startIndex;
+      }, 1);
+
+      expect(queued, ['a', 'b', 'c']);
+      expect(selectedIndex, 1);
     },
   );
 

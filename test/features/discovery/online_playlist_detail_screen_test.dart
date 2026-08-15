@@ -81,7 +81,7 @@ void main() {
             'source': 'kw',
             'page': 1,
             'limit': 1000,
-            'total': 1,
+            'total': 2,
             'hasMore': false,
             'playlist': {
               'id': 'list-1',
@@ -97,6 +97,12 @@ void main() {
             },
             'tracks': [
               {'songmid': 'one', 'name': 'One', 'source': 'kw'},
+              {
+                'songmid': 'two',
+                'name': 'Two',
+                'source': 'kw',
+                'pic': 'https://cdn.example.test/two.jpg',
+              },
             ],
           };
         } else if (request.url.path.endsWith('/picture')) {
@@ -146,15 +152,200 @@ void main() {
       'https://cdn.example.test/one.jpg',
     );
 
+    await tester.tap(find.byKey(const Key('search-track-kw-one')));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('search-track-kw-one')));
+    await tester.pumpAndSettle();
+    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.currentIndex, 0);
+
     await tester.tap(find.byKey(const Key('online-playlist-play-all')));
     await tester.pumpAndSettle();
-    expect(player.state.queue.map((track) => track.id), ['one']);
+    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
     expect(
       player.state.current?.raw['pic'],
       'https://cdn.example.test/one.jpg',
     );
     expect(find.text('重命名'), findsNothing);
     expect(find.text('删除歌单'), findsNothing);
+  });
+
+  testWidgets('online playback uses the loaded list at interaction time', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final pictureResponse = Completer<http.Response>();
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/picture')) {
+          return pictureResponse.future;
+        }
+        if (request.url.path.endsWith('/detail')) {
+          final body = jsonDecode(request.body) as Map<String, Object?>;
+          final page = body['page'] as int;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'source': 'kw',
+                'page': page,
+                'limit': 2,
+                'total': 3,
+                'hasMore': page == 1,
+                'playlist': {
+                  'id': 'list-1',
+                  'kind': 'playlist',
+                  'name': 'Paged list',
+                  'source': 'kw',
+                },
+                'tracks': page == 1
+                    ? [
+                        {'id': 'one', 'name': 'One', 'source': 'kw'},
+                        {
+                          'id': 'two',
+                          'name': 'Two',
+                          'source': 'kw',
+                          'pic': 'https://cdn.example.test/two.jpg',
+                        },
+                      ]
+                    : [
+                        {
+                          'id': 'three',
+                          'name': 'Three',
+                          'source': 'kw',
+                          'pic': 'https://cdn.example.test/three.jpg',
+                        },
+                      ],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        return http.Response(jsonEncode({'data': <Object?>[]}), 200);
+      }),
+    );
+    final player = PlayerController(resolver: _Resolver(), audio: _Audio());
+    final controller = OnlinePlaylistDetailController(
+      catalog: SearchRepository(api),
+      playlists: PlaylistRepository(api),
+      source: 'kw',
+      playlistId: 'list-1',
+    );
+
+    await tester.pumpWidget(
+      harness(
+        OnlinePlaylistDetailScreen(
+          controller: controller,
+          player: player,
+          downloads: DownloadRepository(api),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('search-track-kw-one')));
+    await tester.pump();
+    await controller.loadPage(2);
+    await tester.pump();
+    pictureResponse.complete(
+      http.Response(
+        jsonEncode({
+          'data': {'url': 'https://cdn.example.test/one.jpg'},
+        }),
+        200,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.currentIndex, 0);
+  });
+
+  testWidgets('scrolling near the end automatically loads the next page', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1162, 768);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final requestedPages = <int>[];
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (!request.url.path.endsWith('/detail')) {
+          return http.Response(jsonEncode({'data': <Object?>[]}), 200);
+        }
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        final page = body['page'] as int;
+        requestedPages.add(page);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'source': 'kw',
+              'page': page,
+              'limit': 20,
+              'total': 21,
+              'hasMore': page == 1,
+              'playlist': {
+                'id': 'list-1',
+                'kind': 'playlist',
+                'name': 'Paged list',
+                'source': 'kw',
+                'total': 21,
+              },
+              'tracks': page == 1
+                  ? List.generate(
+                      20,
+                      (index) => {
+                        'id': 'track-$index',
+                        'name': 'Track $index',
+                        'source': 'kw',
+                      },
+                    )
+                  : [
+                      {
+                        'id': 'last-track',
+                        'name': 'Last page track',
+                        'source': 'kw',
+                      },
+                    ],
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    final player = PlayerController(resolver: _Resolver(), audio: _Audio());
+    final controller = OnlinePlaylistDetailController(
+      catalog: SearchRepository(api),
+      playlists: PlaylistRepository(api),
+      source: 'kw',
+      playlistId: 'list-1',
+    );
+
+    await tester.pumpWidget(
+      harness(
+        OnlinePlaylistDetailScreen(
+          controller: controller,
+          player: player,
+          downloads: DownloadRepository(api),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requestedPages, [1]);
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
+    expect(requestedPages, [1, 2]);
+    expect(controller.state.tracks.last.title, 'Last page track');
+    expect(find.text('加载更多'), findsNothing);
   });
 
   testWidgets(

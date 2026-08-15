@@ -397,7 +397,11 @@ Future<DownloadsController> fixtureDownloadsController() async {
 }
 
 Future<PlaylistsController> fixturePlaylistsController() async {
-  final controller = PlaylistsController(PlaylistRepository(fixtureApi()));
+  final api = fixtureApi();
+  final controller = PlaylistsController(
+    PlaylistRepository(api),
+    library: LibraryRepository(api),
+  );
   await controller.refresh();
   return controller;
 }
@@ -481,7 +485,10 @@ Future<PlayerController> fixturePlayerController() async {
     quality: 'flac',
   );
   await controller.playTracks([
-    Track.fromJson(fixtureTrack('wind', '晚风', '伍佰 & China Blue')),
+    Track.fromJson({
+      ...fixtureTrack('wind', '晚风', '伍佰 & China Blue'),
+      'albumName': '晚风精选',
+    }),
     Track.fromJson(fixtureTrack('forest', '挪威的森林', '伍佰 & China Blue')),
     Track.fromJson(fixtureTrack('romance', '浪人情歌', '伍佰')),
     Track.fromJson(fixtureTrack('white', '白鸽', '伍佰')),

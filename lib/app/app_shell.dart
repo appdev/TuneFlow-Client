@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -8,6 +10,7 @@ import '../design/components/app_mobile_dock.dart';
 import '../design/design_tokens.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/player/mini_player.dart';
+import '../features/player/current_track_actions_controller.dart';
 import '../features/player/player_controller.dart';
 import '../features/sources/source_repository.dart';
 import '../platform/app_platform.dart';
@@ -21,6 +24,8 @@ final class AppShell extends StatelessWidget {
     required this.onDisconnect,
     required this.player,
     required this.child,
+    this.currentTrackActions,
+    this.location,
     this.onOpenPlayer,
     this.onBack,
     this.onForward,
@@ -30,6 +35,8 @@ final class AppShell extends StatelessWidget {
   final ConnectedService connected;
   final VoidCallback onDisconnect;
   final PlayerController player;
+  final CurrentTrackActionsController? currentTrackActions;
+  final String? location;
   final VoidCallback? onOpenPlayer;
   final VoidCallback? onBack;
   final VoidCallback? onForward;
@@ -53,44 +60,68 @@ final class AppShell extends StatelessWidget {
   static const _mobileDestinations = [
     AppDestination(id: 'home', label: '首页', icon: LucideIcons.house),
     AppDestination(id: 'search', label: '搜索', icon: LucideIcons.search),
+    AppDestination(id: 'discover', label: '发现', icon: LucideIcons.compass),
     AppDestination(id: 'playlists', label: '我的音乐', icon: LucideIcons.heart),
-    AppDestination(id: 'downloads', label: '下载', icon: LucideIcons.download),
     AppDestination(id: 'more', label: '更多', icon: LucideIcons.ellipsis),
   ];
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final location = GoRouterState.of(context).uri.path;
+    final location = this.location ?? GoRouterState.of(context).uri.path;
     final showMiniPlayer = !location.startsWith('/player');
-    final selectedId = switch (location) {
-      final value when value.startsWith('/search') => 'search',
-      final value when value.startsWith('/square') => 'square',
-      final value when value.startsWith('/charts') => 'charts',
-      final value when value.startsWith('/playlists') => 'playlists',
-      final value when value.startsWith('/downloads') => 'downloads',
-      final value when value.startsWith('/settings') => 'settings',
-      final value when value.startsWith('/sources') => 'sources',
-      final value when value.startsWith('/more') => 'more',
-      final value when value.startsWith('/states') => 'states',
-      _ => 'home',
-    };
-    void navigate(String id) => context.go(switch (id) {
-      'search' => '/search',
-      'square' => '/square',
-      'charts' => '/charts',
-      'playlists' => '/playlists',
-      'downloads' => '/downloads',
-      'settings' => '/settings',
-      'sources' => '/sources',
-      'more' => '/more',
-      _ => '/',
-    });
-    final openPlayer = onOpenPlayer ?? () => context.goNamed('player');
+    final desktopSelectedId = navigationSelectionForLocation(location);
+    final mobileSelectedId = navigationSelectionForLocation(
+      location,
+      mobile: true,
+    );
+    void navigate(String id) {
+      if (child case final StatefulNavigationShell navigationShell) {
+        final branchIndex = switch (id) {
+          'home' => 0,
+          'search' => 1,
+          'discover' => 2,
+          'playlists' => 3,
+          'more' => 4,
+          'square' => 5,
+          'charts' => 6,
+          'downloads' => 7,
+          'settings' => 8,
+          'sources' => 9,
+          _ => null,
+        };
+        if (branchIndex != null) {
+          navigationShell.goBranch(
+            branchIndex,
+            initialLocation: branchIndex == navigationShell.currentIndex,
+          );
+          return;
+        }
+      }
+      final target = switch (id) {
+        'search' => '/search',
+        'square' => '/square',
+        'charts' => '/charts',
+        'discover' => '/discover',
+        'playlists' => '/playlists',
+        'downloads' => '/downloads',
+        'settings' => '/settings',
+        'sources' => '/sources',
+        'more' => '/more',
+        _ => '/',
+      };
+      if (target == location) return;
+      unawaited(context.push(target));
+    }
+
+    final openPlayer =
+        onOpenPlayer ?? () => unawaited(context.pushNamed('player'));
 
     return Scaffold(
       key: const Key('main-shell'),
       backgroundColor: tokens.background,
+      resizeToAvoidBottomInset:
+          classifyLayout(MediaQuery.sizeOf(context)) != AppLayoutClass.mobile,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final layout = classifyLayout(MediaQuery.sizeOf(context));
@@ -98,19 +129,16 @@ final class AppShell extends StatelessWidget {
               platform ?? resolveAppPlatform(Theme.of(context).platform);
           if (layout == AppLayoutClass.mobile) {
             final mobileShell = Scaffold(
+              key: const Key('mobile-shell-scaffold'),
               backgroundColor: Colors.transparent,
               extendBody: false,
+              resizeToAvoidBottomInset: false,
               body: SafeArea(bottom: false, child: child),
               bottomNavigationBar: showMiniPlayer
                   ? AppMobileDock(
                       player: player,
                       destinations: _mobileDestinations,
-                      selectedId:
-                          _mobileDestinations.any(
-                            (destination) => destination.id == selectedId,
-                          )
-                          ? selectedId
-                          : 'home',
+                      selectedId: mobileSelectedId,
                       onSelected: navigate,
                       onOpenPlayer: openPlayer,
                     )
@@ -122,7 +150,7 @@ final class AppShell extends StatelessWidget {
               controller: desktopWindowController,
               onBack: onBack,
               onForward: onForward,
-              onSearch: () => context.go('/search'),
+              onSearch: () => unawaited(context.push('/search')),
               child: mobileShell,
             );
           }
@@ -133,13 +161,13 @@ final class AppShell extends StatelessWidget {
             controller: desktopWindowController,
             onBack: onBack,
             onForward: onForward,
-            onSearch: () => context.go('/search'),
+            onSearch: () => unawaited(context.push('/search')),
             desktopSidebarWidth: compact ? 84 : 208,
             child: Row(
               children: [
                 AppDesktopNavigation(
                   destinations: _desktopDestinations,
-                  selectedId: selectedId,
+                  selectedId: desktopSelectedId,
                   compact: compact,
                   onSelected: navigate,
                   footer: _ConnectionFooter(
@@ -176,6 +204,7 @@ final class AppShell extends StatelessWidget {
                                 ),
                                 child: MiniPlayer(
                                   controller: player,
+                                  actions: currentTrackActions,
                                   onOpen: openPlayer,
                                   variant: MiniPlayerVariant.desktop,
                                 ),
@@ -193,6 +222,22 @@ final class AppShell extends StatelessWidget {
       ),
     );
   }
+}
+
+String navigationSelectionForLocation(String location, {bool mobile = false}) {
+  if (location.startsWith('/search')) return 'search';
+  if (location.startsWith('/playlists') || location.startsWith('/library')) {
+    return 'playlists';
+  }
+  if (location.startsWith('/discover')) return 'discover';
+  if (location.startsWith('/downloads')) return mobile ? 'more' : 'downloads';
+  if (location.startsWith('/square')) return mobile ? 'discover' : 'square';
+  if (location.startsWith('/charts')) return mobile ? 'discover' : 'charts';
+  if (location.startsWith('/settings')) return mobile ? 'more' : 'settings';
+  if (location.startsWith('/sources')) return mobile ? 'more' : 'sources';
+  if (location.startsWith('/more')) return 'more';
+  if (location.startsWith('/states')) return 'states';
+  return 'home';
 }
 
 final class _ConnectionFooter extends StatelessWidget {

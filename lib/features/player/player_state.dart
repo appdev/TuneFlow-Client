@@ -42,6 +42,7 @@ final class PlayerState {
     this.showTranslation = true,
     this.view = PlayerView.artwork,
     this.playbackMode = PlaybackMode.sequential,
+    this.bundleCompleteness,
     this.error,
     this.lyricsError,
   });
@@ -59,6 +60,7 @@ final class PlayerState {
   final bool showTranslation;
   final PlayerView view;
   final PlaybackMode playbackMode;
+  final PlaybackBundleCompleteness? bundleCompleteness;
   final Object? error;
   final Object? lyricsError;
 
@@ -89,6 +91,7 @@ final class PlayerState {
     bool? showTranslation,
     PlayerView? view,
     PlaybackMode? playbackMode,
+    Object? bundleCompleteness = _unchanged,
     Object? error = _unchanged,
     Object? lyricsError = _unchanged,
   }) => PlayerState(
@@ -105,6 +108,9 @@ final class PlayerState {
     showTranslation: showTranslation ?? this.showTranslation,
     view: view ?? this.view,
     playbackMode: playbackMode ?? this.playbackMode,
+    bundleCompleteness: identical(bundleCompleteness, _unchanged)
+        ? this.bundleCompleteness
+        : bundleCompleteness as PlaybackBundleCompleteness?,
     error: identical(error, _unchanged) ? this.error : error,
     lyricsError: identical(lyricsError, _unchanged)
         ? this.lyricsError

@@ -33,6 +33,10 @@ Widget harness(Widget child) => AppImageCacheScope(
 
 void main() {
   testWidgets('shows dashboard shortcuts and playlist summary', (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: MockClient(
@@ -147,6 +151,72 @@ void main() {
     expect(networkImages.single.imageUrl, contains('playlist-cover.jpg'));
   });
 
+  testWidgets(
+    'desktop home shows placeholder artwork for a track without art',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          final data = request.url.path == '/api/v1/downloads'
+              ? [
+                  {
+                    'id': 'missing-artwork-download',
+                    'status': 'completed',
+                    'musicInfo': {
+                      'id': 'missing-artwork',
+                      'name': '无封面歌曲',
+                      'singer': '测试歌手',
+                      'source': 'local',
+                    },
+                    'quality': 'flac',
+                    'extension': 'flac',
+                    'fileName': 'missing-artwork.flac',
+                    'downloaded': 2048,
+                    'total': 2048,
+                    'progress': 100,
+                    'createdAt': 1000,
+                    'updatedAt': 2000,
+                  },
+                ]
+              : <Object?>[];
+          return http.Response(
+            jsonEncode({'data': data}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      final controller = HomeController(
+        playlists: PlaylistRepository(api),
+        downloads: DownloadRepository(api),
+        library: LibraryRepository(api),
+      );
+      await controller.refresh();
+
+      await tester.pumpWidget(
+        harness(
+          HomeScreen(
+            controller: controller,
+            onSearch: () {},
+            onPlaylists: () {},
+            onDownloads: () {},
+            onSettings: () {},
+          ),
+        ),
+      );
+
+      expect(find.text('无封面歌曲'), findsWidgets);
+      expect(
+        find.byKey(const Key('artwork-fallback-local:missing-artwork')),
+        findsNWidgets(2),
+      );
+    },
+  );
+
   testWidgets('mobile home uses an immersive gallery composition', (
     tester,
   ) async {
@@ -223,6 +293,10 @@ void main() {
   testWidgets('home renders Service content instead of fixed demo copy', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: MockClient((request) async {

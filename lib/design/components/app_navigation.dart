@@ -260,7 +260,6 @@ final class _MobileNavigationItem extends StatelessWidget {
             decoration: BoxDecoration(
               color: selected ? tokens.surfaceWarm : Colors.transparent,
               borderRadius: BorderRadius.circular(AppRadii.compactCard),
-              border: selected ? Border.all(color: tokens.border) : null,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

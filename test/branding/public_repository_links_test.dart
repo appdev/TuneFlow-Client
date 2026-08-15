@@ -6,10 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 ({int width, int height}) _pngSize(String path) {
   final bytes = File(path).readAsBytesSync();
   expect(bytes.length, greaterThanOrEqualTo(24));
-  expect(
-    bytes.sublist(0, 8),
-    equals(<int>[137, 80, 78, 71, 13, 10, 26, 10]),
-  );
+  expect(bytes.sublist(0, 8), equals(<int>[137, 80, 78, 71, 13, 10, 26, 10]));
 
   final data = ByteData.sublistView(bytes);
   return (
@@ -30,24 +27,24 @@ void main() {
     expect(
       readme,
       contains(
-        'https://github.com/appdev/TuneFlow-Client/actions/workflows/'
-        'build-clients.yml',
+        'https://github.com/appdev/TuneFlow-Client/releases/tag/'
+        'v1.0.1%2B2',
+      ),
+    );
+    expect(
+      readme,
+      isNot(
+        contains(
+          'https://github.com/appdev/TuneFlow-Client/actions/workflows/'
+          'build-clients.yml',
+        ),
       ),
     );
     expect(readme, contains('https://github.com/appdev/TuneFlow-Client'));
     expect(readme, contains('https://github.com/appdev/TuneFlow'));
-    expect(
-      readme,
-      contains('docs/images/readme/tuneflow-desktop-home.png'),
-    );
-    expect(
-      readme,
-      contains('docs/images/readme/tuneflow-mobile-player.png'),
-    );
-    expect(
-      readme,
-      contains('docs/images/readme/tuneflow-mobile-library.png'),
-    );
+    expect(readme, contains('docs/images/readme/tuneflow-desktop-home.png'));
+    expect(readme, contains('docs/images/readme/tuneflow-mobile-player.png'));
+    expect(readme, contains('docs/images/readme/tuneflow-mobile-library.png'));
 
     for (final forbiddenText in <String>[
       '192.168.',
@@ -70,17 +67,17 @@ void main() {
   });
 
   test('README screenshots are stable product assets', () {
-    expect(
-      _pngSize('docs/images/readme/tuneflow-desktop-home.png'),
-      (width: 1440, height: 960),
-    );
-    expect(
-      _pngSize('docs/images/readme/tuneflow-mobile-player.png'),
-      (width: 390, height: 844),
-    );
-    expect(
-      _pngSize('docs/images/readme/tuneflow-mobile-library.png'),
-      (width: 390, height: 844),
-    );
+    expect(_pngSize('docs/images/readme/tuneflow-desktop-home.png'), (
+      width: 1440,
+      height: 960,
+    ));
+    expect(_pngSize('docs/images/readme/tuneflow-mobile-player.png'), (
+      width: 390,
+      height: 844,
+    ));
+    expect(_pngSize('docs/images/readme/tuneflow-mobile-library.png'), (
+      width: 390,
+      height: 844,
+    ));
   });
 }

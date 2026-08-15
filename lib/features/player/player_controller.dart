@@ -4,9 +4,21 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../api/models.dart';
+import '../playback_history/playback_history_repository.dart';
 import 'playback_repository.dart';
 import 'player_state.dart';
 import 'service_audio_handler.dart';
+
+typedef _PlaybackTerminal = ({
+  bool completed,
+  Duration position,
+  Duration duration,
+});
+
+final class _ActivePlaybackSession {
+  String? playbackId;
+  _PlaybackTerminal? terminal;
+}
 
 final class PlayerController extends ChangeNotifier {
   PlayerController({
@@ -14,25 +26,31 @@ final class PlayerController extends ChangeNotifier {
     required this.audio,
     String quality = '128k',
     bool showTranslation = true,
-    Future<void> Function(Track track)? reportPlayback,
+    PlaybackSessionPort? sessions,
   }) : state = PlayerState(quality: quality, showTranslation: showTranslation) {
-    _reportPlaybackCallback = reportPlayback;
+    _sessions = sessions;
     audio.bindQueueCallbacks(previous: previous, next: next);
     _subscription = audio.snapshots.listen(_onSnapshot);
   }
 
   final PlaybackResolver resolver;
   final AudioPort audio;
-  late final Future<void> Function(Track track)? _reportPlaybackCallback;
+  late final PlaybackSessionPort? _sessions;
   late final StreamSubscription<AudioSnapshot> _subscription;
   PlayerState state;
   final Random _random = Random();
+  _ActivePlaybackSession? _activeSession;
+  int _playGeneration = 0;
+  int? _bundleLyricsGeneration;
+  int _lyricsRequestGeneration = 0;
 
   Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     if (startIndex < 0 || startIndex >= tracks.length) {
       throw RangeError.index(startIndex, tracks, 'startIndex');
     }
+    _playGeneration++;
+    final endingSession = _endSession(completed: false);
     state = PlayerState(
       queue: List.unmodifiable(tracks),
       currentIndex: startIndex,
@@ -44,6 +62,7 @@ final class PlayerController extends ChangeNotifier {
       playbackMode: state.playbackMode,
     );
     notifyListeners();
+    await endingSession;
     await _playCurrent();
   }
 
@@ -110,6 +129,8 @@ final class PlayerController extends ChangeNotifier {
       return true;
     }
 
+    _playGeneration++;
+    final endingSession = _endSession(completed: false);
     final nextIndex = index < queue.length ? index : queue.length - 1;
     state = state.copyWith(
       queue: List.unmodifiable(queue),
@@ -119,16 +140,19 @@ final class PlayerController extends ChangeNotifier {
       duration: Duration.zero,
       buffered: Duration.zero,
       clearLyrics: true,
+      bundleCompleteness: null,
       error: null,
       lyricsError: null,
     );
     notifyListeners();
+    await endingSession;
     await _playCurrent();
     return true;
   }
 
   Future<bool> clearQueue() async {
     if (state.queue.isEmpty) return false;
+    _playGeneration++;
     try {
       await audio.stopPlayback();
     } on Object catch (error) {
@@ -136,6 +160,7 @@ final class PlayerController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+    await _endSession(completed: false);
     state = PlayerState(
       quality: state.quality,
       showTranslation: state.showTranslation,
@@ -148,12 +173,17 @@ final class PlayerController extends ChangeNotifier {
 
   Future<void> playIndex(int index) async {
     if (index < 0 || index >= state.queue.length) return;
+    _playGeneration++;
+    final endingSession = _endSession(completed: false);
     state = state.copyWith(
       currentIndex: index,
       processing: PlayerProcessing.loading,
+      clearLyrics: true,
+      bundleCompleteness: null,
       error: null,
     );
     notifyListeners();
+    await endingSession;
     await _playCurrent();
   }
 
@@ -200,7 +230,7 @@ final class PlayerController extends ChangeNotifier {
     state = state.copyWith(quality: quality);
     notifyListeners();
     if (state.current == null) return true;
-    final played = await _playCurrent();
+    final played = await _playCurrent(startSession: false);
     if (played) return true;
     state = state.copyWith(quality: previousQuality);
     notifyListeners();
@@ -228,23 +258,42 @@ final class PlayerController extends ChangeNotifier {
   Future<void> loadLyrics(Future<Lyrics> Function(Track track) loader) async {
     final track = state.current;
     if (track == null) return;
+    final generation = _playGeneration;
+    final requestGeneration = ++_lyricsRequestGeneration;
+    if (_bundleLyricsGeneration == generation &&
+        state.lyrics?.original.trim().isNotEmpty == true) {
+      return;
+    }
     try {
       final lyrics = await loader(track);
+      if (!_isCurrent(generation, track) ||
+          requestGeneration != _lyricsRequestGeneration ||
+          _bundleLyricsGeneration == generation) {
+        return;
+      }
       state = state.copyWith(lyrics: lyrics, lyricsError: null);
     } on Object catch (error) {
+      if (!_isCurrent(generation, track) ||
+          requestGeneration != _lyricsRequestGeneration ||
+          _bundleLyricsGeneration == generation) {
+        return;
+      }
       state = state.copyWith(clearLyrics: true, lyricsError: error);
     }
     notifyListeners();
   }
 
-  Future<bool> _playCurrent() async {
+  Future<bool> _playCurrent({bool startSession = true}) async {
     final track = state.current;
     if (track == null) return false;
+    final generation = ++_playGeneration;
+    _bundleLyricsGeneration = null;
     try {
       if (await audio.playCachedTrack(track, state.quality)) {
+        if (!_isCurrent(generation, track)) return false;
         state = state.copyWith(error: null);
         notifyListeners();
-        _reportPlayback(track);
+        if (startSession) await _startSession(track);
         return true;
       }
     } on Object {
@@ -254,19 +303,28 @@ final class PlayerController extends ChangeNotifier {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         final source = await resolver.resolve(track, state.quality);
-        await audio.playTrack(track, source.streamUri, state.quality);
+        if (!_isCurrent(generation, track)) return false;
+        final playbackTrack = _applyResolvedBundle(
+          source,
+          generation: generation,
+        );
+        await audio.playTrack(playbackTrack, source.streamUri, state.quality);
+        if (!_isCurrent(generation, playbackTrack)) return false;
         state = state.copyWith(error: null);
         notifyListeners();
-        _reportPlayback(track);
+        if (startSession) await _startSession(playbackTrack);
         return true;
       } on PlaybackStreamExpiredException catch (error) {
+        if (!_isCurrent(generation, track)) return false;
         lastError = error;
         if (attempt == 0) continue;
       } on Object catch (error) {
+        if (!_isCurrent(generation, track)) return false;
         lastError = error;
         break;
       }
     }
+    if (!_isCurrent(generation, track)) return false;
     state = state.copyWith(
       processing: PlayerProcessing.error,
       error: lastError,
@@ -275,11 +333,86 @@ final class PlayerController extends ChangeNotifier {
     return false;
   }
 
-  void _reportPlayback(Track track) {
-    final report = _reportPlaybackCallback;
-    if (report == null) return;
+  bool _isCurrent(int generation, Track track) {
+    final current = state.current;
+    return generation == _playGeneration &&
+        current?.source == track.source &&
+        current?.id == track.id;
+  }
+
+  Track _applyResolvedBundle(PlaybackSource source, {required int generation}) {
+    final current = state.current!;
+    final raw = current.toJson();
+    final pictureUri = source.pictureUri;
+    if (pictureUri != null) raw['pic'] = pictureUri.toString();
+    final lyricsUri = source.lyricsUri;
+    if (lyricsUri != null) {
+      final existingMeta = raw['meta'];
+      raw['meta'] = {
+        if (existingMeta is Map) ...Map<String, Object?>.from(existingMeta),
+        'lyricsUrl': lyricsUri.toString(),
+      };
+    }
+    final updated = Track.fromJson(raw);
+    final queue = [...state.queue]..[state.currentIndex] = updated;
+    final bundleLyrics = source.bundleLyrics;
+    final hasBundleLyrics = bundleLyrics?.original.trim().isNotEmpty == true;
+    if (hasBundleLyrics) {
+      _bundleLyricsGeneration = generation;
+      _lyricsRequestGeneration++;
+    }
+    state = state.copyWith(
+      queue: List.unmodifiable(queue),
+      lyrics: hasBundleLyrics ? bundleLyrics : null,
+      bundleCompleteness: source.resolved.completeness,
+      lyricsError: null,
+    );
+    notifyListeners();
+    return updated;
+  }
+
+  Future<void> _startSession(Track track) async {
+    final sessions = _sessions;
+    if (sessions == null || _activeSession != null) return;
+    final entry = _ActivePlaybackSession();
+    _activeSession = entry;
     try {
-      unawaited(report(track).catchError((_) {}));
+      entry.playbackId = await sessions.start(track);
+      final terminal = entry.terminal;
+      if (terminal != null) await _reportSessionEnd(entry, terminal);
+    } on Object {
+      if (_activeSession == entry) _activeSession = null;
+      // Playback history is best-effort and must not alter player state.
+    }
+  }
+
+  Future<void> _endSession({required bool completed}) async {
+    final entry = _activeSession;
+    if (entry == null) return;
+    _activeSession = null;
+    final terminal = (
+      completed: completed,
+      position: state.position,
+      duration: state.duration,
+    );
+    entry.terminal = terminal;
+    if (entry.playbackId != null) await _reportSessionEnd(entry, terminal);
+  }
+
+  Future<void> _reportSessionEnd(
+    _ActivePlaybackSession entry,
+    _PlaybackTerminal terminal,
+  ) async {
+    final sessions = _sessions;
+    final playbackId = entry.playbackId;
+    if (sessions == null || playbackId == null) return;
+    try {
+      await sessions.end(
+        playbackId,
+        completed: terminal.completed,
+        position: terminal.position,
+        duration: terminal.duration,
+      );
     } on Object {
       // Playback history is best-effort and must not alter player state.
     }
@@ -310,6 +443,7 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _handleCompletion() async {
+    await _endSession(completed: true);
     switch (state.playbackMode) {
       case PlaybackMode.repeatOne:
         state = state.copyWith(
@@ -329,6 +463,8 @@ final class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _playGeneration++;
+    unawaited(_endSession(completed: false));
     _subscription.cancel();
     super.dispose();
   }

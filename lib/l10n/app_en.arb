@@ -6,6 +6,7 @@
   "serviceOrigin": "Service address",
   "connect": "Connect",
   "connecting": "Connecting…",
+  "connectingTitle": "Connecting to TuneFlow Service",
   "disconnect": "Disconnect",
   "home": "Home",
   "search": "Search",

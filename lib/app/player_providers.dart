@@ -1,9 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/connection/connection_controller.dart';
+import '../features/downloads/download_repository.dart';
 import '../features/playback_history/playback_history_repository.dart';
+import '../features/playback_history/playback_platform.dart';
+import '../features/player/current_track_actions_controller.dart';
 import '../features/player/playback_repository.dart';
 import '../features/player/player_controller.dart';
+import '../features/playlists/favorite_playlist.dart';
+import '../features/playlists/playlist_repository.dart';
 import '../storage/app_settings_controller.dart';
 import 'app_providers.dart';
 
@@ -19,7 +24,29 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
     audio: ref.read(audioPortProvider),
     quality: quality,
     showTranslation: showTranslation,
-    reportPlayback: PlaybackHistoryRepository(connected.api).recordPlayback,
+    sessions: PlaybackHistoryRepository(
+      connected.api,
+      platform: currentPlaybackPlatform(),
+    ),
+  );
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+
+final currentTrackActionsProvider = Provider<CurrentTrackActionsController?>((
+  ref,
+) {
+  final connected = ref.watch(connectionProvider).value;
+  final player = ref.watch(playerControllerProvider);
+  if (connected == null || player == null) return null;
+  final playlists = PlaylistRepository(connected.api);
+  final downloads = DownloadRepository(connected.api);
+  final controller = CurrentTrackActionsController(
+    player: player,
+    favorites: LovePlaylistFavorites(playlists),
+    download: (track, quality) async {
+      await downloads.create(track, quality);
+    },
   );
   ref.onDispose(controller.dispose);
   return controller;

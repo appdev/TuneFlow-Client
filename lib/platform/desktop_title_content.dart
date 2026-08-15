@@ -13,6 +13,7 @@ final class DesktopTitleContent extends StatelessWidget {
     this.onBack,
     this.onForward,
     this.onSearch,
+    this.playerAccent,
   });
 
   final String location;
@@ -22,6 +23,7 @@ final class DesktopTitleContent extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onForward;
   final VoidCallback? onSearch;
+  final Color? playerAccent;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +45,7 @@ final class DesktopTitleContent extends StatelessWidget {
                   icon: LucideIcons.chevronLeft,
                   label: '返回',
                   onPressed: onBack,
+                  foregroundColor: playerAccent,
                 ),
               ),
             ],
@@ -85,11 +88,13 @@ final class _TitleAction extends StatelessWidget {
     required this.icon,
     required this.label,
     this.onPressed,
+    this.foregroundColor,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -105,7 +110,10 @@ final class _TitleAction extends StatelessWidget {
         padding: EdgeInsets.zero,
         enabled: onPressed != null,
         onPressed: onPressed,
-        child: Icon(icon, size: 17),
+        foregroundColor: foregroundColor,
+        hoverForegroundColor: foregroundColor,
+        pressedForegroundColor: foregroundColor,
+        child: Icon(icon, size: 17, color: foregroundColor),
       ),
     ),
   );

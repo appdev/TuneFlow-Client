@@ -6,6 +6,7 @@
   "serviceOrigin": "Service 地址",
   "connect": "连接",
   "connecting": "连接中…",
+  "connectingTitle": "正在连接音流服务",
   "disconnect": "断开连接",
   "home": "首页",
   "search": "搜索",

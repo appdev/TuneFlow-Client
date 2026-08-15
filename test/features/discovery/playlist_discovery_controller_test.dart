@@ -149,4 +149,22 @@ void main() {
     expect(controller.state.items.single.source, 'kg');
     expect(controller.state.items.single.id, 'kg-1');
   });
+
+  test('disposing during capability loading invalidates its result', () async {
+    final delayed = Completer<http.Response>();
+    final controller = PlaylistDiscoveryController(
+      SearchRepository(
+        ServiceApi(
+          ServiceOrigin.parse('http://service.local'),
+          client: MockClient((_) => delayed.future),
+        ),
+      ),
+    );
+
+    final pending = controller.load();
+    controller.dispose();
+    delayed.complete(response(capabilities()));
+
+    await expectLater(pending, completes);
+  });
 }

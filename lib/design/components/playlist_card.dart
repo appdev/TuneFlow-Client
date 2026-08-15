@@ -7,7 +7,7 @@ import '../../api/models.dart';
 import '../design_tokens.dart';
 import 'artwork.dart';
 
-const double playlistGalleryMaxItemExtent = 260;
+const double playlistGalleryMaxItemExtent = 220;
 const double playlistGalleryMetadataExtent = 64;
 
 int playlistGalleryColumnCount({
@@ -39,24 +39,54 @@ final class PlaylistCard extends StatelessWidget {
     this.onDelete,
     this.imageUrl,
     this.variant = PlaylistCardVariant.row,
-  });
+  }) : collectionId = null,
+       collectionName = null,
+       collectionMetadata = null;
 
-  final PlaylistSummary playlist;
+  const PlaylistCard.collection({
+    super.key,
+    required String id,
+    required String name,
+    required String metadata,
+    required this.onPressed,
+    this.imageUrl,
+    this.variant = PlaylistCardVariant.row,
+  }) : playlist = null,
+       collectionId = id,
+       collectionName = name,
+       collectionMetadata = metadata,
+       onDelete = null;
+
+  final PlaylistSummary? playlist;
+  final String? collectionId;
+  final String? collectionName;
+  final String? collectionMetadata;
   final VoidCallback onPressed;
   final VoidCallback? onDelete;
   final Uri? imageUrl;
   final PlaylistCardVariant variant;
+
+  String get _id => playlist?.id ?? collectionId!;
+  String get _name => playlist?.displayName ?? collectionName!;
+  String get _metadata =>
+      collectionMetadata ??
+      (playlist is PlaylistDetail
+          ? '${(playlist! as PlaylistDetail).tracks.length} 首'
+          : playlist!.source?.isEmpty == false
+          ? playlist!.source!
+          : 'Service 歌单');
 
   @override
   Widget build(BuildContext context) {
     if (variant == PlaylistCardVariant.gallery) {
       return Semantics(
         button: true,
-        label: '打开${playlist.displayName}',
+        label: '打开$_name',
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(AppRadii.card),
+            borderRadius: BorderRadius.circular(AppRadii.compactCard),
+            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
             onTap: onPressed,
             onLongPress: onDelete,
             child: Column(
@@ -65,26 +95,24 @@ final class PlaylistCard extends StatelessWidget {
                 LayoutBuilder(
                   builder: (context, constraints) => AppArtwork(
                     imageUrl: imageUrl?.toString(),
-                    seed: playlist.id,
-                    semanticLabel: '${playlist.displayName}封面',
+                    seed: _id,
+                    semanticLabel: '$_name封面',
                     size: constraints.maxWidth,
                     icon: LucideIcons.listMusic,
+                    borderRadius: AppRadii.compactCard,
+                    showFallbackBorder: false,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                  playlist.displayName,
+                  _name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.title,
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  playlist is PlaylistDetail
-                      ? '${(playlist as PlaylistDetail).tracks.length} 首'
-                      : playlist.source?.isEmpty == false
-                      ? playlist.source!
-                      : 'Service 歌单',
+                  _metadata,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.metadata.copyWith(
@@ -107,8 +135,8 @@ final class PlaylistCard extends StatelessWidget {
           if (imageUrl != null) ...[
             AppArtwork(
               imageUrl: imageUrl.toString(),
-              seed: playlist.id,
-              semanticLabel: '${playlist.displayName}封面',
+              seed: _id,
+              semanticLabel: '$_name封面',
               size: 52,
               borderRadius: AppRadii.control,
               icon: LucideIcons.listMusic,
@@ -119,7 +147,7 @@ final class PlaylistCard extends StatelessWidget {
           Expanded(
             child: Semantics(
               button: true,
-              label: '打开${playlist.displayName}',
+              label: '打开$_name',
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onPressed,
@@ -128,7 +156,7 @@ final class PlaylistCard extends StatelessWidget {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      playlist.displayName,
+                      _name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.title,

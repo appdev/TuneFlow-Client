@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_glass_surface.dart';
+import '../../design/components/app_playback_button.dart';
 import '../../design/components/artwork.dart';
 import '../../design/components/playlist_card.dart';
 import '../../design/app_theme_definition.dart';
@@ -141,7 +143,10 @@ final class _WideHome extends StatelessWidget {
           const SizedBox(height: AppSpacing.md),
           AppNotice.error(
             title: state.stale ? '显示的是上次数据' : '加载失败',
-            message: state.error.toString(),
+            message: appErrorMessage(
+              state.error!,
+              fallback: '首页内容暂时无法加载，请稍后重试。',
+            ),
           ),
         ],
         const SizedBox(height: AppSpacing.lg),
@@ -274,11 +279,11 @@ final class _WideHero extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          AppButton(
+                          AppButton.playback(
                             onPressed: track == null || player == null
                                 ? onPlaylists
                                 : () => player!.play(track),
-                            leading: const Icon(LucideIcons.play, size: 18),
+                            leading: const AppPlaybackGlyph.play(size: 18),
                             child: const Text('继续播放'),
                           ),
                           AppButton(
@@ -379,7 +384,10 @@ final class _MobileHome extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
             AppNotice.error(
               title: state.stale ? '当前显示缓存内容' : '加载失败',
-              message: state.error.toString(),
+              message: appErrorMessage(
+                state.error!,
+                fallback: '首页内容暂时无法加载，请稍后重试。',
+              ),
             ),
           ],
           const SizedBox(height: 24),
@@ -515,14 +523,10 @@ final class _MobileContinueCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              IconButton.filled(
+              AppPlaybackIconButton(
                 tooltip: '继续播放',
                 onPressed: onPlay,
-                constraints: const BoxConstraints.tightFor(
-                  width: 44,
-                  height: 44,
-                ),
-                icon: const Icon(LucideIcons.play, size: 18),
+                child: const AppPlaybackGlyph.play(size: 18),
               ),
             ],
           ),
@@ -810,8 +814,6 @@ final class _HomeTrackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final picture = track.raw['pic'];
-    final hasPicture = picture is String && picture.isNotEmpty;
     return Semantics(
       button: true,
       label: '播放${track.title}',
@@ -823,17 +825,14 @@ final class _HomeTrackCard extends StatelessWidget {
           backgroundColor: AppTokens.of(context).surface,
           child: Row(
             children: [
-              if (hasPicture) ...[
-                AppArtwork(
-                  imageUrl: picture,
-                  seed: '${track.source}:${track.id}',
-                  semanticLabel: '${track.title}封面',
-                  size: 56,
-                  borderRadius: AppRadii.control,
-                  showFallback: false,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-              ],
+              AppArtwork(
+                imageUrl: track.raw['pic'] as String?,
+                seed: '${track.source}:${track.id}',
+                semanticLabel: '${track.title}封面',
+                size: 56,
+                borderRadius: AppRadii.control,
+              ),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -860,7 +859,7 @@ final class _HomeTrackCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.xs),
-              const Icon(LucideIcons.play, size: 18),
+              const AppPlaybackGlyph.play(size: 18),
             ],
           ),
         ),

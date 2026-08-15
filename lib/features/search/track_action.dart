@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../design/components/app_playback_button.dart';
 import '../player/player_controller.dart';
 import 'search_track_metadata.dart';
 
@@ -44,7 +45,7 @@ List<TrackAction> buildTrackActions({
     TrackAction(
       id: TrackActionId.playNow,
       label: '立即播放',
-      icon: LucideIcons.play,
+      icon: AppPlaybackIcons.play,
       invoke: () => player.play(track),
     ),
     TrackAction(

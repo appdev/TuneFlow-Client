@@ -20,6 +20,7 @@ final class AppTextField extends StatelessWidget {
     this.trailing,
     this.enabled = true,
     this.surface = AppFieldSurface.standard,
+    this.groupId,
   });
 
   final TextEditingController? controller;
@@ -33,6 +34,7 @@ final class AppTextField extends StatelessWidget {
   final Widget? trailing;
   final bool enabled;
   final AppFieldSurface surface;
+  final Object? groupId;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +49,7 @@ final class AppTextField extends StatelessWidget {
       leading: leading,
       trailing: trailing,
       enabled: enabled,
+      groupId: groupId,
     );
     return surface == AppFieldSurface.glass
         ? AppGlassSurface(role: AppGlassRole.control, child: input)

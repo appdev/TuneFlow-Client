@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/api/models.dart';
+import 'package:musicfree_service_client/features/playback_history/playback_history_repository.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
 import 'package:musicfree_service_client/features/player/player_state.dart';
@@ -33,6 +34,7 @@ class FakeAudio implements AudioPort {
   int resumeCalls = 0;
   int stopPlaybackCalls = 0;
   final List<Duration> seekCalls = [];
+  final List<Track> playedTracks = [];
   Object? playError;
   Object? stopPlaybackError;
   bool cached = false;
@@ -57,6 +59,7 @@ class FakeAudio implements AudioPort {
   @override
   Future<void> playTrack(Track track, Uri streamUri, String quality) async {
     playCalls++;
+    playedTracks.add(track);
     if (playError case final error?) throw error;
   }
 
@@ -77,7 +80,335 @@ class FakeAudio implements AudioPort {
 Track track(String id) =>
     Track.fromJson({'id': id, 'name': id, 'source': 'kw'});
 
+PlaybackSource bundleSource({
+  Lyrics? lyrics,
+  Uri? lyricsUri,
+  Uri? pictureUri,
+  PlaybackBundleCompleteness completeness = PlaybackBundleCompleteness.complete,
+}) => PlaybackSource(
+  resolved: ResolvedTrack(
+    url: '/api/v1/streams/token',
+    quality: '128k',
+    expiresAt: 1000,
+    completeness: completeness,
+  ),
+  streamUri: Uri.parse('http://service.local/api/v1/streams/token'),
+  bundleLyrics: lyrics,
+  lyricsUri: lyricsUri,
+  pictureUri: pictureUri,
+);
+
+final class FixedResolver implements PlaybackResolver {
+  FixedResolver(this.source);
+  final PlaybackSource source;
+  int calls = 0;
+
+  @override
+  Future<PlaybackSource> resolve(Track track, String quality) async {
+    calls++;
+    return source;
+  }
+}
+
+final class DeferredResolver implements PlaybackResolver {
+  final List<Completer<PlaybackSource>> requests = [];
+
+  @override
+  Future<PlaybackSource> resolve(Track track, String quality) {
+    final completer = Completer<PlaybackSource>();
+    requests.add(completer);
+    return completer.future;
+  }
+}
+
+class FakeSessions implements PlaybackSessionPort {
+  final List<String> starts = [];
+  Object? startError;
+  Object? endError;
+  final List<
+    ({String playbackId, bool completed, Duration position, Duration duration})
+  >
+  ends = [];
+
+  @override
+  Future<String> start(Track track) async {
+    if (startError case final error?) throw error;
+    starts.add(track.id);
+    return 'play-${starts.length}';
+  }
+
+  @override
+  Future<void> end(
+    String playbackId, {
+    required bool completed,
+    required Duration position,
+    required Duration duration,
+  }) async {
+    if (endError case final error?) throw error;
+    ends.add((
+      playbackId: playbackId,
+      completed: completed,
+      position: position,
+      duration: duration,
+    ));
+  }
+}
+
+final class DeferredSessions extends FakeSessions {
+  final List<Completer<String>> pendingStarts = [];
+
+  @override
+  Future<String> start(Track track) {
+    starts.add(track.id);
+    final pending = Completer<String>();
+    pendingStarts.add(pending);
+    return pending.future;
+  }
+}
+
+final class DeferredEndSessions extends FakeSessions {
+  final List<Completer<void>> pendingEnds = [];
+
+  @override
+  Future<void> end(
+    String playbackId, {
+    required bool completed,
+    required Duration position,
+    required Duration duration,
+  }) {
+    final pending = Completer<void>();
+    pendingEnds.add(pending);
+    return pending.future;
+  }
+}
+
 void main() {
+  test(
+    'applies embedded bundle lyrics and artwork before audio starts',
+    () async {
+      final audio = FakeAudio();
+      final controller = PlayerController(
+        resolver: FixedResolver(
+          bundleSource(
+            lyrics: const Lyrics(original: '[00:00.00]bundle'),
+            pictureUri: Uri.parse(
+              'http://service.local/api/v1/playback/resources/token/picture',
+            ),
+          ),
+        ),
+        audio: audio,
+      );
+
+      await controller.play(track('bundle'));
+
+      expect(
+        controller.state.current?.raw['pic'],
+        'http://service.local/api/v1/playback/resources/token/picture',
+      );
+      expect(audio.playedTracks.single.raw['pic'], contains('/picture'));
+      expect(controller.state.lyrics?.original, '[00:00.00]bundle');
+      expect(
+        controller.state.bundleCompleteness,
+        PlaybackBundleCompleteness.complete,
+      );
+      var lyricsLoaderCalls = 0;
+      await controller.loadLyrics((_) async {
+        lyricsLoaderCalls++;
+        return const Lyrics(original: 'duplicate');
+      });
+      expect(lyricsLoaderCalls, 0);
+    },
+  );
+
+  test('applies a bundle lyrics URL for the delayed loader', () async {
+    final controller = PlayerController(
+      resolver: FixedResolver(
+        bundleSource(
+          lyricsUri: Uri.parse(
+            'http://service.local/api/v1/library/tracks/file-a/lyrics',
+          ),
+          completeness: PlaybackBundleCompleteness.mixed,
+        ),
+      ),
+      audio: FakeAudio(),
+    );
+    await controller.play(track('local-match'));
+    var calls = 0;
+
+    await controller.loadLyrics((resolvedTrack) async {
+      calls++;
+      expect(
+        (resolvedTrack.raw['meta'] as Map)['lyricsUrl'],
+        'http://service.local/api/v1/library/tracks/file-a/lyrics',
+      );
+      return const Lyrics(original: '[00:01.00]loaded');
+    });
+
+    expect(calls, 1);
+    expect(controller.state.lyrics?.original, '[00:01.00]loaded');
+  });
+
+  test('a stale bundle resolve cannot mutate a newer selected track', () async {
+    final resolver = DeferredResolver();
+    final controller = PlayerController(resolver: resolver, audio: FakeAudio());
+
+    final first = controller.play(track('a'));
+    await Future<void>.delayed(Duration.zero);
+    final second = controller.play(track('b'));
+    await Future<void>.delayed(Duration.zero);
+    resolver.requests[1].complete(
+      bundleSource(pictureUri: Uri.parse('http://service.local/b-picture')),
+    );
+    await second;
+    resolver.requests[0].complete(
+      bundleSource(pictureUri: Uri.parse('http://service.local/a-picture')),
+    );
+    await first;
+
+    expect(controller.state.current?.id, 'b');
+    expect(controller.state.current?.raw['pic'], endsWith('/b-picture'));
+  });
+
+  test('cached playback retains local artwork and lyrics resources', () async {
+    final resolver = FakeResolver();
+    final controller = PlayerController(
+      resolver: resolver,
+      audio: FakeAudio()..cached = true,
+    );
+    final local = Track.fromJson({
+      'id': 'local',
+      'source': 'local',
+      'pic': '/api/v1/library/tracks/local/picture',
+      'meta': {'lyricsUrl': '/api/v1/library/tracks/local/lyrics'},
+    });
+
+    await controller.play(local);
+
+    expect(resolver.calls, 0);
+    expect(controller.state.current?.raw['pic'], contains('/picture'));
+    expect(
+      (controller.state.current?.raw['meta'] as Map)['lyricsUrl'],
+      contains('/lyrics'),
+    );
+  });
+
+  test('late lyric loading cannot overwrite a newly resolved bundle', () async {
+    final resolver = DeferredResolver();
+    final controller = PlayerController(resolver: resolver, audio: FakeAudio());
+    final playing = controller.play(track('a'));
+    await Future<void>.delayed(Duration.zero);
+    final pending = Completer<Lyrics>();
+    final loading = controller.loadLyrics((_) => pending.future);
+
+    resolver.requests.single.complete(
+      bundleSource(lyrics: const Lyrics(original: '[00:00.00]bundle')),
+    );
+    await playing;
+    pending.complete(const Lyrics(original: '[00:00.00]stale'));
+    await loading;
+
+    expect(controller.state.lyrics?.original, '[00:00.00]bundle');
+  });
+
+  test(
+    'successful playback starts a session and natural completion ends it',
+    () async {
+      final audio = FakeAudio();
+      final sessions = FakeSessions();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        sessions: sessions,
+      );
+
+      await controller.play(track('a'));
+      audio.controller.add(
+        const AudioSnapshot(
+          processing: PlayerProcessing.completed,
+          position: Duration(seconds: 30),
+          duration: Duration(seconds: 30),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(sessions.starts, ['a']);
+      expect(sessions.ends, [
+        (
+          playbackId: 'play-1',
+          completed: true,
+          position: const Duration(seconds: 30),
+          duration: const Duration(seconds: 30),
+        ),
+      ]);
+    },
+  );
+
+  test(
+    'switching tracks interrupts the old session before starting the new one',
+    () async {
+      final audio = FakeAudio();
+      final sessions = FakeSessions();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        sessions: sessions,
+      );
+      await controller.playTracks([track('a'), track('b')]);
+      audio.controller.add(
+        const AudioSnapshot(
+          playing: true,
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 12),
+          duration: Duration(seconds: 100),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      await controller.next();
+
+      expect(sessions.starts, ['a', 'b']);
+      expect(sessions.ends, [
+        (
+          playbackId: 'play-1',
+          completed: false,
+          position: const Duration(seconds: 12),
+          duration: const Duration(seconds: 100),
+        ),
+      ]);
+    },
+  );
+
+  test(
+    'switching while session start is pending ends the late old id',
+    () async {
+      final sessions = DeferredSessions();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+        sessions: sessions,
+      );
+
+      final firstPlay = controller.play(track('a'));
+      await Future<void>.delayed(Duration.zero);
+      final secondPlay = controller.play(track('b'));
+      await Future<void>.delayed(Duration.zero);
+      expect(sessions.starts, ['a', 'b']);
+
+      sessions.pendingStarts[0].complete('play-a');
+      await firstPlay;
+      sessions.pendingStarts[1].complete('play-b');
+      await secondPlay;
+
+      expect(sessions.ends.single, (
+        playbackId: 'play-a',
+        completed: false,
+        position: Duration.zero,
+        duration: Duration.zero,
+      ));
+    },
+  );
+
   test('audio stop command keeps the port reusable', () async {
     final fake = FakeAudio();
     final AudioPort audio = fake;
@@ -339,6 +670,21 @@ void main() {
     },
   );
 
+  test('sequential completion advances to the next queued track', () async {
+    final audio = FakeAudio();
+    final controller = PlayerController(resolver: FakeResolver(), audio: audio);
+    await controller.playTracks([track('a'), track('b')]);
+
+    audio.controller.add(
+      const AudioSnapshot(processing: PlayerProcessing.completed),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.current?.id, 'b');
+    expect(audio.playCalls, 2);
+  });
+
   test(
     'completed playback is presented as stopped when backend stays playing',
     () async {
@@ -507,74 +853,165 @@ void main() {
   );
 
   test('successful cached playback reports once after audio starts', () async {
-    final reports = <String>[];
+    final sessions = FakeSessions();
     final controller = PlayerController(
       resolver: FakeResolver(),
       audio: FakeAudio()..cached = true,
-      reportPlayback: (track) async => reports.add(track.id),
+      sessions: sessions,
     );
 
     await controller.play(track('cached'));
     await Future<void>.delayed(Duration.zero);
 
-    expect(reports, ['cached']);
+    expect(sessions.starts, ['cached']);
   });
+
+  test(
+    'ready snapshot during previous session end remains authoritative',
+    () async {
+      final audio = FakeAudio()..cached = true;
+      final sessions = DeferredEndSessions();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        sessions: sessions,
+      );
+      await controller.play(track('first'));
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final switching = controller.play(track('second'));
+      await Future<void>.delayed(Duration.zero);
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+      sessions.pendingEnds.single.complete();
+      await switching;
+
+      expect(controller.state.current?.id, 'second');
+      expect(controller.state.processing, PlayerProcessing.ready);
+    },
+  );
+
+  test(
+    'ready snapshot during session end remains authoritative for queue selection',
+    () async {
+      final audio = FakeAudio()..cached = true;
+      final sessions = DeferredEndSessions();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        sessions: sessions,
+      );
+      await controller.playTracks([track('first'), track('second')]);
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final switching = controller.playIndex(1);
+      await Future<void>.delayed(Duration.zero);
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+      sessions.pendingEnds.single.complete();
+      await switching;
+
+      expect(controller.state.current?.id, 'second');
+      expect(controller.state.processing, PlayerProcessing.ready);
+    },
+  );
+
+  test(
+    'ready snapshot during session end remains authoritative after removing current track',
+    () async {
+      final audio = FakeAudio()..cached = true;
+      final sessions = DeferredEndSessions();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        sessions: sessions,
+      );
+      await controller.playTracks([track('first'), track('second')]);
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final removing = controller.removeAt(0);
+      await Future<void>.delayed(Duration.zero);
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+      sessions.pendingEnds.single.complete();
+      await removing;
+
+      expect(controller.state.current?.id, 'second');
+      expect(controller.state.processing, PlayerProcessing.ready);
+    },
+  );
 
   test(
     'successful streamed playback reports once after audio starts',
     () async {
-      final reports = <String>[];
+      final sessions = FakeSessions();
       final controller = PlayerController(
         resolver: FakeResolver(),
         audio: FakeAudio(),
-        reportPlayback: (track) async => reports.add(track.id),
+        sessions: sessions,
       );
 
       await controller.play(track('streamed'));
       await Future<void>.delayed(Duration.zero);
 
-      expect(reports, ['streamed']);
+      expect(sessions.starts, ['streamed']);
     },
   );
 
   test('failed playback startup does not report', () async {
-    final reports = <String>[];
+    final sessions = FakeSessions();
     final controller = PlayerController(
       resolver: FakeResolver(),
       audio: FakeAudio()..playError = StateError('startup failed'),
-      reportPlayback: (track) async => reports.add(track.id),
+      sessions: sessions,
     );
 
     await controller.play(track('failed'));
     await Future<void>.delayed(Duration.zero);
 
-    expect(reports, isEmpty);
+    expect(sessions.starts, isEmpty);
     expect(controller.state.error, isA<StateError>());
   });
 
   test('ordinary pause and resume do not report again', () async {
-    final reports = <String>[];
+    final sessions = FakeSessions();
     final controller = PlayerController(
       resolver: FakeResolver(),
       audio: FakeAudio(),
-      reportPlayback: (track) async => reports.add(track.id),
+      sessions: sessions,
     );
     await controller.play(track('streamed'));
     await Future<void>.delayed(Duration.zero);
-    reports.clear();
+    sessions.starts.clear();
 
     await controller.pause();
     await controller.resume();
     await Future<void>.delayed(Duration.zero);
 
-    expect(reports, isEmpty);
+    expect(sessions.starts, isEmpty);
   });
 
   test('reporting failure does not change successful playback state', () async {
+    final sessions = FakeSessions()..startError = StateError('report failed');
     final controller = PlayerController(
       resolver: FakeResolver(),
       audio: FakeAudio(),
-      reportPlayback: (_) => throw StateError('report failed'),
+      sessions: sessions,
     );
 
     await controller.play(track('streamed'));

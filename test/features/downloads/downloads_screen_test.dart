@@ -45,6 +45,34 @@ Map<String, Object?> job(String status) => {
 };
 
 void main() {
+  testWidgets('mobile downloads use one coordinated page scroll', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [job('waiting')],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    expect(find.byKey(const Key('downloads-mobile-scroll')), findsOneWidget);
+  });
+
   testWidgets('download errors are presented as user-facing Chinese messages', (
     tester,
   ) async {
@@ -158,9 +186,55 @@ void main() {
     );
   });
 
+  testWidgets('download without available artwork shows a fallback', (
+    tester,
+  ) async {
+    final value = job('completed');
+    value['musicInfo'] = {
+      'id': 'missing-cover',
+      'name': 'Missing cover',
+      'source': 'local',
+    };
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/downloads') {
+            return http.Response(
+              jsonEncode({
+                'data': [value],
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'error': {'code': 'NOT_FOUND', 'message': 'No picture'},
+            }),
+            404,
+          );
+        }),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('artwork-fallback-local:missing-cover')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('desktop download status is vertically centered in its row', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final value = job('completed');
     value['musicInfo'] = {
       'id': 'aligned',
@@ -196,6 +270,10 @@ void main() {
   testWidgets('waiting job exposes only legal start and delete actions', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final repository = DownloadRepository(
       ServiceApi(
         ServiceOrigin.parse('http://service.local'),

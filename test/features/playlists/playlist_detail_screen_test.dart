@@ -11,13 +11,20 @@ import 'package:musicfree_service_client/features/catalog/catalog_track_list.dar
 import 'package:musicfree_service_client/features/playlists/playlist_detail_controller.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_detail_screen.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
+import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-Widget harness(Widget child) => ShadApp.custom(
-  theme: buildLightTheme(),
-  appBuilder: (context) => MaterialApp(
-    theme: Theme.of(context),
-    home: Scaffold(body: ShadAppBuilder(child: child)),
+import '../../support/fake_app_image_cache.dart';
+import '../../support/test_image_cache_manager.dart';
+
+Widget harness(Widget child) => AppImageCacheScope(
+  cache: FakeAppImageCache(manager: TestImageCacheManager()),
+  child: ShadApp.custom(
+    theme: buildLightTheme(),
+    appBuilder: (context) => MaterialApp(
+      theme: Theme.of(context),
+      home: Scaffold(body: ShadAppBuilder(child: child)),
+    ),
   ),
 );
 
@@ -73,6 +80,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('playlist-detail-route')), findsOneWidget);
     expect(find.text('Remote Mix'), findsWidgets);
     expect(find.textContaining('2 首'), findsWidgets);
     expect(find.textContaining('24 首'), findsNothing);

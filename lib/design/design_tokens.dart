@@ -17,6 +17,9 @@ final class AppTokens {
     required this.accentForeground,
     required this.primaryAction,
     required this.primaryActionForeground,
+    required this.playbackAction,
+    required this.playbackActionForeground,
+    required this.playbackTrackInactive,
     required this.success,
     required this.warning,
     required this.danger,
@@ -38,6 +41,9 @@ final class AppTokens {
     accentForeground: Color(0xFFF6F6F6),
     primaryAction: Color(0xFF14745F),
     primaryActionForeground: Color(0xFFF6F6F6),
+    playbackAction: Color(0xFF14745F),
+    playbackActionForeground: Colors.white,
+    playbackTrackInactive: Color(0xFF8A8A8A),
     success: Color(0xFF2F7D4A),
     warning: Color(0xFF966000),
     danger: Color(0xFFB93B3B),
@@ -59,6 +65,9 @@ final class AppTokens {
     accentForeground: Color(0xFF101713),
     primaryAction: Color(0xFF00E66A),
     primaryActionForeground: Color(0xFF101713),
+    playbackAction: Color(0xFF14745F),
+    playbackActionForeground: Colors.white,
+    playbackTrackInactive: Color(0xFF737570),
     success: Color(0xFF75B987),
     warning: Color(0xFFD7A45A),
     danger: Color(0xFFE87870),
@@ -82,6 +91,9 @@ final class AppTokens {
   final Color accentForeground;
   final Color primaryAction;
   final Color primaryActionForeground;
+  final Color playbackAction;
+  final Color playbackActionForeground;
+  final Color playbackTrackInactive;
   final Color success;
   final Color warning;
   final Color danger;

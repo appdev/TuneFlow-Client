@@ -197,6 +197,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Service 设置读取失败'), findsOneWidget);
+    expect(find.text('Service 设置暂时无法读取，请稍后重试。'), findsOneWidget);
+    expect(find.textContaining('StateError'), findsNothing);
+    expect(find.textContaining('offline'), findsNothing);
     final toggle = tester.widget<ShadSwitch>(
       find.byKey(const Key('settings-auto-download-on-play')),
     );

@@ -53,6 +53,7 @@ Widget shellHarness({
           connected: connected,
           onDisconnect: () {},
           player: player,
+          location: state.uri.path,
           platform: AppPlatform.macos,
           child: child,
         ),
@@ -94,11 +95,14 @@ void main() {
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
       );
+    final materialIconLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait([
       chineseFontLoader.load(),
       displayFontLoader.load(),
       dataFontLoader.load(),
       iconLoader.load(),
+      materialIconLoader.load(),
     ]);
   });
 

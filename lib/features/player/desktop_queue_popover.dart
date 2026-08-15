@@ -14,9 +14,14 @@ import '../../design/design_tokens.dart';
 import 'player_controller.dart';
 
 final class DesktopQueuePopover extends StatefulWidget {
-  const DesktopQueuePopover({super.key, required this.controller});
+  const DesktopQueuePopover({
+    super.key,
+    required this.controller,
+    this.accentColor,
+  });
 
   final PlayerController controller;
+  final Color? accentColor;
 
   @override
   State<DesktopQueuePopover> createState() => _DesktopQueuePopoverState();
@@ -131,6 +136,7 @@ final class _DesktopQueuePopoverState extends State<DesktopQueuePopover> {
                   active: index == state.currentIndex,
                   onPressed: () => widget.controller.playIndex(index),
                   onRemove: () => removeAt(index),
+                  accentColor: widget.accentColor,
                 ),
               ),
             ),
@@ -148,16 +154,19 @@ final class _DesktopQueueRow extends StatelessWidget {
     required this.active,
     required this.onPressed,
     required this.onRemove,
+    required this.accentColor,
   });
 
   final Track track;
   final bool active;
   final VoidCallback onPressed;
   final VoidCallback onRemove;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final accent = accentColor ?? tokens.accent;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -170,11 +179,7 @@ final class _DesktopQueueRow extends StatelessWidget {
               SizedBox(
                 width: 26,
                 child: active
-                    ? Icon(
-                        LucideIcons.audioLines,
-                        size: 17,
-                        color: tokens.accent,
-                      )
+                    ? Icon(LucideIcons.audioLines, size: 17, color: accent)
                     : null,
               ),
               Expanded(
@@ -188,7 +193,7 @@ final class _DesktopQueueRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.title.copyWith(
                         fontSize: 14,
-                        color: active ? tokens.accent : tokens.foreground,
+                        color: active ? accent : tokens.foreground,
                       ),
                     ),
                     Text(

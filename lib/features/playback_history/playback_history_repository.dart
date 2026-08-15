@@ -1,16 +1,59 @@
 import '../../api/models.dart';
 import '../../api/service_api.dart';
 
-final class PlaybackHistoryRepository {
-  const PlaybackHistoryRepository(this.api);
+abstract interface class PlaybackSessionPort {
+  Future<String> start(Track track);
+
+  Future<void> end(
+    String playbackId, {
+    required bool completed,
+    required Duration position,
+    required Duration duration,
+  });
+}
+
+final class PlaybackHistoryRepository implements PlaybackSessionPort {
+  const PlaybackHistoryRepository(this.api, {required this.platform});
 
   final ServiceApi api;
+  final String platform;
 
-  Future<void> recordPlayback(Track track) async {
-    await api.request(
+  @override
+  Future<String> start(Track track) async {
+    final value = await api.request(
       'POST',
       '/api/v1/playback/history',
-      body: {'track': track.toJson()},
+      body: {'track': track.toJson(), 'platform': platform},
+    );
+    if (value is! Map || value['playbackId'] is! String) {
+      throw const FormatException(
+        'Playback history response is missing playbackId.',
+      );
+    }
+    final playbackId = value['playbackId'] as String;
+    if (playbackId.isEmpty) {
+      throw const FormatException(
+        'Playback history response is missing playbackId.',
+      );
+    }
+    return playbackId;
+  }
+
+  @override
+  Future<void> end(
+    String playbackId, {
+    required bool completed,
+    required Duration position,
+    required Duration duration,
+  }) async {
+    await api.request(
+      'PATCH',
+      '/api/v1/playback/history/${Uri.encodeComponent(playbackId)}',
+      body: {
+        'completed': completed,
+        'lastPositionSeconds': position.inMicroseconds / 1000000,
+        'durationSeconds': duration.inMicroseconds / 1000000,
+      },
     );
   }
 
@@ -22,7 +65,7 @@ final class PlaybackHistoryRepository {
       if (item is! Map) continue;
       final json = Map<String, Object?>.from(item);
       final trackJson = json['track'];
-      final playedAt = json['playedAt'];
+      final playedAt = json['startedAt'];
       if (trackJson is! Map || playedAt is! num) continue;
       try {
         result.add(

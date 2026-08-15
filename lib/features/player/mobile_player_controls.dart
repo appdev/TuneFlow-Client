@@ -5,8 +5,11 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../design/app_theme_definition.dart';
 import '../../design/components/app_glass_surface.dart';
+import '../../design/components/app_playback_button.dart';
 import '../../design/components/playback_progress.dart';
 import '../../design/design_tokens.dart';
+import 'current_track_action_buttons.dart';
+import 'current_track_actions_controller.dart';
 import 'player_state.dart';
 
 final class MobilePlayerControls extends StatelessWidget {
@@ -20,6 +23,7 @@ final class MobilePlayerControls extends StatelessWidget {
     required this.onPlaybackMode,
     required this.onQualityChanged,
     required this.onQueue,
+    this.actions,
   });
 
   final PlayerState state;
@@ -30,6 +34,7 @@ final class MobilePlayerControls extends StatelessWidget {
   final VoidCallback onPlaybackMode;
   final ValueChanged<String> onQualityChanged;
   final VoidCallback onQueue;
+  final CurrentTrackActionsController? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -91,6 +96,16 @@ final class MobilePlayerControls extends StatelessWidget {
               ),
             ],
           ),
+          if (actions case final value?) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: CurrentTrackActionButtons(
+                controller: value,
+                keyPrefix: 'mobile-full',
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.sm),
           PlaybackProgress(
             key: const Key('player-mobile-progress'),
@@ -121,7 +136,7 @@ final class MobilePlayerControls extends StatelessWidget {
                     _TransportButton(
                       key: const Key('player-previous'),
                       label: '上一首',
-                      icon: LucideIcons.skipBack,
+                      icon: AppPlaybackIcons.previous,
                       enabled: state.canPrevious,
                       onPressed: onPrevious,
                     ),
@@ -130,8 +145,8 @@ final class MobilePlayerControls extends StatelessWidget {
                       key: const Key('player-play-pause'),
                       label: _playLabel,
                       icon: state.playing
-                          ? LucideIcons.pause
-                          : LucideIcons.play,
+                          ? AppPlaybackIcons.pause
+                          : AppPlaybackIcons.play,
                       prominent: true,
                       loading:
                           state.processing == PlayerProcessing.loading ||
@@ -142,7 +157,7 @@ final class MobilePlayerControls extends StatelessWidget {
                     _TransportButton(
                       key: const Key('player-next'),
                       label: '下一首',
-                      icon: LucideIcons.skipForward,
+                      icon: AppPlaybackIcons.next,
                       enabled: state.canNext,
                       onPressed: onNext,
                     ),
@@ -209,7 +224,7 @@ final class _TransportButton extends StatelessWidget {
     final tokens = AppTokens.of(context);
     final button = prominent
         ? Material(
-            color: tokens.foreground,
+            color: tokens.playbackAction,
             shape: const CircleBorder(),
             child: InkWell(
               customBorder: const CircleBorder(),
@@ -222,10 +237,14 @@ final class _TransportButton extends StatelessWidget {
                           dimension: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: tokens.background,
+                            color: tokens.playbackActionForeground,
                           ),
                         )
-                      : Icon(icon, size: 23, color: tokens.background),
+                      : Icon(
+                          icon,
+                          size: 23,
+                          color: tokens.playbackActionForeground,
+                        ),
                 ),
               ),
             ),

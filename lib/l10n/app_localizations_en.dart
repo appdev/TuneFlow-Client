@@ -28,6 +28,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connecting => 'Connecting…';
 
   @override
+  String get connectingTitle => 'Connecting to TuneFlow Service';
+
+  @override
   String get disconnect => 'Disconnect';
 
   @override

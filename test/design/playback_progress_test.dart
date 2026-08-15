@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/components/playback_progress.dart';
+import 'package:musicfree_service_client/design/design_tokens.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 void main() {
@@ -42,6 +43,11 @@ void main() {
     final slider = tester.widget<ShadSlider>(find.byType(ShadSlider));
     expect(slider.trackHeight, 4);
     expect(slider.thumbRadius, 6);
+    expect(slider.inactiveTrackColor, AppTokens.light.playbackTrackInactive);
+    expect(
+      _contrastRatio(slider.inactiveTrackColor!, AppTokens.light.background),
+      greaterThanOrEqualTo(3),
+    );
     expect(tester.getSize(find.text('1:05')).width, lessThanOrEqualTo(42));
     expect(tester.getSize(find.text('4:05')).width, lessThanOrEqualTo(42));
 
@@ -112,4 +118,14 @@ void main() {
 
     expect(seekCount, 0);
   });
+}
+
+double _contrastRatio(Color first, Color second) {
+  final lighter = first.computeLuminance() > second.computeLuminance()
+      ? first.computeLuminance()
+      : second.computeLuminance();
+  final darker = first.computeLuminance() > second.computeLuminance()
+      ? second.computeLuminance()
+      : first.computeLuminance();
+  return (lighter + .05) / (darker + .05);
 }

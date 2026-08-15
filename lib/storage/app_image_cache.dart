@@ -17,6 +17,29 @@ abstract interface class AppImageCache {
   Future<void> dispose();
 }
 
+Future<void> copyLegacyImageCacheIfNeeded({
+  required Directory legacy,
+  required Directory persistent,
+}) async {
+  if (await persistent.exists() || !await legacy.exists()) return;
+  final legacyPath = legacy.absolute.path;
+  final persistentPath = persistent.absolute.path;
+  if (legacyPath == persistentPath) return;
+
+  await persistent.create(recursive: true);
+  await for (final entity in legacy.list(recursive: true, followLinks: false)) {
+    final relative = entity.absolute.path.substring(legacyPath.length + 1);
+    final targetPath = '$persistentPath${Platform.pathSeparator}$relative';
+    if (entity is Directory) {
+      await Directory(targetPath).create(recursive: true);
+    } else if (entity is File) {
+      final target = File(targetPath);
+      await target.parent.create(recursive: true);
+      await entity.copy(target.path);
+    }
+  }
+}
+
 final class CeAppImageCache implements AppImageCache {
   CeAppImageCache({
     required this.cacheBaseDirectory,

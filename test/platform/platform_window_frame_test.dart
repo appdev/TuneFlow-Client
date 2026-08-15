@@ -46,6 +46,10 @@ void main() {
   testWidgets('player window chrome keeps only back over the shared canvas', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       _harness(
         AppPlatform.macos,
@@ -65,6 +69,32 @@ void main() {
     final decoration = titleBar.decoration! as BoxDecoration;
     expect(decoration.color, Colors.transparent);
     expect(decoration.border, isNull);
+  });
+
+  testWidgets('player back action uses only the supplied artwork accent', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const accent = Color(0xFFB45A3C);
+    await tester.pumpWidget(
+      _harness(
+        AppPlatform.macos,
+        location: '/player',
+        onBack: () {},
+        playerAccent: accent,
+      ),
+    );
+
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const Key('desktop-back')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(icon.color, accent);
   });
 
   testWidgets('desktop shell title bar continues the sidebar and content', (
@@ -176,6 +206,7 @@ Widget _harness(
   VoidCallback? onForward,
   VoidCallback? onSearch,
   double? desktopSidebarWidth,
+  Color? playerAccent,
 }) {
   final controller = DesktopWindowController(_FakeWindowOperations());
   return ShadApp.custom(
@@ -200,6 +231,7 @@ Widget _harness(
             onForward: onForward,
             onSearch: onSearch,
             desktopSidebarWidth: desktopSidebarWidth,
+            playerAccent: playerAccent,
             child: const ColoredBox(
               key: Key('window-frame-content'),
               color: Colors.transparent,

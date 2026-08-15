@@ -154,6 +154,7 @@ final class CatalogProvider {
     required this.name,
     required this.searchKinds,
     this.leaderboards = false,
+    this.albumDetail = false,
     this.playlistDiscovery,
   });
 
@@ -171,6 +172,7 @@ final class CatalogProvider {
           .whereType<CatalogSearchKind>()
           .toSet(),
       leaderboards: json['leaderboards'] == true,
+      albumDetail: json['albumDetail'] == true,
       playlistDiscovery: json['playlistDiscovery'] == null
           ? null
           : PlaylistDiscoveryCapability.fromJson(json['playlistDiscovery']),
@@ -181,6 +183,7 @@ final class CatalogProvider {
   final String name;
   final Set<CatalogSearchKind> searchKinds;
   final bool leaderboards;
+  final bool albumDetail;
   final PlaylistDiscoveryCapability? playlistDiscovery;
 }
 
@@ -478,6 +481,50 @@ final class OnlinePlaylistPage {
   final List<Track> tracks;
 }
 
+final class AlbumDetailPage {
+  const AlbumDetailPage({
+    required this.source,
+    required this.page,
+    required this.limit,
+    required this.total,
+    required this.hasMore,
+    required this.album,
+    required this.tracks,
+  });
+
+  factory AlbumDetailPage.fromJson(Object? value) {
+    final json = jsonObject(value, 'albumDetailPage');
+    final total = json['total'];
+    final hasMore = json['hasMore'];
+    if (total != null && total is! int) _invalid('albumDetailPage.total');
+    if (hasMore is! bool) _invalid('albumDetailPage.hasMore');
+    final album = CatalogCollection.fromJson(json['album']);
+    if (album.kind != CatalogSearchKind.album) {
+      _invalid('albumDetailPage.album.kind');
+    }
+    return AlbumDetailPage(
+      source: jsonString(json['source'], 'albumDetailPage.source'),
+      page: jsonInt(json['page'], 'albumDetailPage.page'),
+      limit: jsonInt(json['limit'], 'albumDetailPage.limit'),
+      total: total as int?,
+      hasMore: hasMore,
+      album: album,
+      tracks: jsonList(
+        json['tracks'],
+        'albumDetailPage.tracks',
+      ).map(Track.fromJson).toList(growable: false),
+    );
+  }
+
+  final String source;
+  final int page;
+  final int limit;
+  final int? total;
+  final bool hasMore;
+  final CatalogCollection album;
+  final List<Track> tracks;
+}
+
 final class CollectionSearchPage {
   const CollectionSearchPage({required this.items, required this.total});
 
@@ -591,27 +638,78 @@ final class PlaylistDetail extends PlaylistSummary {
   final List<Track> tracks;
 }
 
+enum PlaybackBundleCompleteness { complete, mixed, audioOnly }
+
+final class ResolvedPlaybackResources {
+  const ResolvedPlaybackResources({
+    this.lyrics,
+    this.lyricsUrl,
+    this.pictureUrl,
+  });
+
+  factory ResolvedPlaybackResources.fromJson(Object? value) {
+    final json = jsonObject(value, 'resolvedTrack.resources');
+    final lyricsValue = json['lyrics'];
+    final lyricsUrlValue = json['lyricsUrl'];
+    final pictureUrlValue = json['pictureUrl'];
+    if (lyricsValue != null && lyricsUrlValue != null) {
+      _invalid('resolvedTrack.resources.lyrics');
+    }
+    if (lyricsUrlValue != null && lyricsUrlValue is! String) {
+      _invalid('resolvedTrack.resources.lyricsUrl');
+    }
+    if (pictureUrlValue != null && pictureUrlValue is! String) {
+      _invalid('resolvedTrack.resources.pictureUrl');
+    }
+    return ResolvedPlaybackResources(
+      lyrics: lyricsValue == null ? null : Lyrics.fromJson(lyricsValue),
+      lyricsUrl: lyricsUrlValue as String?,
+      pictureUrl: pictureUrlValue as String?,
+    );
+  }
+
+  final Lyrics? lyrics;
+  final String? lyricsUrl;
+  final String? pictureUrl;
+}
+
 final class ResolvedTrack {
   const ResolvedTrack({
     required this.url,
     required this.quality,
     required this.expiresAt,
+    this.resources,
+    this.completeness,
   });
 
   factory ResolvedTrack.fromJson(Object? value) {
     final json = jsonObject(value, 'resolvedTrack');
     final expiresAt = json['expiresAt'];
     if (expiresAt is! num) _invalid('resolvedTrack.expiresAt');
+    final resources = json['resources'];
+    final completeness = switch (json['completeness']) {
+      null => null,
+      'complete' => PlaybackBundleCompleteness.complete,
+      'mixed' => PlaybackBundleCompleteness.mixed,
+      'audio-only' => PlaybackBundleCompleteness.audioOnly,
+      _ => _invalid('resolvedTrack.completeness'),
+    };
     return ResolvedTrack(
       url: jsonString(json['url'], 'resolvedTrack.url'),
       quality: jsonString(json['quality'], 'resolvedTrack.quality'),
       expiresAt: expiresAt,
+      resources: resources == null
+          ? null
+          : ResolvedPlaybackResources.fromJson(resources),
+      completeness: completeness,
     );
   }
 
   final String url;
   final String quality;
   final num expiresAt;
+  final ResolvedPlaybackResources? resources;
+  final PlaybackBundleCompleteness? completeness;
 }
 
 final class DomainEvent {
@@ -757,12 +855,21 @@ final class LibraryTrack {
     required this.extension,
     required this.streamPath,
     this.codec,
+    this.pictureUrl,
+    this.lyricsPath,
   });
 
   factory LibraryTrack.fromJson(Object? value) {
     final json = jsonObject(value, 'libraryTrack');
     final size = json['size'];
     if (size is! num || size < 0) _invalid('libraryTrack.size');
+    final picture = json['pictureUrl'];
+    final pictureUrl = picture is String ? Uri.tryParse(picture) : null;
+    if (picture != null && pictureUrl == null) {
+      _invalid('libraryTrack.pictureUrl');
+    }
+    final lyrics = json['lyricsUrl'];
+    if (lyrics != null && lyrics is! String) _invalid('libraryTrack.lyricsUrl');
     return LibraryTrack(
       id: jsonString(json['id'], 'libraryTrack.id'),
       track: Track.fromJson(json['musicInfo']),
@@ -770,6 +877,8 @@ final class LibraryTrack {
       extension: jsonString(json['extension'], 'libraryTrack.extension'),
       codec: json['codec'] as String?,
       streamPath: jsonString(json['streamUrl'], 'libraryTrack.streamUrl'),
+      pictureUrl: pictureUrl,
+      lyricsPath: lyrics as String?,
     );
   }
 
@@ -779,4 +888,6 @@ final class LibraryTrack {
   final String extension;
   final String? codec;
   final String streamPath;
+  final Uri? pictureUrl;
+  final String? lyricsPath;
 }

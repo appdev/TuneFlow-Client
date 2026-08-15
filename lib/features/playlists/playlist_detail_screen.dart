@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
+import '../../design/components/app_playback_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
 import '../../design/components/app_states.dart';
@@ -94,54 +96,106 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       }
       if (detail == null) {
         return AppRetryState(
-          message: state.error?.toString() ?? '歌单不存在',
+          message: state.error == null
+              ? '歌单不存在'
+              : appErrorMessage(state.error!, fallback: '歌单详情暂时无法加载，请稍后重试。'),
           retryLabel: '重试',
           onRetry: widget.controller.refresh,
         );
       }
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final mobile =
-              classifyLayout(MediaQuery.sizeOf(context)) ==
-              AppLayoutClass.mobile;
-          return ColoredBox(
-            key: Key(
-              mobile ? 'playlist-detail-mobile' : 'playlist-detail-wide',
-            ),
-            color: AppTokens.of(context).background,
-            child: Column(
-              children: [
-                if (state.error != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: AppNotice.error(
-                      title: '显示的是上次数据',
-                      message: state.error.toString(),
-                    ),
-                  ),
-                _PlaylistHero(
-                  detail: detail,
-                  mobile: mobile,
-                  onPlayAll: detail.tracks.isEmpty
-                      ? null
-                      : () => widget.controller.playAll(widget.playTracks),
-                  onRename: () => _rename(detail.displayName),
-                  onDelete: () => _delete(detail.displayName),
-                ),
-                Expanded(
-                  child: detail.tracks.isEmpty
-                      ? const AppEmptyState(message: '歌单中还没有歌曲')
-                      : _TrackList(
+      return KeyedSubtree(
+        key: const Key('playlist-detail-route'),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final mobile =
+                classifyLayout(MediaQuery.sizeOf(context)) ==
+                AppLayoutClass.mobile;
+            return ColoredBox(
+              key: Key(
+                mobile ? 'playlist-detail-mobile' : 'playlist-detail-wide',
+              ),
+              color: AppTokens.of(context).background,
+              child: mobile
+                  ? SingleChildScrollView(
+                      key: const Key('playlist-detail-mobile-scroll'),
+                      child: Column(
+                        children: [
+                          if (state.error != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                              child: AppNotice.error(
+                                title: '显示的是上次数据',
+                                message: appErrorMessage(
+                                  state.error!,
+                                  fallback: '歌单内容暂时无法刷新，请稍后重试。',
+                                ),
+                              ),
+                            ),
+                          _PlaylistHero(
+                            detail: detail,
+                            mobile: true,
+                            onPlayAll: detail.tracks.isEmpty
+                                ? null
+                                : () => widget.controller.playAll(
+                                    widget.playTracks,
+                                  ),
+                            onRename: () => _rename(detail.displayName),
+                            onDelete: () => _delete(detail.displayName),
+                          ),
+                          if (detail.tracks.isEmpty)
+                            const SizedBox(
+                              height: 220,
+                              child: AppEmptyState(message: '歌单中还没有歌曲'),
+                            )
+                          else
+                            _TrackList(
+                              detail: detail,
+                              controller: widget.controller,
+                              playTracks: widget.playTracks,
+                              mobile: true,
+                            ),
+                        ],
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        if (state.error != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: AppNotice.error(
+                              title: '显示的是上次数据',
+                              message: appErrorMessage(
+                                state.error!,
+                                fallback: '歌单内容暂时无法刷新，请稍后重试。',
+                              ),
+                            ),
+                          ),
+                        _PlaylistHero(
                           detail: detail,
-                          controller: widget.controller,
-                          playTracks: widget.playTracks,
                           mobile: mobile,
+                          onPlayAll: detail.tracks.isEmpty
+                              ? null
+                              : () => widget.controller.playAll(
+                                  widget.playTracks,
+                                ),
+                          onRename: () => _rename(detail.displayName),
+                          onDelete: () => _delete(detail.displayName),
                         ),
-                ),
-              ],
-            ),
-          );
-        },
+                        Expanded(
+                          child: detail.tracks.isEmpty
+                              ? const AppEmptyState(message: '歌单中还没有歌曲')
+                              : _TrackList(
+                                  detail: detail,
+                                  controller: widget.controller,
+                                  playTracks: widget.playTracks,
+                                  mobile: mobile,
+                                ),
+                        ),
+                      ],
+                    ),
+            );
+          },
+        ),
       );
     },
   );
@@ -199,10 +253,10 @@ final class _PlaylistHero extends StatelessWidget {
           spacing: AppSpacing.xs,
           runSpacing: AppSpacing.xs,
           children: [
-            AppButton(
+            AppButton.playback(
               key: const Key('play-all'),
               onPressed: onPlayAll,
-              leading: const Icon(LucideIcons.play, size: 18),
+              leading: const AppPlaybackGlyph.play(size: 18),
               child: const Text('播放全部'),
             ),
             if (!detail.isBuiltIn) ...[
@@ -357,6 +411,8 @@ final class _TrackList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!mobile) return _buildDesktop(context);
     final list = ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
         mobile ? 16 : 38,
         mobile ? 10 : 0,

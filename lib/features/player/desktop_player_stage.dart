@@ -1,9 +1,11 @@
-/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../design/components/artwork.dart';
 import '../../design/design_tokens.dart';
+import 'artwork_palette.dart';
+import 'desktop_orbit_vinyl.dart';
 import 'lyrics_view.dart';
 import 'player_state.dart';
 
@@ -12,11 +14,13 @@ final class DesktopPlayerStage extends StatelessWidget {
     super.key,
     required this.state,
     required this.artworkSource,
+    required this.palette,
     required this.onRetryLyrics,
   });
 
   final PlayerState state;
   final AppArtworkSource artworkSource;
+  final ArtworkPalette palette;
   final VoidCallback onRetryLyrics;
 
   @override
@@ -32,77 +36,131 @@ final class DesktopPlayerStage extends StatelessWidget {
       if (album != null) album,
     ].join(' · ');
 
-    return Padding(
-      key: const Key('player-desktop-stage'),
-      padding: const EdgeInsets.fromLTRB(48, 48, 48, 142),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 42,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 390),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AspectRatio(
-                      aspectRatio: 1,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) => AppArtwork(
-                          key: const Key('player-desktop-artwork'),
-                          source: artworkSource,
-                          seed: '${track.source}:${track.id}',
-                          semanticLabel: '${track.title}封面',
-                          size: constraints.maxWidth,
-                          borderRadius: AppRadii.panel,
+    return LayoutBuilder(
+      builder: (context, stageConstraints) {
+        const legacyHorizontalInset = 48.0;
+        final horizontalInset = (stageConstraints.maxWidth * .10)
+            .clamp(72.0, 160.0)
+            .toDouble();
+        final recordSizingWidth =
+            stageConstraints.maxWidth - legacyHorizontalInset * 2;
+
+        return Padding(
+          key: const Key('player-desktop-stage'),
+          padding: EdgeInsets.fromLTRB(
+            horizontalInset,
+            48,
+            horizontalInset,
+            142,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = recordSizingWidth >= 1100;
+              final recordDiameter = math.min(
+                constraints.maxHeight * 1.12,
+                recordSizingWidth * (wide ? .66 : .72),
+              );
+              final rightOverflow =
+                  recordDiameter * (wide ? .26 : .38) +
+                  horizontalInset -
+                  legacyHorizontalInset;
+              final recordLeft =
+                  constraints.maxWidth - recordDiameter + rightOverflow;
+              final readingWidth = math.min(
+                560.0,
+                math.max(280.0, recordLeft - AppSpacing.xl),
+              );
+              final readingHeight = math.min(520.0, constraints.maxHeight);
+
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    right: -rightOverflow,
+                    top: -recordDiameter * .32,
+                    width: recordDiameter,
+                    height: recordDiameter,
+                    child: DesktopOrbitVinyl(
+                      source: artworkSource,
+                      palette: palette,
+                      seed: '${track.source}:${track.id}',
+                      semanticLabel: '${track.title}封面',
+                      rotating:
+                          state.playing &&
+                          state.processing == PlayerProcessing.ready,
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: (constraints.maxHeight - readingHeight) / 2,
+                    width: readingWidth,
+                    height: readingHeight,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.title.isEmpty ? track.id : track.title,
+                          key: const Key('player-desktop-track-title'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.display.copyWith(
+                            color: palette.foreground,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          metadata,
+                          key: const Key('player-desktop-metadata'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.body.copyWith(
+                            color: palette.foreground.withValues(alpha: .62),
+                          ),
+                        ),
+                        const SizedBox(height: 52),
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, lyricsConstraints) => Align(
+                              alignment: Alignment.topLeft,
+                              child: SizedBox(
+                                key: const Key('desktop-lyrics-viewport'),
+                                width: double.infinity,
+                                height: math.min(
+                                  360.0,
+                                  lyricsConstraints.maxHeight,
+                                ),
+                                child: _DesktopLyrics(
+                                  state: state,
+                                  onRetry: onRetryLyrics,
+                                  foreground: palette.foreground,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    Text(
-                      track.title.isEmpty ? track.id : track.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.display,
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      metadata,
-                      key: const Key('player-desktop-metadata'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.body.copyWith(
-                        color: AppTokens.of(context).foregroundSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
+                ],
+              );
+            },
           ),
-          const SizedBox(width: AppSpacing.xl),
-          Expanded(
-            flex: 58,
-            child: Center(
-              child: SizedBox(
-                key: const Key('desktop-lyrics-viewport'),
-                height: 360,
-                child: _DesktopLyrics(state: state, onRetry: onRetryLyrics),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 final class _DesktopLyrics extends StatelessWidget {
-  const _DesktopLyrics({required this.state, required this.onRetry});
+  const _DesktopLyrics({
+    required this.state,
+    required this.onRetry,
+    required this.foreground,
+  });
 
   final PlayerState state;
   final VoidCallback onRetry;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +173,7 @@ final class _DesktopLyrics extends StatelessWidget {
             Text(
               '歌词暂不可用',
               style: AppTypography.body.copyWith(
-                color: AppTokens.of(context).muted,
+                color: foreground.withValues(alpha: .52),
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
@@ -131,11 +189,19 @@ final class _DesktopLyrics extends StatelessWidget {
         child: Text(
           '暂无歌词',
           style: AppTypography.body.copyWith(
-            color: AppTokens.of(context).muted,
+            color: foreground.withValues(alpha: .52),
           ),
         ),
       );
     }
-    return LyricsView(state: state, verticalPadding: 48, edgeFade: true);
+    return LyricsView(
+      state: state,
+      verticalPadding: 48,
+      edgeFade: true,
+      horizontalPadding: 0,
+      textAlign: TextAlign.left,
+      foreground: foreground,
+      mutedForeground: foreground.withValues(alpha: .44),
+    );
   }
 }

@@ -4,6 +4,11 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'app_theme_definition.dart';
 import 'design_tokens.dart';
 
+const appToastAlignment = Alignment(0, -0.45);
+
+ThemeData buildAppMaterialTheme(ThemeData base) =>
+    base.copyWith(splashFactory: NoSplash.splashFactory);
+
 ShadThemeData buildLightTheme([
   AppThemeDefinition definition = AppThemeRegistry.mistSea,
 ]) => _themeFor(definition.light);
@@ -28,6 +33,7 @@ ShadThemeData _themeFor(AppThemeVariant variant) {
     textTheme: ShadTextTheme(family: AppTypography.bodyFontFamily),
     radius: const BorderRadius.all(Radius.circular(AppRadii.control)),
     breakpoints: ShadBreakpoints(sm: 720, md: 900, lg: 1180),
+    sonnerTheme: const ShadSonnerTheme(alignment: appToastAlignment),
     outlineButtonTheme: restingActionTheme,
     ghostButtonTheme: restingActionTheme,
     linkButtonTheme: restingActionTheme,

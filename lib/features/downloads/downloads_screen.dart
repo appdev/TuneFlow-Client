@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
@@ -41,7 +42,7 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
         showAppMessage(
           context,
           title: '下载操作失败',
-          message: error.toString(),
+          message: appErrorMessage(error, fallback: '下载操作未完成，请稍后重试。'),
           destructive: true,
         );
       }
@@ -130,91 +131,132 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
               mobile ? 16 : 38,
               0,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (mobile)
-                  const AppMobilePageHeader(title: '下载', eyebrow: '离线曲库')
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('离线曲库', style: AppTypography.metadata),
-                            const SizedBox(height: 3),
-                            Text('下载管理', style: AppTypography.display),
+            child: Builder(
+              builder: (context) {
+                final contents = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (mobile)
+                      const AppMobilePageHeader(title: '下载', eyebrow: '离线曲库')
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '离线曲库',
+                                  style: AppTypography.metadata,
+                                ),
+                                const SizedBox(height: 3),
+                                Text('下载管理', style: AppTypography.display),
+                              ],
+                            ),
+                          ),
+                          if (state.jobs.any((job) => job.canPause))
+                            AppButton(
+                              variant: ShadButtonVariant.outline,
+                              onPressed: _pauseAll,
+                              child: const Text('全部暂停'),
+                            ),
+                          ...[
+                            const SizedBox(width: 8),
+                            AppButton(
+                              variant: ShadButtonVariant.ghost,
+                              onPressed: widget.controller.refresh,
+                              leading: const Icon(
+                                LucideIcons.refreshCw,
+                                size: 18,
+                              ),
+                              child: const Text('刷新'),
+                            ),
                           ],
+                        ],
+                      ),
+                    if (state.loading) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      const LinearProgressIndicator(minHeight: 2),
+                    ],
+                    if (state.error != null) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      AppNotice.error(
+                        title: state.stale ? '显示的是上次数据' : '加载失败',
+                        message: appErrorMessage(
+                          state.error!,
+                          fallback: '下载任务暂时无法加载，请稍后重试。',
                         ),
                       ),
-                      if (state.jobs.any((job) => job.canPause))
-                        AppButton(
-                          variant: ShadButtonVariant.outline,
-                          onPressed: _pauseAll,
-                          child: const Text('全部暂停'),
-                        ),
-                      ...[
-                        const SizedBox(width: 8),
-                        AppButton(
-                          variant: ShadButtonVariant.ghost,
-                          onPressed: widget.controller.refresh,
-                          leading: const Icon(LucideIcons.refreshCw, size: 18),
-                          child: const Text('刷新'),
-                        ),
-                      ],
                     ],
-                  ),
-                if (state.loading) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  const LinearProgressIndicator(minHeight: 2),
-                ],
-                if (state.error != null) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  AppNotice.error(
-                    title: state.stale ? '显示的是上次数据' : '加载失败',
-                    message: state.error.toString(),
-                  ),
-                ],
-                if (state.lastBulkResult?.hasFailures ?? false) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  AppNotice.error(
-                    title: '批量暂停部分失败',
-                    message:
-                        '${state.lastBulkResult!.failures.length} 个任务仍需单独处理。',
-                  ),
-                ],
-                const SizedBox(height: AppSpacing.lg),
-                AppNotice(
-                  title: mobile
-                      ? 'Service 恢复后将继续排队任务。'
-                      : 'Service 断开时，已完成内容仍可播放；排队任务将在恢复后继续。',
-                  message: '',
-                  compact: true,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Expanded(
-                  child: state.jobs.isEmpty
-                      ? const AppEmptyState(message: '暂无 Service 下载任务')
-                      : RefreshIndicator(
-                          onRefresh: widget.controller.refresh,
-                          child: ListView.separated(
-                            itemCount: state.jobs.length,
-                            separatorBuilder: (_, _) =>
-                                SizedBox(height: mobile ? 0 : AppSpacing.sm),
-                            itemBuilder: (context, index) {
-                              final job = state.jobs[index];
-                              return _DownloadCard(
-                                job: job,
-                                mobile: mobile,
-                                loadPicture: widget.controller.loadPicture,
-                                onActions: () => _actions(job),
-                              );
-                            },
+                    if (state.lastBulkResult?.hasFailures ?? false) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      AppNotice.error(
+                        title: '批量暂停部分失败',
+                        message:
+                            '${state.lastBulkResult!.failures.length} 个任务仍需单独处理。',
+                      ),
+                    ],
+                    const SizedBox(height: AppSpacing.lg),
+                    AppNotice(
+                      title: mobile
+                          ? 'Service 恢复后将继续排队任务。'
+                          : 'Service 断开时，已完成内容仍可播放；排队任务将在恢复后继续。',
+                      message: '',
+                      compact: true,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    if (mobile)
+                      if (state.jobs.isEmpty)
+                        const SizedBox(
+                          height: 220,
+                          child: AppEmptyState(message: '暂无 Service 下载任务'),
+                        )
+                      else
+                        ...state.jobs.map(
+                          (job) => _DownloadCard(
+                            job: job,
+                            mobile: true,
+                            loadPicture: widget.controller.loadPicture,
+                            onActions: () => _actions(job),
                           ),
+                        )
+                    else
+                      Expanded(
+                        child: state.jobs.isEmpty
+                            ? const AppEmptyState(message: '暂无 Service 下载任务')
+                            : RefreshIndicator(
+                                onRefresh: widget.controller.refresh,
+                                child: ListView.separated(
+                                  itemCount: state.jobs.length,
+                                  separatorBuilder: (_, _) => SizedBox(
+                                    height: mobile ? 0 : AppSpacing.sm,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final job = state.jobs[index];
+                                    return _DownloadCard(
+                                      job: job,
+                                      mobile: mobile,
+                                      loadPicture:
+                                          widget.controller.loadPicture,
+                                      onActions: () => _actions(job),
+                                    );
+                                  },
+                                ),
+                              ),
+                      ),
+                  ],
+                );
+                return mobile
+                    ? RefreshIndicator(
+                        onRefresh: widget.controller.refresh,
+                        child: SingleChildScrollView(
+                          key: const Key('downloads-mobile-scroll'),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          child: contents,
                         ),
-                ),
-              ],
+                      )
+                    : contents;
+              },
             ),
           ),
         );
@@ -340,7 +382,6 @@ final class _DownloadArtwork extends StatelessWidget {
     semanticLabel: '${track.title}封面',
     size: 38,
     borderRadius: AppRadii.control,
-    showFallback: false,
   );
 }
 

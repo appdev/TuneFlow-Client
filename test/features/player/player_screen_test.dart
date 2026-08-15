@@ -1,19 +1,32 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:file/local.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/models.dart';
+import 'package:musicfree_service_client/api/service_api.dart';
+import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
+import 'package:musicfree_service_client/design/components/artwork.dart';
+import 'package:musicfree_service_client/features/downloads/download_repository.dart';
+import 'package:musicfree_service_client/features/player/artwork_palette.dart';
+import 'package:musicfree_service_client/features/player/artwork_palette_controller.dart';
+import 'package:musicfree_service_client/features/player/current_track_actions_controller.dart';
 import 'package:musicfree_service_client/features/player/mini_player.dart';
+import 'package:musicfree_service_client/features/player/lyrics_view.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
 import 'package:musicfree_service_client/features/player/player_screen.dart';
 import 'package:musicfree_service_client/features/player/player_state.dart';
 import 'package:musicfree_service_client/features/player/service_audio_handler.dart';
 import 'package:musicfree_service_client/features/player/wake_lock_port.dart';
+import 'package:musicfree_service_client/features/playlists/favorite_playlist.dart';
+import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
 import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -110,6 +123,22 @@ final class FakeWakeLock implements WakeLockPort {
   Future<void> setEnabled(bool value) async => values.add(value);
 }
 
+final class FakeFavorites implements FavoritePlaylistPort {
+  FakeFavorites({this.containsResult = false});
+
+  bool containsResult;
+  final setCalls = <String>[];
+
+  @override
+  Future<bool> contains(Track track) async => containsResult;
+
+  @override
+  Future<void> setFavorite(Track track, bool favorite) async {
+    setCalls.add('${track.source}:${track.id}:$favorite');
+    containsResult = favorite;
+  }
+}
+
 Widget harness(Widget child) => ShadApp.custom(
   theme: buildLightTheme(),
   appBuilder: (context) => MaterialApp(
@@ -119,12 +148,191 @@ Widget harness(Widget child) => ShadApp.custom(
 );
 
 Future<void> pumpFiniteAnimations(WidgetTester tester) async {
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 500));
-  await tester.pump();
+  for (var frame = 0; frame < 8; frame++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+({PlaylistRepository playlists, DownloadRepository downloads})
+playerActionRepositories(Future<http.Response> Function(http.Request) handler) {
+  final api = ServiceApi(
+    ServiceOrigin.parse('http://service.local'),
+    client: MockClient(handler),
+  );
+  return (
+    playlists: PlaylistRepository(api),
+    downloads: DownloadRepository(api),
+  );
+}
+
+Future<PlayerController> pumpMobileActionPlayer(
+  WidgetTester tester,
+  Future<http.Response> Function(http.Request) handler,
+) async {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final repositories = playerActionRepositories(handler);
+  final controller = PlayerController(
+    resolver: FakeResolver(),
+    audio: FakeAudio(),
+  );
+  await controller.playTracks([
+    Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
+  ]);
+  final actions = CurrentTrackActionsController(
+    player: controller,
+    favorites: FakeFavorites(),
+    download: (track, quality) async {
+      await repositories.downloads.create(track, quality);
+    },
+  );
+  addTearDown(actions.dispose);
+  await tester.pumpWidget(
+    harness(
+      PlayerScreen(
+        controller: controller,
+        lyricsLoader: (_) async => const Lyrics(original: ''),
+        wakeLock: FakeWakeLock(),
+        keepAwake: false,
+        playlists: repositories.playlists,
+        actions: actions,
+      ),
+    ),
+  );
+  return controller;
 }
 
 void main() {
+  testWidgets(
+    'mobile player exposes direct actions and keeps playlist selection in more',
+    (tester) async {
+      await pumpMobileActionPlayer(
+        tester,
+        (_) async => http.Response(jsonEncode({'data': <Object?>[]}), 200),
+      );
+
+      expect(find.byKey(const Key('mobile-full-favorite')), findsOneWidget);
+      expect(find.byKey(const Key('mobile-full-download')), findsOneWidget);
+      expect(find.bySemanticsLabel('更多操作'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('player-mobile-more')));
+      await pumpFiniteAnimations(tester);
+
+      expect(
+        find.byKey(const Key('track-action-addToPlaylist')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('track-action-download')), findsNothing);
+      expect(find.byKey(const Key('track-action-enqueue')), findsNothing);
+      expect(find.byKey(const Key('player-mobile-queue')), findsOneWidget);
+    },
+  );
+
+  testWidgets('mobile player adds the current track to a selected playlist', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await pumpMobileActionPlayer(tester, (request) async {
+      requests.add(request);
+      if (request.method == 'GET') {
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {'id': 'daily', 'name': '每日收藏'},
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'data': [
+            {'id': 'one', 'name': 'One', 'source': 'kw'},
+          ],
+        }),
+        200,
+      );
+    });
+
+    await tester.tap(find.byKey(const Key('player-mobile-more')));
+    await pumpFiniteAnimations(tester);
+    await tester.tap(find.byKey(const Key('track-action-addToPlaylist')));
+    await pumpFiniteAnimations(tester);
+    expect(requests.map((request) => request.method), contains('GET'));
+    expect(find.byKey(const Key('track-action-addToPlaylist')), findsNothing);
+    expect(find.byKey(const Key('player-mobile-layout')), findsOneWidget);
+    expect(find.text('每日收藏'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-playlist-daily')));
+    await pumpFiniteAnimations(tester);
+
+    final post = requests.singleWhere((request) => request.method == 'POST');
+    expect(post.url.path, '/api/v1/playlists/daily/tracks');
+    final body = jsonDecode(post.body) as Map<String, Object?>;
+    final tracks = body['tracks']! as List<Object?>;
+    expect((tracks.single as Map<String, Object?>)['id'], 'one');
+    expect(find.text('已添加到 每日收藏'), findsOneWidget);
+  });
+
+  testWidgets('mobile player downloads the current track at default quality', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await pumpMobileActionPlayer(tester, (request) async {
+      requests.add(request);
+      return http.Response(
+        jsonEncode({
+          'data': {
+            'id': 'download-one',
+            'status': 'waiting',
+            'musicInfo': {'id': 'one', 'name': 'One', 'source': 'kw'},
+            'quality': '128k',
+            'extension': 'mp3',
+            'fileName': 'one.mp3',
+            'downloaded': 0,
+            'total': 0,
+            'progress': 0,
+            'queuePosition': 1,
+            'createdAt': 1000,
+            'updatedAt': 1000,
+          },
+        }),
+        201,
+      );
+    });
+
+    await tester.tap(find.byKey(const Key('mobile-full-download')));
+    await pumpFiniteAnimations(tester);
+
+    final request = requests.single;
+    expect(request.url.path, '/api/v1/downloads');
+    final body = jsonDecode(request.body) as Map<String, Object?>;
+    expect((body['musicInfo']! as Map<String, Object?>)['id'], 'one');
+    expect(body['quality'], '128k');
+    expect(find.text('已加入下载队列'), findsOneWidget);
+  });
+
+  testWidgets('failed mobile player action preserves the current track', (
+    tester,
+  ) async {
+    final controller = await pumpMobileActionPlayer(
+      tester,
+      (_) async => http.Response(
+        jsonEncode({
+          'error': {'code': 'DOWNLOAD_FAILED', 'message': 'failed'},
+        }),
+        500,
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('mobile-full-download')));
+    await pumpFiniteAnimations(tester);
+
+    expect(find.text('下载失败'), findsOneWidget);
+    expect(controller.state.current?.id, 'one');
+  });
+
   testWidgets('mini player is hidden without a queue and opens when visible', (
     tester,
   ) async {
@@ -157,6 +365,8 @@ void main() {
       tester.getSize(find.byKey(const Key('mobile-player-next'))),
       const Size.square(44),
     );
+    expect(find.byKey(const Key('mobile-full-favorite')), findsNothing);
+    expect(find.byKey(const Key('mobile-full-download')), findsNothing);
     await tester.tap(find.byKey(const Key('mini-player')));
 
     expect(opened, isTrue);
@@ -181,6 +391,13 @@ void main() {
         'source': 'kw',
       }),
     ]);
+    final favorites = FakeFavorites();
+    final actions = CurrentTrackActionsController(
+      player: controller,
+      favorites: favorites,
+      download: (_, _) async {},
+    );
+    addTearDown(actions.dispose);
 
     await tester.pumpWidget(
       harness(
@@ -188,9 +405,11 @@ void main() {
           controller: controller,
           onOpen: () => opened = true,
           variant: MiniPlayerVariant.desktop,
+          actions: actions,
         ),
       ),
     );
+    await tester.pump();
 
     expect(find.byKey(const Key('desktop-persistent-player')), findsOneWidget);
     expect(
@@ -216,12 +435,35 @@ void main() {
       'desktop-quality',
       'desktop-lyrics',
       'desktop-queue',
+      'desktop-mini-favorite',
+      'desktop-mini-download',
     ]) {
       final size = tester.getSize(find.byKey(Key(key)));
       expect(size.width, greaterThanOrEqualTo(44), reason: key);
       expect(size.height, greaterThanOrEqualTo(44), reason: key);
     }
-    await tester.tap(find.byKey(const Key('desktop-track-surface')));
+    final playerRect = tester.getRect(
+      find.byKey(const Key('desktop-persistent-player')),
+    );
+    await tester.tapAt(Offset(playerRect.center.dx, playerRect.top + 4));
+    expect(opened, isTrue);
+
+    opened = false;
+    await tester.tap(find.byKey(const Key('player-previous-mini')));
+    await tester.pump();
+    expect(opened, isFalse);
+    await tester.tap(find.byKey(const Key('desktop-play-pause')));
+    await tester.pump();
+    expect(opened, isFalse);
+    await tester.tap(find.byKey(const Key('playback-progress-hit-area')));
+    await tester.pump();
+    expect(opened, isFalse);
+    await tester.tap(find.byKey(const Key('desktop-mini-favorite')));
+    await tester.pump();
+    expect(opened, isFalse);
+    expect(favorites.setCalls, ['kw:desktop:true']);
+
+    await tester.tap(find.byKey(const Key('desktop-player-artwork')));
     expect(opened, isTrue);
     await tester.tap(find.byKey(const Key('desktop-lyrics')));
     expect(controller.state.view, PlayerView.lyrics);
@@ -229,8 +471,67 @@ void main() {
     expect(controller.state.view, PlayerView.queue);
     expect(find.byKey(const Key('player-previous-mini')), findsOneWidget);
     expect(find.byKey(const Key('player-next-mini')), findsOneWidget);
-    expect(find.byIcon(LucideIcons.skipBack), findsOneWidget);
-    expect(find.byIcon(LucideIcons.skipForward), findsOneWidget);
+    expect(find.byIcon(Icons.skip_previous_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
+  });
+
+  testWidgets('desktop track surface opens without a pressed ink highlight', (
+    tester,
+  ) async {
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.playTracks([
+      Track.fromJson({'id': 'quiet-tap', 'name': 'Quiet tap', 'source': 'kw'}),
+    ]);
+    var opened = false;
+
+    await tester.pumpWidget(
+      harness(
+        MiniPlayer(
+          controller: controller,
+          onOpen: () => opened = true,
+          variant: MiniPlayerVariant.desktop,
+        ),
+      ),
+    );
+
+    final trackSurface = find.byKey(const Key('desktop-track-surface'));
+    expect(tester.widget(trackSurface), isNot(isA<InkWell>()));
+    await tester.tap(trackSurface);
+    expect(opened, isTrue);
+  });
+
+  testWidgets('desktop default artwork omits the fallback outline', (
+    tester,
+  ) async {
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.playTracks([
+      Track.fromJson({
+        'id': 'borderless-cover',
+        'name': 'Borderless cover',
+        'source': 'kw',
+      }),
+    ]);
+
+    await tester.pumpWidget(
+      harness(
+        MiniPlayer(
+          controller: controller,
+          onOpen: () {},
+          variant: MiniPlayerVariant.desktop,
+        ),
+      ),
+    );
+
+    final artwork = tester.widget<AppArtwork>(
+      find.byKey(const Key('desktop-player-artwork')),
+    );
+    expect(artwork.showFallbackBorder, isFalse);
   });
 
   testWidgets('desktop player maps loading and playback transport states', (
@@ -315,6 +616,10 @@ void main() {
   testWidgets('full player exposes controls and scopes keep-awake to route', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final controller = PlayerController(
       resolver: FakeResolver(),
       audio: FakeAudio(),
@@ -322,6 +627,12 @@ void main() {
     await controller.playTracks([
       Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
     ]);
+    final actions = CurrentTrackActionsController(
+      player: controller,
+      favorites: FakeFavorites(),
+      download: (_, _) async {},
+    );
+    addTearDown(actions.dispose);
     final wakeLock = FakeWakeLock();
 
     await tester.pumpWidget(
@@ -331,35 +642,441 @@ void main() {
           lyricsLoader: (_) async => const Lyrics(original: '[00:00]line'),
           wakeLock: wakeLock,
           keepAwake: true,
+          actions: actions,
         ),
       ),
     );
     await tester.pump();
 
-    expect(find.text('One'), findsOneWidget);
     expect(find.byKey(const Key('player-previous')), findsOneWidget);
     expect(find.byKey(const Key('player-play-pause')), findsOneWidget);
     expect(find.byKey(const Key('player-next')), findsOneWidget);
     expect(find.byKey(const Key('player-wide-layout')), findsOneWidget);
     expect(find.byKey(const Key('player-desktop-stage')), findsOneWidget);
-    expect(find.byKey(const Key('player-desktop-artwork')), findsOneWidget);
+    expect(
+      find.byKey(const Key('player-desktop-vinyl-artwork')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('player-desktop-metadata')), findsOneWidget);
     expect(find.byKey(const Key('player-desktop-controls')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-full-favorite')), findsOneWidget);
+    expect(find.byKey(const Key('desktop-full-download')), findsOneWidget);
+    final favoriteRect = tester.getRect(
+      find.byKey(const Key('desktop-full-favorite')),
+    );
+    final coreRect = tester.getRect(
+      find.byKey(const Key('player-desktop-core')),
+    );
+    expect(favoriteRect.center.dx, lessThan(coreRect.left));
+    expect(find.byKey(const Key('player-desktop-quality')), findsOneWidget);
+    expect(find.byKey(const Key('player-desktop-queue')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('player-desktop-track-title'))).dx,
+      closeTo(120, .1),
+    );
     expect(find.byKey(const Key('player-view-artwork')), findsNothing);
     expect(find.byKey(const Key('player-view-lyrics')), findsNothing);
     expect(find.byKey(const Key('player-view-queue')), findsNothing);
     expect(find.bySemanticsLabel('One封面'), findsWidgets);
     expect(find.text('line'), findsOneWidget);
     expect(find.byType(ShaderMask), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const Key('desktop-lyrics-viewport'))).height,
-      360,
-    );
+    final lyricsHeight = tester
+        .getSize(find.byKey(const Key('desktop-lyrics-viewport')))
+        .height;
+    expect(lyricsHeight, greaterThan(200));
+    expect(lyricsHeight, lessThanOrEqualTo(360));
     expect(wakeLock.values, [true]);
 
     await tester.pumpWidget(harness(const SizedBox()));
     await tester.pump();
     expect(wakeLock.values, [true, false]);
+  });
+
+  testWidgets(
+    'desktop player crops textured vinyl at the top right of the lyrics',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 960);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      await controller.playTracks([
+        Track.fromJson({
+          'id': 'evening',
+          'name': '晚风',
+          'singer': '伍佰 & China Blue',
+          'albumName': '泪桥',
+          'source': 'kw',
+        }),
+      ]);
+
+      await tester.pumpWidget(
+        harness(
+          PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async =>
+                const Lyrics(original: '[00:00]慢慢吹，轻轻送\n[00:10]人生路，你就走'),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final orbit = find.byKey(const Key('player-desktop-orbit-vinyl'));
+      final artwork = find.byKey(const Key('player-desktop-vinyl-artwork'));
+      final spindle = find.byKey(const Key('player-desktop-vinyl-spindle'));
+      expect(orbit, findsOneWidget);
+      expect(
+        find.byKey(const Key('player-desktop-vinyl-portal')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('player-desktop-artwork')), findsNothing);
+
+      final title = find.byKey(const Key('player-desktop-track-title'));
+      final metadata = find.byKey(const Key('player-desktop-metadata'));
+      final firstLyric = find.text('慢慢吹，轻轻送');
+      expect(title, findsOneWidget);
+      expect(metadata, findsOneWidget);
+      expect(find.text('晚风'), findsOneWidget);
+      expect(tester.getSize(orbit).width, greaterThan(800));
+      expect(tester.getRect(orbit).top, lessThan(0));
+      expect(tester.getRect(orbit).right, greaterThan(1440));
+      expect(
+        tester.getRect(orbit).left,
+        greaterThan(tester.getRect(title).right),
+      );
+      expect(tester.getRect(artwork).center.dy, greaterThan(0));
+      expect(tester.getRect(spindle).center, tester.getRect(artwork).center);
+      expect(tester.getTopLeft(title).dx, closeTo(144, .1));
+      expect(
+        tester.getTopLeft(firstLyric).dx,
+        closeTo(tester.getTopLeft(title).dx, .1),
+      );
+      expect(
+        tester.getTopLeft(title).dy,
+        lessThan(tester.getTopLeft(firstLyric).dy),
+      );
+
+      final titleBeforeScroll = tester.getTopLeft(title);
+      await tester.drag(
+        find.byKey(const ValueKey('lyrics-0')),
+        const Offset(0, -80),
+      );
+      await tester.pump();
+      expect(tester.getTopLeft(title), titleBeforeScroll);
+    },
+  );
+
+  testWidgets(
+    'desktop player scopes artwork accent and hides lyric scrollbar',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const source = AppArtworkSource.fallback(fallbackSeed: 'kw:themed');
+      final paletteController = ArtworkPaletteController(
+        loadBytes: (_) async => null,
+      );
+      addTearDown(paletteController.dispose);
+      await paletteController.select(source, brightness: Brightness.light);
+      final expected = fallbackArtworkPalette(
+        source.fallbackSeed,
+        brightness: Brightness.light,
+      );
+      final reported = <Color>[];
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      await controller.playTracks([
+        Track.fromJson({'id': 'themed', 'name': 'Themed', 'source': 'kw'}),
+      ]);
+
+      await tester.pumpWidget(
+        harness(
+          PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async =>
+                const Lyrics(original: '[00:00]first\n[00:10]second'),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+            paletteController: paletteController,
+            onAccentChanged: reported.add,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final localTheme = tester.widget<ShadAnimatedTheme>(
+        find.byKey(const Key('player-local-shad-theme')),
+      );
+      expect(localTheme.data.colorScheme.primary, expected.vinylAccent);
+      final slider = tester.widget<ShadSlider>(
+        find.descendant(
+          of: find.byKey(const Key('player-desktop-progress')),
+          matching: find.byType(ShadSlider),
+        ),
+      );
+      expect(slider.activeTrackColor, expected.vinylAccent);
+      expect(slider.inactiveTrackColor, readableArtworkInactiveTrack(expected));
+      final playMaterial = tester.widget<Material>(
+        find.descendant(
+          of: find.byKey(const Key('player-play-pause')),
+          matching: find.byType(Material),
+        ),
+      );
+      expect(playMaterial.color, expected.vinylAccent);
+      final playIcon = tester.widget<Icon>(
+        find.descendant(
+          of: find.byKey(const Key('player-play-pause')),
+          matching: find.byType(Icon),
+        ),
+      );
+      expect(playIcon.color, Colors.white);
+      final scrollConfiguration = tester.widget<ScrollConfiguration>(
+        find.byKey(const Key('lyrics-scroll-configuration')),
+      );
+      const scrollbarProbe = SizedBox();
+      expect(
+        scrollConfiguration.behavior.buildScrollbar(
+          tester.element(find.byKey(const Key('lyrics-scroll-configuration'))),
+          scrollbarProbe,
+          const ScrollableDetails.vertical(),
+        ),
+        same(scrollbarProbe),
+      );
+      expect(reported, contains(expected.vinylAccent));
+    },
+  );
+
+  testWidgets('desktop orbit vinyl stays clear of lyrics at 1024x768', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.playTracks([
+      Track.fromJson({
+        'id': 'compact-portal',
+        'name': '紧凑舷窗',
+        'singer': '测试歌手',
+        'source': 'kw',
+      }),
+    ]);
+
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async =>
+              const Lyrics(original: '[00:00]第一句\n[00:10]第二句'),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final orbit = find.byKey(const Key('player-desktop-orbit-vinyl'));
+    final artwork = find.byKey(const Key('player-desktop-vinyl-artwork'));
+    final spindle = find.byKey(const Key('player-desktop-vinyl-spindle'));
+    final title = find.byKey(const Key('player-desktop-track-title'));
+    final lyrics = find.byKey(const Key('desktop-lyrics-viewport'));
+    final controls = find.byKey(const Key('player-desktop-controls'));
+    expect(orbit, findsOneWidget);
+    expect(tester.getTopLeft(title).dx, closeTo(102.4, .1));
+    expect(tester.getSize(orbit).width, greaterThan(600));
+    expect(tester.getRect(orbit).top, lessThan(0));
+    expect(tester.getRect(orbit).right, greaterThan(1024));
+    expect(
+      tester.getRect(orbit).left,
+      greaterThan(tester.getRect(title).right),
+    );
+    expect(
+      tester.getRect(orbit).left,
+      greaterThan(tester.getRect(lyrics).right),
+    );
+    expect(tester.getRect(orbit).overlaps(tester.getRect(controls)), isFalse);
+    expect(tester.getRect(artwork).center.dy, greaterThan(0));
+    expect(
+      tester.getRect(spindle).center.dx,
+      closeTo(tester.getRect(artwork).center.dx, .01),
+    );
+    expect(
+      tester.getRect(spindle).center.dy,
+      closeTo(tester.getRect(artwork).center.dy, .01),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'lyrics follow playback position to keep the active line visible',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final audio = SnapshotAudio();
+      addTearDown(audio.close);
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+      );
+      await controller.play(
+        Track.fromJson({'id': 'follow', 'name': 'Follow', 'source': 'kw'}),
+      );
+      final lyrics = List.generate(
+        30,
+        (index) => '[00:${index.toString().padLeft(2, '0')}]Line $index',
+      ).join('\n');
+
+      await tester.pumpWidget(
+        harness(
+          PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => Lyrics(original: lyrics),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      audio.emit(
+        const AudioSnapshot(
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 20),
+          duration: Duration(seconds: 30),
+        ),
+      );
+      await tester.pump();
+      for (var frame = 0; frame < 6; frame++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      final viewport = tester.getRect(
+        find.byKey(const Key('desktop-lyrics-viewport')),
+      );
+      final activeLineFinder = find.text('Line 20');
+      expect(activeLineFinder.hitTestable(), findsOneWidget);
+      final activeLine = tester.getRect(activeLineFinder);
+      expect(
+        activeLine.center.dy,
+        inInclusiveRange(
+          viewport.top + viewport.height * .25,
+          viewport.top + viewport.height * .50,
+        ),
+      );
+    },
+  );
+
+  testWidgets('desktop vinyl rotates only while playback is ready', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final audio = SnapshotAudio();
+    addTearDown(audio.close);
+    final controller = PlayerController(resolver: FakeResolver(), audio: audio);
+    await controller.playTracks([
+      Track.fromJson({'id': 'vinyl', 'name': 'Vinyl', 'source': 'kw'}),
+    ]);
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: '[00:00]line'),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+
+    audio.emit(
+      const AudioSnapshot(processing: PlayerProcessing.ready, playing: true),
+    );
+    await tester.pump();
+    await tester.pump();
+    final turn = find.byKey(const Key('player-desktop-orbit-turn'));
+    double turns() => tester.widget<RotationTransition>(turn).turns.value;
+    final initial = turns();
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns(), greaterThan(initial));
+
+    audio.emit(
+      const AudioSnapshot(
+        processing: PlayerProcessing.buffering,
+        playing: true,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    final buffered = turns();
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns(), closeTo(buffered, 1e-6));
+
+    audio.emit(
+      const AudioSnapshot(processing: PlayerProcessing.ready, playing: true),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(turns(), closeTo(buffered, 1e-6));
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns(), greaterThan(buffered));
+  });
+
+  testWidgets('desktop vinyl stays still when reduced motion is enabled', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final audio = SnapshotAudio();
+    addTearDown(audio.close);
+    final controller = PlayerController(resolver: FakeResolver(), audio: audio);
+    await controller.playTracks([
+      Track.fromJson({'id': 'still', 'name': 'Still', 'source': 'kw'}),
+    ]);
+    await tester.pumpWidget(
+      harness(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(1200, 800),
+            disableAnimations: true,
+          ),
+          child: PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => const Lyrics(original: '[00:00]line'),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
+        ),
+      ),
+    );
+
+    audio.emit(
+      const AudioSnapshot(processing: PlayerProcessing.ready, playing: true),
+    );
+    await tester.pump();
+    await tester.pump();
+    final turn = find.byKey(const Key('player-desktop-orbit-turn'));
+    double turns() => tester.widget<RotationTransition>(turn).turns.value;
+    final initial = turns();
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns(), closeTo(initial, 1e-6));
   });
 
   testWidgets(
@@ -449,11 +1166,17 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        PlayerScreen(
-          controller: controller,
-          lyricsLoader: (_) async => const Lyrics(original: ''),
-          wakeLock: FakeWakeLock(),
-          keepAwake: false,
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(1200, 800),
+            disableAnimations: true,
+          ),
+          child: PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => const Lyrics(original: ''),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
         ),
       ),
     );
@@ -501,11 +1224,17 @@ void main() {
     );
     await tester.pumpWidget(
       harness(
-        PlayerScreen(
-          controller: controller,
-          lyricsLoader: (_) async => const Lyrics(original: ''),
-          wakeLock: FakeWakeLock(),
-          keepAwake: false,
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(1200, 800),
+            disableAnimations: true,
+          ),
+          child: PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => const Lyrics(original: ''),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
         ),
       ),
     );
@@ -546,11 +1275,17 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        PlayerScreen(
-          controller: controller,
-          lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
-          wakeLock: FakeWakeLock(),
-          keepAwake: false,
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(390, 844),
+            disableAnimations: true,
+          ),
+          child: PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
         ),
       ),
     );
@@ -571,6 +1306,20 @@ void main() {
       findsOneWidget,
     );
     expect(find.bySemanticsLabel('顺序播放'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-previous')),
+        matching: find.byIcon(Icons.skip_previous_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('player-next')),
+        matching: find.byIcon(Icons.skip_next_rounded),
+      ),
+      findsOneWidget,
+    );
     expect(
       tester.getCenter(find.byKey(const Key('player-play-pause'))).dx,
       closeTo(
@@ -594,7 +1343,7 @@ void main() {
     expect(find.byKey(const Key('player-mobile-artwork')), findsNothing);
     expect(find.text('Line').hitTestable(), findsNothing);
     await tester.drag(find.byType(PageView), const Offset(-320, 0));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(controller.state.view, PlayerView.lyrics);
     expect(find.text('Line').hitTestable(), findsOneWidget);
     expect(find.byKey(const Key('player-mobile-topbar')), findsOneWidget);
@@ -607,6 +1356,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(controller.state.view, PlayerView.artwork);
     expect(find.byKey(const Key('player-mobile-vinyl')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-mobile-queue')));
+    await pumpFiniteAnimations(tester);
+    expect(find.text('播放队列'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -658,11 +1410,17 @@ void main() {
 
     await tester.pumpWidget(
       harness(
-        PlayerScreen(
-          controller: controller,
-          lyricsLoader: (_) async => const Lyrics(original: ''),
-          wakeLock: FakeWakeLock(),
-          keepAwake: false,
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(390, 844),
+            disableAnimations: true,
+          ),
+          child: PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => const Lyrics(original: ''),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
         ),
       ),
     );
@@ -670,7 +1428,7 @@ void main() {
 
     expect(find.text('暂无歌词').hitTestable(), findsNothing);
     await tester.drag(find.byType(PageView), const Offset(-320, 0));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(find.text('暂无歌词').hitTestable(), findsOneWidget);
   });
 
@@ -976,15 +1734,21 @@ void main() {
     var lyricAttempts = 0;
     await tester.pumpWidget(
       harness(
-        PlayerScreen(
-          controller: controller,
-          lyricsLoader: (_) async {
-            lyricAttempts++;
-            if (lyricAttempts == 1) throw StateError('no lyrics');
-            return const Lyrics(original: '[00:01]Line');
-          },
-          wakeLock: FakeWakeLock(),
-          keepAwake: false,
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(390, 844),
+            disableAnimations: true,
+          ),
+          child: PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async {
+              lyricAttempts++;
+              if (lyricAttempts == 1) throw StateError('no lyrics');
+              return const Lyrics(original: '[00:01]Line');
+            },
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+          ),
         ),
       ),
     );
@@ -996,7 +1760,7 @@ void main() {
     );
     expect(find.text('歌词暂不可用').hitTestable(), findsNothing);
     await tester.drag(find.byType(PageView), const Offset(-320, 0));
-    await tester.pumpAndSettle();
+    await pumpFiniteAnimations(tester);
     expect(
       find.byKey(const Key('player-mobile-lyric-error')).hitTestable(),
       findsOneWidget,
@@ -1043,6 +1807,17 @@ void main() {
 
     expect(find.text('歌词暂不可用'), findsOneWidget);
     expect(find.textContaining('StateError'), findsNothing);
+  });
+
+  testWidgets('lyrics error state uses the standard Lucide family', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(const LyricsView(state: PlayerState(lyricsError: 'bad lyrics'))),
+    );
+
+    expect(find.text('歌词暂不可用'), findsOneWidget);
+    expect(find.byIcon(LucideIcons.messageSquareText), findsOneWidget);
   });
 
   for (final width in [320.0, 375.0, 414.0, 768.0]) {

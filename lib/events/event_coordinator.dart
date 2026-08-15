@@ -2,21 +2,30 @@ import '../api/models.dart';
 
 final class EventCoordinator {
   EventCoordinator({
+    required this.invalidateSources,
     required this.invalidatePlaylists,
     required this.invalidateDownloads,
+    required this.invalidateLibrary,
     required this.invalidatePlaylistDetail,
   });
 
+  final void Function() invalidateSources;
   final void Function() invalidatePlaylists;
   final void Function() invalidateDownloads;
+  final void Function() invalidateLibrary;
   final void Function(String id) invalidatePlaylistDetail;
   int sequence = 0;
 
   bool accept(DomainEvent event) {
     if (event.sequence <= sequence) return false;
     sequence = event.sequence;
+    if (event.type.startsWith('sources.')) invalidateSources();
     if (event.type.startsWith('playlists.')) invalidatePlaylists();
-    if (event.type.startsWith('downloads.')) invalidateDownloads();
+    if (event.type.startsWith('downloads.')) {
+      invalidateDownloads();
+      invalidateLibrary();
+    }
+    if (event.type.startsWith('library.')) invalidateLibrary();
     if (event.type.startsWith('playlist.')) {
       invalidatePlaylists();
       final data = event.data;

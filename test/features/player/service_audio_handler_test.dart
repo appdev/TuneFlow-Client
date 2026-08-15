@@ -27,6 +27,28 @@ void main() {
     expect(snapshot.playing, isFalse);
   });
 
+  test(
+    'desktop media previous and next commands use the player queue',
+    () async {
+      final handler = ServiceAudioHandler(
+        fallbackArtUri: Uri.file('/tmp/default-track-artwork.png'),
+      );
+      addTearDown(handler.stop);
+      var previousCalls = 0;
+      var nextCalls = 0;
+      handler.bindQueueCallbacks(
+        previous: () async => previousCalls += 1,
+        next: () async => nextCalls += 1,
+      );
+
+      await handler.skipToPrevious();
+      await handler.skipToNext();
+
+      expect(previousCalls, 1);
+      expect(nextCalls, 1);
+    },
+  );
+
   test('notification metadata uses the current track artwork', () {
     final track = Track.fromJson({
       'id': 'covered-song',
@@ -39,10 +61,12 @@ void main() {
     final item = mediaItemForTrack(
       track,
       fallbackArtUri: Uri.file('/tmp/default-track-artwork.png'),
+      duration: const Duration(minutes: 3, seconds: 42),
     );
 
     expect(item.artUri, Uri.parse('https://example.test/current-cover.jpg'));
     expect(item.artHeaders, containsPair('Referer', 'https://music.163.com/'));
+    expect(item.duration, const Duration(minutes: 3, seconds: 42));
   });
 
   test('notification metadata uses the placeholder for missing artwork', () {

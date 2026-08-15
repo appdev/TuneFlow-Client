@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
 import '../design_tokens.dart';
+import 'app_playback_button.dart';
 import 'artwork.dart';
 
 final class TrackTile extends StatelessWidget {
@@ -49,18 +50,13 @@ final class TrackTile extends StatelessWidget {
                       borderRadius: AppRadii.control,
                       showFallback: false,
                     ),
-                  IconButton(
+                  AppPlaybackIconButton(
                     key: Key('play-track-${track.id}'),
                     tooltip: '播放',
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
+                    dimension: 48,
                     onPressed: onPlay,
-                    icon: Icon(
-                      LucideIcons.play,
-                      color: tokens.accentForeground,
-                      shadows: const [Shadow(blurRadius: 8)],
+                    child: const AppPlaybackGlyph.play(
+                      shadows: [Shadow(blurRadius: 8)],
                     ),
                   ),
                 ],

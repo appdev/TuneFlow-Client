@@ -134,6 +134,12 @@ abstract class AppLocalizations {
   /// **'Connecting…'**
   String get connecting;
 
+  /// No description provided for @connectingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting to TuneFlow Service'**
+  String get connectingTitle;
+
   /// No description provided for @disconnect.
   ///
   /// In en, this message translates to:

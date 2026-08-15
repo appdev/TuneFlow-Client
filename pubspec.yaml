@@ -41,6 +41,7 @@ dependencies:
   just_audio: ^0.10.6
   audio_service: ^0.18.19
   shadcn_ui: ^0.53.6
+  scrollable_positioned_list: ^0.3.8
   go_router: ^17.2.3
   wakelock_plus: ^1.4.0
   path_provider: ^2.1.5

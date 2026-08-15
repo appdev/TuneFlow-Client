@@ -17,13 +17,18 @@ const notificationArtworkHeaders = {
       'AppleWebKit/537.36 Chrome/120 Safari/537.36',
 };
 
-MediaItem mediaItemForTrack(Track track, {required Uri fallbackArtUri}) {
+MediaItem mediaItemForTrack(
+  Track track, {
+  required Uri fallbackArtUri,
+  Duration? duration,
+}) {
   final artwork = track.raw['pic'];
   final artworkUrl = artwork is String ? artwork.trim() : '';
   return MediaItem(
     id: track.id,
     title: track.title.isEmpty ? track.id : track.title,
     artist: track.artist,
+    duration: duration,
     artUri: artworkUrl.isEmpty ? fallbackArtUri : Uri.parse(artworkUrl),
     artHeaders: artworkUrl.isEmpty ? null : notificationArtworkHeaders,
   );
@@ -81,8 +86,10 @@ final class ServiceAudioHandler extends BaseAudioHandler
     _subscriptions = [
       _player.playbackEventStream.listen((_) => _publishSnapshot()),
       _player.positionStream.listen(
-        (position) => _publishSnapshot(position: position),
+        (position) =>
+            _publishSnapshot(position: position, publishPlaybackState: false),
       ),
+      _player.durationStream.listen(_updateMediaItemDuration),
     ];
   }
 
@@ -220,7 +227,10 @@ final class ServiceAudioHandler extends BaseAudioHandler
     unawaited(playback.catchError((Object _) {}));
   }
 
-  void _publishSnapshot({Duration? position}) {
+  void _publishSnapshot({
+    Duration? position,
+    bool publishPlaybackState = true,
+  }) {
     final processing = switch (_player.processingState) {
       ProcessingState.idle => PlayerProcessing.idle,
       ProcessingState.loading => PlayerProcessing.loading,
@@ -241,6 +251,7 @@ final class ServiceAudioHandler extends BaseAudioHandler
       buffered: _player.bufferedPosition,
     );
     _snapshots.add(_last);
+    if (!publishPlaybackState) return;
     playbackState.add(
       playbackState.value.copyWith(
         controls: [
@@ -248,6 +259,7 @@ final class ServiceAudioHandler extends BaseAudioHandler
           playing ? MediaControl.pause : MediaControl.play,
           MediaControl.skipToNext,
         ],
+        androidCompactActionIndices: const [0, 1, 2],
         systemActions: const {MediaAction.seek},
         playing: playing,
         processingState: switch (_player.processingState) {
@@ -259,12 +271,22 @@ final class ServiceAudioHandler extends BaseAudioHandler
         },
         updatePosition: currentPosition,
         bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
       ),
     );
   }
 
   void _setMediaItem(Track track) {
     mediaItem.add(mediaItemForTrack(track, fallbackArtUri: _fallbackArtUri));
+  }
+
+  void _updateMediaItemDuration(Duration? duration) {
+    final current = mediaItem.value;
+    if (current == null || duration == null || current.duration == duration) {
+      return;
+    }
+    mediaItem.add(current.copyWith(duration: duration));
+    _publishSnapshot();
   }
 
   @override

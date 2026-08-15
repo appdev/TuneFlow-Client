@@ -30,6 +30,7 @@ final class CatalogTrackList extends StatelessWidget {
     this.loadingMore = false,
     this.loadMoreError,
     this.onRetry,
+    this.embedded = false,
   });
 
   final List<Track> tracks;
@@ -49,6 +50,7 @@ final class CatalogTrackList extends StatelessWidget {
   final bool loadingMore;
   final Object? loadMoreError;
   final VoidCallback? onRetry;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) => mobile
@@ -61,6 +63,7 @@ final class CatalogTrackList extends StatelessWidget {
           loadingMore: loadingMore,
           loadMoreError: loadMoreError,
           onRetry: onRetry,
+          embedded: embedded,
         )
       : LayoutBuilder(
           builder: (context, constraints) {
@@ -406,6 +409,7 @@ final class _MobileCatalogTrackList extends StatelessWidget {
     required this.loadingMore,
     required this.loadMoreError,
     required this.onRetry,
+    required this.embedded,
   });
 
   final List<Track> tracks;
@@ -416,10 +420,13 @@ final class _MobileCatalogTrackList extends StatelessWidget {
   final bool loadingMore;
   final Object? loadMoreError;
   final VoidCallback? onRetry;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) => ListView.builder(
-    controller: scrollController,
+    controller: embedded ? null : scrollController,
+    shrinkWrap: embedded,
+    physics: embedded ? const NeverScrollableScrollPhysics() : null,
     itemCount: tracks.length + (loadingMore || loadMoreError != null ? 1 : 0),
     itemBuilder: (context, index) {
       if (index < tracks.length) {

@@ -7,6 +7,7 @@ import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/design_tokens.dart';
 import 'package:musicfree_service_client/design/app_breakpoints.dart';
 import 'package:musicfree_service_client/design/components/app_navigation.dart';
+import 'package:musicfree_service_client/design/components/app_playback_button.dart';
 import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
 import 'package:musicfree_service_client/design/components/app_feedback.dart';
@@ -55,6 +56,61 @@ void main() {
     expect(
       tester.getSize(find.byKey(const Key('action'))).height,
       greaterThanOrEqualTo(48),
+    );
+  });
+
+  testWidgets('playback buttons use solid glyphs and semantic colors', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: Column(
+            children: [
+              AppButton.playback(
+                key: const Key('labeled-playback'),
+                onPressed: () {},
+                leading: const AppPlaybackGlyph.play(size: 18),
+                child: const Text('播放全部'),
+              ),
+              AppPlaybackIconButton(
+                key: const Key('icon-playback'),
+                tooltip: '播放',
+                onPressed: () {},
+                child: const AppPlaybackGlyph.play(size: 20),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<AppPlaybackGlyph>(find.byType(AppPlaybackGlyph).first).icon,
+      AppPlaybackIcons.play,
+    );
+    final labeled = tester.widget<ShadButton>(
+      find.descendant(
+        of: find.byKey(const Key('labeled-playback')),
+        matching: find.byType(ShadButton),
+      ),
+    );
+    expect(labeled.backgroundColor, AppTokens.light.playbackAction);
+    expect(labeled.foregroundColor, AppTokens.light.playbackActionForeground);
+    final icon = tester.widget<IconButton>(
+      find.descendant(
+        of: find.byKey(const Key('icon-playback')),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(
+      icon.style?.backgroundColor?.resolve(<WidgetState>{}),
+      AppTokens.light.playbackAction,
+    );
+    expect(
+      icon.style?.foregroundColor?.resolve(<WidgetState>{}),
+      AppTokens.light.playbackActionForeground,
     );
   });
 
@@ -415,6 +471,43 @@ void main() {
     expect(find.text('已交给 Service 下载'), findsNothing);
   });
 
+  testWidgets('showAppMessage is upper-middle on desktop and mobile', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    for (final size in const [Size(1200, 800), Size(390, 844)]) {
+      tester.view.physicalSize = size;
+      final toastTitle = '定位提示-${size.width}';
+      await tester.pumpWidget(
+        ShadApp(
+          theme: buildLightTheme(),
+          builder: (context, child) => ShadAppBuilder(child: child!),
+          home: Builder(
+            builder: (context) => AppButton(
+              onPressed: () => showAppMessage(context, title: toastTitle),
+              child: const Text('触发定位'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('触发定位'));
+      await tester.pump();
+
+      final toast = find.ancestor(
+        of: find.text(toastTitle),
+        matching: find.byType(ShadToast),
+      );
+      final toastCenter = tester.getCenter(toast);
+      expect(toastCenter.dx, closeTo(size.width / 2, 1));
+      expect(toastCenter.dy, greaterThan(size.height * .25));
+      expect(toastCenter.dy, lessThan(size.height * .40));
+    }
+  });
+
   testWidgets('showAppSheet uses a bottom Shad sheet', (tester) async {
     late BuildContext context;
     await tester.pumpWidget(
@@ -477,13 +570,14 @@ void main() {
   });
 
   test('playlist gallery adds columns before cards exceed their maximum', () {
-    expect(playlistGalleryColumnCount(availableWidth: 500, spacing: 16), 2);
-    expect(playlistGalleryColumnCount(availableWidth: 800, spacing: 16), 3);
-    expect(playlistGalleryColumnCount(availableWidth: 1324, spacing: 16), 5);
+    expect(playlistGalleryColumnCount(availableWidth: 500, spacing: 16), 3);
+    expect(playlistGalleryColumnCount(availableWidth: 800, spacing: 16), 4);
+    expect(playlistGalleryColumnCount(availableWidth: 1324, spacing: 16), 6);
+    expect(playlistGalleryColumnCount(availableWidth: 1636, spacing: 16), 7);
     final extent = playlistGalleryItemExtent(
       availableWidth: 1324,
       spacing: 16,
-      columns: 5,
+      columns: 6,
     );
     expect(extent, lessThanOrEqualTo(playlistGalleryMaxItemExtent));
     expect(
@@ -610,6 +704,44 @@ void main() {
 
     expect(find.byKey(const Key('artwork-fallback-love')), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
+
+    final artwork = tester.widget<AppArtwork>(find.byType(AppArtwork));
+    expect(artwork.borderRadius, AppRadii.compactCard);
+    expect(artwork.showFallbackBorder, isFalse);
+
+    final inkWell = tester.widget<InkWell>(find.byType(InkWell));
+    expect(inkWell.borderRadius, BorderRadius.circular(AppRadii.compactCard));
+
+    final fallback = tester.widget<DecoratedBox>(
+      find.byKey(const Key('artwork-fallback-love')),
+    );
+    final decoration = fallback.decoration as BoxDecoration;
+    expect(decoration.border, isNull);
+  });
+
+  testWidgets('gallery playlist interaction overlay stays transparent', (
+    tester,
+  ) async {
+    const playlist = PlaylistDetail(id: 'quiet', name: '安静歌单', tracks: []);
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: SizedBox(
+            width: 220,
+            child: PlaylistCard(
+              playlist: playlist,
+              variant: PlaylistCardVariant.gallery,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final overlay = tester.widget<InkWell>(find.byType(InkWell)).overlayColor;
+    expect(overlay?.resolve({WidgetState.hovered}), Colors.transparent);
+    expect(overlay?.resolve({WidgetState.pressed}), Colors.transparent);
   });
 
   testWidgets('gallery playlist fits the narrow desktop grid ratio', (
@@ -675,5 +807,14 @@ void main() {
 
     await tester.tap(find.text('搜索'));
     expect(selected, 'search');
+
+    final selectedItem = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: find.byKey(const ValueKey('mobile-destination-home')),
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    final decoration = selectedItem.decoration! as BoxDecoration;
+    expect(decoration.border, isNull);
   });
 }

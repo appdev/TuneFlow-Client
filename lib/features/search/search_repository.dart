@@ -54,13 +54,52 @@ final class SearchRepository {
     );
   }
 
-  Future<Lyrics> lyrics(Track track) async => Lyrics.fromJson(
-    await api.request(
-      'POST',
-      '/api/v1/catalog/tracks/lyrics',
-      body: {'source': track.source, 'musicInfo': track.toJson()},
-    ),
-  );
+  Future<Lyrics> lyrics(Track track) async {
+    final meta = track.raw['meta'];
+    final value = meta is Map ? meta['lyricsUrl'] : null;
+    final resourcePath = value is String ? _lyricsResourcePath(value) : null;
+    if (resourcePath != null) {
+      return Lyrics.fromJson(await api.request('GET', resourcePath));
+    }
+    if (track.source == 'local') return const Lyrics(original: '');
+    return Lyrics.fromJson(
+      await api.request(
+        'POST',
+        '/api/v1/catalog/tracks/lyrics',
+        body: {'source': track.source, 'musicInfo': track.toJson()},
+      ),
+    );
+  }
+
+  String? _lyricsResourcePath(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        uri.userInfo.isNotEmpty) {
+      return null;
+    }
+    final origin = api.origin.uri;
+    if (uri.hasScheme &&
+        (uri.scheme != origin.scheme ||
+            uri.host != origin.host ||
+            uri.port != origin.port)) {
+      return null;
+    }
+    if (!uri.hasScheme && (uri.hasAuthority || !value.startsWith('/'))) {
+      return null;
+    }
+    final segments = uri.pathSegments;
+    final valid =
+        segments.length == 6 &&
+        segments[0] == 'api' &&
+        segments[1] == 'v1' &&
+        segments[2] == 'library' &&
+        segments[3] == 'tracks' &&
+        segments[4].isNotEmpty &&
+        segments[5] == 'lyrics';
+    return valid ? uri.path : null;
+  }
 
   Future<LeaderboardPage> leaderboards({required String source}) async =>
       LeaderboardPage.fromJson(
@@ -115,6 +154,18 @@ final class SearchRepository {
       'POST',
       '/api/v1/catalog/playlists/detail',
       body: {'source': source, 'playlistId': playlistId, 'page': page},
+    ),
+  );
+
+  Future<AlbumDetailPage> album({
+    required String source,
+    required String albumId,
+    required int page,
+  }) async => AlbumDetailPage.fromJson(
+    await api.request(
+      'POST',
+      '/api/v1/catalog/albums/detail',
+      body: {'source': source, 'albumId': albumId, 'page': page},
     ),
   );
 

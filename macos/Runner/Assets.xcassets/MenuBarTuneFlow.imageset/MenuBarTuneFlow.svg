@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+  <defs>
+    <mask id="server-holes">
+      <rect width="18" height="18" fill="white"/>
+      <g fill="black">
+        <circle cx="9.15" cy="3.45" r="0.48"/>
+        <circle cx="10.75" cy="3.45" r="0.48"/>
+        <circle cx="12.35" cy="3.45" r="0.48"/>
+        <circle cx="9.15" cy="9" r="0.48"/>
+        <circle cx="10.75" cy="9" r="0.48"/>
+        <circle cx="12.35" cy="9" r="0.48"/>
+        <circle cx="9.15" cy="14.55" r="0.48"/>
+        <circle cx="10.75" cy="14.55" r="0.48"/>
+        <circle cx="12.35" cy="14.55" r="0.48"/>
+      </g>
+    </mask>
+  </defs>
+  <g fill="#000" mask="url(#server-holes)">
+    <rect x="0.3" y="6.65" width="1.35" height="4.7" rx="0.675"/>
+    <rect x="2.05" y="4.4" width="1.5" height="9.2" rx="0.75"/>
+    <rect x="4" y="2.15" width="1.65" height="13.7" rx="0.825"/>
+    <rect x="6.05" y="0.65" width="2.05" height="16.7" rx="1.025"/>
+    <rect x="7.05" y="1.55" width="6.65" height="3.8" rx="1.7"/>
+    <rect x="7.05" y="7.1" width="6.65" height="3.8" rx="1.7"/>
+    <rect x="7.05" y="12.65" width="6.65" height="3.8" rx="1.7"/>
+    <circle cx="16.35" cy="2.2" r="1.25"/>
+    <circle cx="16.35" cy="9" r="1.25"/>
+    <circle cx="16.35" cy="15.8" r="1.25"/>
+  </g>
+  <g fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round">
+    <path d="M13 3.45h0.55c0.75 0 0.85-1.25 1.55-1.25h0.1"/>
+    <path d="M13 9h2.1"/>
+    <path d="M13 14.55h0.55c0.75 0 0.85 1.25 1.55 1.25h0.1"/>
+  </g>
+</svg>

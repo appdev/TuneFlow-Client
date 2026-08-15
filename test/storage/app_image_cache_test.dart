@@ -45,6 +45,77 @@ void main() {
     );
   });
 
+  test('reuses a cached file after manager recreation while offline', () async {
+    const url = 'https://example.test/restart-cover.png';
+    final first = CeAppImageCache(
+      cacheBaseDirectory: cacheBase,
+      metadataBaseDirectory: metadataBase,
+      httpClientFactory: () => MockClient(
+        (_) async => http.Response.bytes(
+          pngBytes,
+          200,
+          headers: const {'content-type': 'image/png'},
+        ),
+      ),
+    );
+    await first.manager
+        .getFileStream(url, withProgress: false)
+        .firstWhere((event) => event is FileInfo);
+    await first.dispose();
+
+    final restarted = CeAppImageCache(
+      cacheBaseDirectory: cacheBase,
+      metadataBaseDirectory: metadataBase,
+      httpClientFactory: () =>
+          MockClient((_) async => throw StateError('network must not be used')),
+    );
+    addTearDown(restarted.dispose);
+
+    final hit =
+        await restarted.manager
+                .getFileStream(url, withProgress: false)
+                .firstWhere((event) => event is FileInfo)
+            as FileInfo;
+    expect(hit.source, FileSource.Cache);
+    expect(await hit.file.readAsBytes(), pngBytes);
+  });
+
+  test(
+    'copies a legacy image cache once without deleting its source',
+    () async {
+      final legacy = Directory('${root.path}/legacy/image-cache');
+      final persistent = Directory('${root.path}/support/image-cache');
+      final nested = File('${legacy.path}/nested/cover.bin');
+      await nested.create(recursive: true);
+      await nested.writeAsBytes([1, 2, 3]);
+
+      await copyLegacyImageCacheIfNeeded(
+        legacy: legacy,
+        persistent: persistent,
+      );
+
+      expect(await File('${persistent.path}/nested/cover.bin').readAsBytes(), [
+        1,
+        2,
+        3,
+      ]);
+      expect(await nested.exists(), isTrue);
+
+      await File('${persistent.path}/keep.bin').writeAsBytes([9]);
+      await nested.writeAsBytes([4, 5, 6]);
+      await copyLegacyImageCacheIfNeeded(
+        legacy: legacy,
+        persistent: persistent,
+      );
+      expect(await File('${persistent.path}/nested/cover.bin').readAsBytes(), [
+        1,
+        2,
+        3,
+      ]);
+      expect(await File('${persistent.path}/keep.bin').readAsBytes(), [9]);
+    },
+  );
+
   test(
     'stores files only below the dedicated cache base and reports bytes',
     () async {

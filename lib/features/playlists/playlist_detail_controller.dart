@@ -71,7 +71,7 @@ final class PlaylistDetailController extends ChangeNotifier {
   Future<void> playOne(PlayTracks play, int index) async {
     final detail = state.detail;
     if (detail == null || index < 0 || index >= detail.tracks.length) return;
-    await play([detail.tracks[index]]);
+    await play(detail.tracks, startIndex: index);
   }
 
   Future<void> playAll(PlayTracks play) async {

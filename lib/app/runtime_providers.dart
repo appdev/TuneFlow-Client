@@ -9,10 +9,34 @@ import '../events/event_coordinator.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/settings/settings_controller.dart';
+import '../features/playlists/playlist_repository.dart';
+import '../platform/macos_menu_bar_coordinator.dart';
 import '../features/settings/service_settings_repository.dart';
 import '../storage/app_settings_controller.dart';
 import 'app_providers.dart';
 import 'player_providers.dart';
+
+final macOSMenuBarCoordinatorProvider = Provider<MacOSMenuBarCoordinator>((
+  ref,
+) {
+  final connected = ref.watch(
+    connectionProvider.select((connection) => connection.value),
+  );
+  final messages = ref.read(appMessageCenterProvider);
+  final coordinator = MacOSMenuBarCoordinator(
+    player: ref.watch(playerControllerProvider),
+    favorites: connected == null
+        ? null
+        : LovePlaylistFavorites(PlaylistRepository(connected.api)),
+    menuBar: ref.read(macOSMenuBarPortProvider),
+    reportFailure: messages.enqueue,
+    revealPendingMessages: messages.revealPending,
+    hidePendingMessages: messages.hide,
+  );
+  unawaited(coordinator.start());
+  ref.onDispose(() => unawaited(coordinator.dispose()));
+  return coordinator;
+});
 
 final settingsControllerProvider = Provider<SettingsController?>((ref) {
   final ready = ref.watch(
@@ -47,9 +71,16 @@ final settingsControllerProvider = Provider<SettingsController?>((ref) {
 });
 
 final class EventInvalidation extends ChangeNotifier {
+  int sourcesVersion = 0;
   int playlistsVersion = 0;
   int downloadsVersion = 0;
+  int libraryVersion = 0;
   final Map<String, int> _playlistDetails = {};
+
+  void sources() {
+    sourcesVersion++;
+    notifyListeners();
+  }
 
   void playlists() {
     playlistsVersion++;
@@ -58,6 +89,11 @@ final class EventInvalidation extends ChangeNotifier {
 
   void downloads() {
     downloadsVersion++;
+    notifyListeners();
+  }
+
+  void library() {
+    libraryVersion++;
     notifyListeners();
   }
 
@@ -82,8 +118,10 @@ final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
   if (connected == null) return null;
   final invalidation = ref.read(eventInvalidationProvider);
   final coordinator = EventCoordinator(
+    invalidateSources: invalidation.sources,
     invalidatePlaylists: invalidation.playlists,
     invalidateDownloads: invalidation.downloads,
+    invalidateLibrary: invalidation.library,
     invalidatePlaylistDetail: invalidation.playlistDetail,
   );
   final transport = SseTransport(connected.api);

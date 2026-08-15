@@ -111,6 +111,80 @@ void main() {
   });
 
   test(
+    'local lyrics use the Service resource while online lyrics use catalog',
+    () async {
+      final calls = <http.Request>[];
+      final repository = SearchRepository(
+        apiWith((request) async {
+          calls.add(request);
+          return data({'lyric': 'line'});
+        }),
+      );
+      final local = Track.fromJson({
+        'id': 'local-a',
+        'source': 'local',
+        'meta': {'lyricsUrl': '/api/v1/library/tracks/file-a/lyrics'},
+      });
+      final online = Track.fromJson({'id': 'online-a', 'source': 'kw'});
+
+      await repository.lyrics(local);
+      await repository.lyrics(online);
+
+      expect(calls.map((call) => '${call.method} ${call.url.path}'), [
+        'GET /api/v1/library/tracks/file-a/lyrics',
+        'POST /api/v1/catalog/tracks/lyrics',
+      ]);
+    },
+  );
+
+  test(
+    'bundle lyrics use a validated same-origin absolute resource URL',
+    () async {
+      late http.Request captured;
+      final repository = SearchRepository(
+        apiWith((request) async {
+          captured = request;
+          return data({'lyric': '[00:00.00]local bundle'});
+        }),
+      );
+      final track = Track.fromJson({
+        'id': 'online-id',
+        'source': 'kw',
+        'meta': {
+          'lyricsUrl':
+              'http://service.local/api/v1/library/tracks/file-a/lyrics',
+        },
+      });
+
+      final lyrics = await repository.lyrics(track);
+
+      expect(captured.method, 'GET');
+      expect(captured.url.path, '/api/v1/library/tracks/file-a/lyrics');
+      expect(lyrics.original, '[00:00.00]local bundle');
+    },
+  );
+
+  test(
+    'local track without a lyrics resource returns empty without a request',
+    () async {
+      var calls = 0;
+      final repository = SearchRepository(
+        apiWith((_) async {
+          calls++;
+          return data({'lyric': 'unexpected'});
+        }),
+      );
+
+      final lyrics = await repository.lyrics(
+        Track.fromJson({'id': 'local-a', 'source': 'local'}),
+      );
+
+      expect(lyrics.original, isEmpty);
+      expect(calls, 0);
+    },
+  );
+
+  test(
     'catalog capability gates and collection searches use typed routes',
     () async {
       final calls = <http.Request>[];
@@ -202,6 +276,46 @@ void main() {
     ]);
   });
 
+  test('album detail uses the typed Service catalog route', () async {
+    late http.Request captured;
+    final repository = SearchRepository(
+      apiWith((request) async {
+        captured = request;
+        return data({
+          'source': 'wy',
+          'page': 2,
+          'limit': 30,
+          'total': 1,
+          'hasMore': false,
+          'album': {
+            'id': 'album-1',
+            'kind': 'album',
+            'name': 'Album',
+            'source': 'wy',
+          },
+          'tracks': [
+            {'id': 'track-1', 'name': 'Track', 'source': 'wy'},
+          ],
+        });
+      }),
+    );
+
+    final page = await repository.album(
+      source: 'wy',
+      albumId: 'album-1',
+      page: 2,
+    );
+
+    expect(captured.method, 'POST');
+    expect(captured.url.path, '/api/v1/catalog/albums/detail');
+    expect(jsonDecode(captured.body), {
+      'source': 'wy',
+      'albumId': 'album-1',
+      'page': 2,
+    });
+    expect(page.album.id, 'album-1');
+  });
+
   test('playlist repository uses resource routes', () async {
     final calls = <http.Request>[];
     final repository = PlaylistRepository(
@@ -241,10 +355,12 @@ void main() {
     'playback accepts Service proxy and local-library stream paths',
     () async {
       var url = '/api/v1/streams/token';
+      late http.Request captured;
       final repository = PlaybackRepository(
-        apiWith(
-          (_) async => data({'url': url, 'quality': '128k', 'expiresAt': 1000}),
-        ),
+        apiWith((request) async {
+          captured = request;
+          return data({'url': url, 'quality': '128k', 'expiresAt': 1000});
+        }),
       );
       final track = Track.fromJson({'id': '1', 'source': 'kw'});
 
@@ -253,6 +369,12 @@ void main() {
         resolved.streamUri.toString(),
         'http://service.local/api/v1/streams/token',
       );
+      expect(jsonDecode(captured.body), {
+        'source': 'kw',
+        'quality': '128k',
+        'preferLocal': true,
+        'info': track.toJson(),
+      });
 
       url = '/api/v1/library/tracks/${List.filled(64, 'a').join()}/stream';
       final local = await repository.resolve(track, '128k');
@@ -271,6 +393,85 @@ void main() {
       );
     },
   );
+
+  test(
+    'playback normalizes validated bundle resources to Service URIs',
+    () async {
+      final pictureToken = List.filled(64, 'a').join();
+      var response = <String, Object?>{
+        'url': '/api/v1/streams/token',
+        'quality': '320k',
+        'expiresAt': 1000,
+        'resources': {
+          'lyrics': {'lyric': '[00:00.00]bundle'},
+          'pictureUrl': '/api/v1/playback/resources/$pictureToken/picture',
+        },
+        'completeness': 'complete',
+      };
+      final repository = PlaybackRepository(
+        apiWith((_) async => data(response)),
+      );
+      final track = Track.fromJson({'id': '1', 'source': 'kw'});
+
+      final online = await repository.resolve(track, '320k');
+      expect(online.bundleLyrics?.original, '[00:00.00]bundle');
+      expect(
+        online.pictureUri.toString(),
+        'http://service.local/api/v1/playback/resources/$pictureToken/picture',
+      );
+
+      response = {
+        'url': '/api/v1/library/tracks/file-a/stream',
+        'quality': '320k',
+        'expiresAt': 0,
+        'resources': {
+          'lyricsUrl': '/api/v1/library/tracks/file-a/lyrics',
+          'pictureUrl': '/api/v1/library/tracks/file-a/picture',
+        },
+        'completeness': 'complete',
+      };
+      final local = await repository.resolve(track, '320k');
+      expect(
+        local.lyricsUri.toString(),
+        'http://service.local/api/v1/library/tracks/file-a/lyrics',
+      );
+      expect(
+        local.pictureUri.toString(),
+        'http://service.local/api/v1/library/tracks/file-a/picture',
+      );
+    },
+  );
+
+  test('playback rejects external or malformed resource URLs', () async {
+    var resourceUrl = 'https://outside.test/art.jpg';
+    final repository = PlaybackRepository(
+      apiWith(
+        (_) async => data({
+          'url': '/api/v1/streams/token',
+          'quality': '128k',
+          'expiresAt': 1000,
+          'resources': {'pictureUrl': resourceUrl},
+          'completeness': 'mixed',
+        }),
+      ),
+    );
+    final track = Track.fromJson({'id': '1', 'source': 'kw'});
+
+    for (final invalid in [
+      'https://outside.test/art.jpg',
+      'file:///tmp/art.jpg',
+      '//outside.test/art.jpg',
+      '/api/v1/playback/resources/token/picture?raw=1',
+      '/api/v1/playback/resources/token/picture#fragment',
+    ]) {
+      resourceUrl = invalid;
+      await expectLater(
+        repository.resolve(track, '128k'),
+        throwsA(isA<ServiceException>()),
+        reason: invalid,
+      );
+    }
+  });
 
   test('download create sends no client filesystem fields', () async {
     late http.Request captured;

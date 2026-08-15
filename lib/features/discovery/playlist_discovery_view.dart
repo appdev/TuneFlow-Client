@@ -18,10 +18,12 @@ final class PlaylistDiscoveryView extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onOpenPlaylist,
+    this.embedded = false,
   });
 
   final PlaylistDiscoveryController controller;
   final ValueChanged<CatalogCollection> onOpenPlaylist;
+  final bool embedded;
 
   @override
   State<PlaylistDiscoveryView> createState() => _PlaylistDiscoveryViewState();
@@ -75,19 +77,24 @@ final class _PlaylistDiscoveryViewState extends State<PlaylistDiscoveryView> {
         key: const Key('playlist-square-layout'),
         color: AppTokens.of(context).background,
         child: ListView(
+          key: PageStorageKey(
+            widget.embedded
+                ? 'playlist-discovery-embedded-scroll'
+                : 'playlist-discovery-scroll',
+          ),
           padding: EdgeInsets.fromLTRB(
             mobile ? 16 : 38,
-            mobile ? 20 : 34,
+            widget.embedded ? 8 : (mobile ? 20 : 34),
             mobile ? 16 : 38,
             48,
           ),
           children: [
-            if (mobile)
+            if (mobile && !widget.embedded)
               const AppMobilePageHeader(
                 title: '歌单广场',
                 eyebrow: '动态平台 · Service API',
               )
-            else ...[
+            else if (!mobile) ...[
               Text(
                 '动态平台 · Service API',
                 style: AppTypography.metadata.copyWith(
@@ -97,7 +104,7 @@ final class _PlaylistDiscoveryViewState extends State<PlaylistDiscoveryView> {
               const SizedBox(height: 4),
               const Text('歌单广场', style: AppTypography.display),
             ],
-            const SizedBox(height: 18),
+            if (!widget.embedded || !mobile) const SizedBox(height: 18),
             if (state.providers.isNotEmpty)
               _ChipRow(
                 children: [

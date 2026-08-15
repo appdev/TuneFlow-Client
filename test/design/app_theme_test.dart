@@ -143,6 +143,9 @@ void main() {
     expect(AppTokens.light.accentForeground, const Color(0xFFF6F6F6));
     expect(AppTokens.light.primaryAction, const Color(0xFF14745F));
     expect(AppTokens.light.primaryActionForeground, const Color(0xFFF6F6F6));
+    expect(AppTokens.light.playbackAction, const Color(0xFF14745F));
+    expect(AppTokens.light.playbackActionForeground, Colors.white);
+    expect(AppTokens.light.playbackTrackInactive, const Color(0xFF8A8A8A));
     expect(AppTokens.light.focusRing, const Color(0xFF008B70));
     expect(AppTokens.light.success, const Color(0xFF2F7D4A));
     expect(AppTokens.light.warning, const Color(0xFF966000));
@@ -164,6 +167,9 @@ void main() {
     expect(AppTokens.dark.accentForeground, const Color(0xFF101713));
     expect(AppTokens.dark.primaryAction, const Color(0xFF00E66A));
     expect(AppTokens.dark.primaryActionForeground, const Color(0xFF101713));
+    expect(AppTokens.dark.playbackAction, const Color(0xFF14745F));
+    expect(AppTokens.dark.playbackActionForeground, Colors.white);
+    expect(AppTokens.dark.playbackTrackInactive, const Color(0xFF737570));
     expect(AppTokens.dark.focusRing, const Color(0xFF19D39B));
     expect(AppTokens.dark.success, const Color(0xFF75B987));
     expect(AppTokens.dark.warning, const Color(0xFFD7A45A));
@@ -197,6 +203,14 @@ void main() {
       expect(
         _contrastRatio(tokens.primaryActionForeground, tokens.primaryAction),
         greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.playbackActionForeground, tokens.playbackAction),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        _contrastRatio(tokens.playbackTrackInactive, tokens.background),
+        greaterThanOrEqualTo(3),
       );
       expect(
         _contrastRatio(tokens.focusRing, tokens.background),

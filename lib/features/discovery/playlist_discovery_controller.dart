@@ -289,4 +289,10 @@ final class PlaylistDiscoveryController extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  @override
+  void dispose() {
+    _generation++;
+    super.dispose();
+  }
 }

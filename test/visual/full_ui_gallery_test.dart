@@ -15,6 +15,7 @@ import 'package:musicfree_service_client/features/downloads/downloads_screen.dar
 import 'package:musicfree_service_client/features/home/home_screen.dart';
 import 'package:musicfree_service_client/features/more/more_screen.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
+import 'package:musicfree_service_client/features/player/artwork_palette.dart';
 import 'package:musicfree_service_client/features/player/player_screen.dart';
 import 'package:musicfree_service_client/features/player/player_state.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_detail_screen.dart';
@@ -30,6 +31,8 @@ import 'package:musicfree_service_client/features/sources/sources_screen.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
 import 'package:musicfree_service_client/l10n/app_localizations.dart';
 import 'package:musicfree_service_client/platform/app_platform.dart';
+import 'package:musicfree_service_client/platform/desktop_window_controller.dart';
+import 'package:musicfree_service_client/platform/platform_window_frame.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -66,6 +69,7 @@ Widget _shellHarness({
           connected: connected,
           onDisconnect: () {},
           player: player,
+          location: state.uri.path,
           platform: platform,
           child: child,
         ),
@@ -92,6 +96,45 @@ Widget _shellHarness({
     ),
   );
 }
+
+Widget _playerHarness({
+  required Widget child,
+  required AppPlatform platform,
+  required ThemeMode themeMode,
+}) => ShadApp.custom(
+  theme: buildLightTheme(),
+  darkTheme: buildDarkTheme(),
+  themeMode: themeMode,
+  appBuilder: (context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: Theme.of(context),
+    locale: const Locale('zh'),
+    localizationsDelegates: const [
+      AppLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+    ],
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: PlatformWindowFrame(
+      platform: platform,
+      location: '/player',
+      controller: desktopWindowController,
+      onBack: () {},
+      playerAccent: fallbackArtworkPalette(
+        'kw:wind',
+        brightness: themeMode == ThemeMode.dark
+            ? Brightness.dark
+            : Brightness.light,
+      ).vinylAccent,
+      child: Scaffold(
+        key: const Key('main-shell'),
+        backgroundColor: Colors.transparent,
+        body: ShadAppBuilder(child: child),
+      ),
+    ),
+  ),
+);
 
 const _desktopPages = <String>[
   'home',
@@ -135,11 +178,14 @@ void main() {
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
       );
+    final materialIconLoader = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait([
       chineseFontLoader.load(),
       displayFontLoader.load(),
       dataFontLoader.load(),
       iconLoader.load(),
+      materialIconLoader.load(),
     ]);
   });
 
@@ -336,13 +382,19 @@ Future<void> _capture(
   final surface = await _surface(page, player);
   final route = _route(page);
   await tester.pumpWidget(
-    _shellHarness(
-      path: route,
-      player: player,
-      child: surface,
-      platform: mobile ? AppPlatform.android : AppPlatform.macos,
-      themeMode: themeMode,
-    ),
+    page == 'player' && !mobile
+        ? _playerHarness(
+            child: surface,
+            platform: mobile ? AppPlatform.android : AppPlatform.macos,
+            themeMode: themeMode,
+          )
+        : _shellHarness(
+            path: route,
+            player: player,
+            child: surface,
+            platform: mobile ? AppPlatform.android : AppPlatform.macos,
+            themeMode: themeMode,
+          ),
   );
   await _precacheBranding(tester);
   await tester.pump(const Duration(milliseconds: 250));
@@ -425,6 +477,7 @@ Future<Widget> _surface(String page, PlayerController player) async {
     'my-playlists' || 'library' => PlaylistsScreen(
       controller: await fixturePlaylistsController(),
       onOpen: (_) {},
+      onOpenLocal: () {},
     ),
     'playlist-detail' => PlaylistDetailScreen(
       controller: fixturePlaylistDetailController(),
@@ -448,8 +501,8 @@ Future<Widget> _surface(String page, PlayerController player) async {
       serviceHost: '192.168.1.24',
       onSources: () {},
       onSettings: () {},
-      onSquare: () {},
-      onCharts: () {},
+      onDownloads: () {},
+      onDisconnect: () async {},
     ),
     _ => const _StatesShowcase(),
   };

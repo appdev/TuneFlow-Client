@@ -6,29 +6,40 @@ final class SourcesState {
   const SourcesState({
     this.items = const [],
     this.loading = false,
-    this.switchingId,
+    this.saving = false,
+    this.mutatingId,
     this.error,
   });
 
   final List<InstalledMusicSource> items;
   final bool loading;
-  final String? switchingId;
+  final bool saving;
+  final String? mutatingId;
   final Object? error;
 
-  InstalledMusicSource? get active =>
-      items.where((item) => item.active).firstOrNull;
+  List<InstalledMusicSource> get enabledSources =>
+      [...items.where((item) => item.enabled)]
+        ..sort((a, b) => a.priority!.compareTo(b.priority!));
+
+  InstalledMusicSource? get primarySource => enabledSources.firstOrNull;
+  List<InstalledMusicSource> get disabledSources =>
+      items.where((item) => !item.enabled).toList(growable: false);
+  InstalledMusicSource? get active => primarySource;
+  String? get switchingId => mutatingId;
 
   SourcesState copyWith({
     List<InstalledMusicSource>? items,
     bool? loading,
-    String? switchingId,
-    bool clearSwitching = false,
+    bool? saving,
+    String? mutatingId,
+    bool clearMutating = false,
     Object? error,
     bool clearError = false,
   }) => SourcesState(
     items: items ?? this.items,
     loading: loading ?? this.loading,
-    switchingId: clearSwitching ? null : switchingId ?? this.switchingId,
+    saving: saving ?? this.saving,
+    mutatingId: clearMutating ? null : mutatingId ?? this.mutatingId,
     error: clearError ? null : error ?? this.error,
   );
 }
@@ -50,34 +61,80 @@ final class SourcesController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> activate(String id) async {
-    if (state.switchingId != null || state.active?.id == id) return;
-    state = state.copyWith(switchingId: id, clearError: true);
+  Future<void> toggle(String id, bool enabled) async {
+    final ids = state.enabledSources.map((item) => item.id).toList();
+    if (enabled) {
+      if (!ids.contains(id)) ids.add(id);
+    } else {
+      ids.remove(id);
+    }
+    await _saveOrder(ids, mutatingId: id);
+  }
+
+  Future<void> reorder(int oldIndex, int newIndex) async {
+    final ids = state.enabledSources.map((item) => item.id).toList();
+    if (oldIndex < 0 || oldIndex >= ids.length) return;
+    final id = ids.removeAt(oldIndex);
+    final target = newIndex.clamp(0, ids.length);
+    ids.insert(target, id);
+    await _saveOrder(ids, mutatingId: id);
+  }
+
+  Future<void> _saveOrder(
+    List<String> ids, {
+    required String mutatingId,
+  }) async {
+    if (state.saving) return;
+    final previous = state.items;
+    state = state.copyWith(
+      items: _projectOrder(previous, ids),
+      saving: true,
+      mutatingId: mutatingId,
+      clearError: true,
+    );
     notifyListeners();
     try {
-      final active = await repository.activate(id);
       state = state.copyWith(
-        items: [
-          for (final item in state.items)
-            InstalledMusicSource(
-              id: item.id,
-              name: item.name,
-              description: item.description,
-              version: item.version,
-              author: item.author,
-              homepage: item.homepage,
-              active: item.id == active.id,
-              providers: item.id == active.id
-                  ? active.providers
-                  : item.providers,
-            ),
-        ],
-        clearSwitching: true,
+        items: await repository.configureEnabled(ids),
+        saving: false,
+        clearMutating: true,
       );
     } on Object catch (error) {
-      // Keep the previous active item until the Service confirms the switch.
-      state = state.copyWith(error: error, clearSwitching: true);
+      state = state.copyWith(
+        items: previous,
+        saving: false,
+        error: error,
+        clearMutating: true,
+      );
+      notifyListeners();
+      try {
+        state = state.copyWith(items: await repository.list(), error: error);
+      } on Object {
+        // Keep the rollback snapshot and the original mutation error.
+      }
     }
     notifyListeners();
   }
+}
+
+List<InstalledMusicSource> _projectOrder(
+  List<InstalledMusicSource> items,
+  List<String> ids,
+) {
+  final byId = {for (final item in items) item.id: item};
+  final enabled = <InstalledMusicSource>[];
+  for (var index = 0; index < ids.length; index++) {
+    final item = byId[ids[index]];
+    if (item == null) continue;
+    enabled.add(
+      item.copyWith(active: index == 0, enabled: true, priority: index),
+    );
+  }
+  final enabledIds = ids.toSet();
+  return [
+    ...enabled,
+    for (final item in items)
+      if (!enabledIds.contains(item.id))
+        item.copyWith(active: false, enabled: false, clearPriority: true),
+  ];
 }

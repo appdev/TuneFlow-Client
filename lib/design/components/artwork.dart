@@ -51,6 +51,7 @@ final class AppArtwork extends StatelessWidget {
     this.borderRadius = AppRadii.card,
     this.icon = LucideIcons.music2,
     this.showFallback = true,
+    this.showFallbackBorder = true,
     this.fallback,
   });
 
@@ -64,6 +65,7 @@ final class AppArtwork extends StatelessWidget {
   final double borderRadius;
   final IconData icon;
   final bool showFallback;
+  final bool showFallbackBorder;
   final Widget? fallback;
 
   @override
@@ -71,7 +73,12 @@ final class AppArtwork extends StatelessWidget {
     final resolved =
         source ?? AppArtworkSource.fromUrl(imageUrl, fallbackSeed: seed);
     final resolvedFallback = showFallback
-        ? fallback ?? _ArtworkFallback(seed: resolved.fallbackSeed, icon: icon)
+        ? fallback ??
+              _ArtworkFallback(
+                seed: resolved.fallbackSeed,
+                icon: icon,
+                showBorder: showFallbackBorder,
+              )
         : const SizedBox.shrink();
     final cacheManager = AppImageCacheScope.maybeOf(context)?.manager;
     return Semantics(
@@ -107,10 +114,15 @@ final class AppArtwork extends StatelessWidget {
 }
 
 final class _ArtworkFallback extends StatelessWidget {
-  const _ArtworkFallback({required this.seed, required this.icon});
+  const _ArtworkFallback({
+    required this.seed,
+    required this.icon,
+    required this.showBorder,
+  });
 
   final String seed;
   final IconData icon;
+  final bool showBorder;
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +139,7 @@ final class _ArtworkFallback extends StatelessWidget {
           key: Key('artwork-fallback-$seed'),
           decoration: BoxDecoration(
             color: dark ? tokens.surface : tokens.surfaceWarm,
-            border: Border.all(color: tokens.border),
+            border: showBorder ? Border.all(color: tokens.border) : null,
           ),
           child: _RecordFallback(
             seed: seed,

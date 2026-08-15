@@ -9,6 +9,10 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    MacOSMenuBarController.shared.attach(
+      binaryMessenger: flutterViewController.engine.binaryMessenger,
+      window: self
+    )
 
     titleVisibility = .hidden
     titlebarAppearsTransparent = true
@@ -16,5 +20,15 @@ class MainFlutterWindow: NSWindow {
     isMovableByWindowBackground = false
 
     super.awakeFromNib()
+  }
+
+  override func performClose(_ sender: Any?) {
+    orderOut(sender)
+    MacOSMenuBarController.shared.mainWindowWasHidden()
+  }
+
+  override func close() {
+    orderOut(nil)
+    MacOSMenuBarController.shared.mainWindowWasHidden()
   }
 }

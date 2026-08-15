@@ -6,6 +6,26 @@ import '../library/library_repository.dart';
 import '../playback_history/playback_history_repository.dart';
 import '../playlists/playlist_repository.dart';
 
+List<Track> _uniqueTracks(Iterable<Track> tracks) {
+  final seen = <String>{};
+  return List.unmodifiable(
+    tracks.where((track) => seen.add('${track.source}:${track.id}')),
+  );
+}
+
+Iterable<Track> _withCurrentLibraryTracks(
+  Iterable<Track> tracks,
+  Iterable<LibraryTrack> library,
+) {
+  final libraryByTrack = {
+    for (final item in library)
+      '${item.track.source}:${item.track.id}': item.track,
+  };
+  return tracks.map(
+    (track) => libraryByTrack['${track.source}:${track.id}'] ?? track,
+  );
+}
+
 final class HomeState {
   const HomeState({
     this.playlists = const [],
@@ -135,13 +155,19 @@ final class HomeController extends ChangeNotifier {
       loadHistory(),
     ]);
 
+    final currentLibrary = nextLibrary ?? state.library;
     state = HomeState(
       playlists: nextPlaylists ?? state.playlists,
       downloads: nextDownloads ?? state.downloads,
-      library: nextLibrary ?? state.library,
-      continueListening:
-          nextHistory?.map((item) => item.track).toList(growable: false) ??
-          state.continueListening,
+      library: currentLibrary,
+      continueListening: nextHistory == null
+          ? state.continueListening
+          : _uniqueTracks(
+              _withCurrentLibraryTracks(
+                nextHistory!.map((item) => item.track),
+                currentLibrary,
+              ),
+            ),
       lastSyncedAt: firstError == null ? DateTime.now() : state.lastSyncedAt,
       stale: firstError != null,
       error: firstError,

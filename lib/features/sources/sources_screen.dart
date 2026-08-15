@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_mobile_chrome.dart';
@@ -28,6 +29,20 @@ final class _SourcesScreenState extends State<SourcesScreen> {
   void dispose() {
     widget.controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggle(InstalledMusicSource source, bool enabled) async {
+    if (!enabled && widget.controller.state.enabledSources.length == 1) {
+      final accepted = await showAppDestructiveDialog(
+        context,
+        title: '禁用最后一个音源？',
+        message: '在线播放和下载将不可用，本地音乐不受影响。',
+        cancelLabel: '取消',
+        confirmLabel: '仍要禁用',
+      );
+      if (!accepted || !mounted) return;
+    }
+    await widget.controller.toggle(source.id, enabled);
   }
 
   @override
@@ -64,26 +79,72 @@ final class _SourcesScreenState extends State<SourcesScreen> {
             ],
             if (state.error != null) ...[
               const SizedBox(height: 18),
-              AppNotice.error(title: '音源操作失败', message: state.error.toString()),
+              AppNotice.error(
+                title: '音源操作失败',
+                message: appErrorMessage(
+                  state.error!,
+                  fallback: '音源列表暂时无法加载，请稍后重试。',
+                ),
+              ),
             ],
             const SizedBox(height: 24),
             if (!state.loading && state.items.isEmpty)
               const _EmptySources()
-            else
-              Column(
-                children: [
-                  for (final item in state.items)
-                    Padding(
+            else ...[
+              if (state.enabledSources.isNotEmpty) ...[
+                const Text('已启用音源', style: AppTypography.section),
+                const SizedBox(height: 12),
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  proxyDecorator: (child, _, _) => child,
+                  itemCount: state.enabledSources.length,
+                  onReorderItem: state.saving
+                      ? (_, _) {}
+                      : widget.controller.reorder,
+                  itemBuilder: (context, index) {
+                    final source = state.enabledSources[index];
+                    return Padding(
+                      key: ValueKey('enabled-source-${source.id}'),
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _SourceCard(
-                        source: item,
+                        source: source,
                         mobile: mobile,
-                        switching: state.switchingId == item.id,
-                        onActivate: () => widget.controller.activate(item.id),
+                        label: index == 0 ? '首选' : '备用 $index',
+                        saving: state.saving,
+                        onToggle: (value) => _toggle(source, value),
+                        dragHandle: ReorderableDragStartListener(
+                          index: index,
+                          enabled: !state.saving,
+                          child: const Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Icon(LucideIcons.gripVertical, size: 18),
+                          ),
+                        ),
                       ),
+                    );
+                  },
+                ),
+              ],
+              if (state.disabledSources.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('未启用音源', style: AppTypography.section),
+                const SizedBox(height: 12),
+                for (final source in state.disabledSources)
+                  Padding(
+                    key: ValueKey('disabled-source-${source.id}'),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SourceCard(
+                      source: source,
+                      mobile: mobile,
+                      label: '未启用',
+                      saving: state.saving,
+                      onToggle: (value) => _toggle(source, value),
                     ),
-                ],
-              ),
+                  ),
+              ],
+            ],
           ],
         ),
       );
@@ -95,13 +156,17 @@ final class _SourceCard extends StatelessWidget {
   const _SourceCard({
     required this.source,
     required this.mobile,
-    required this.switching,
-    required this.onActivate,
+    required this.label,
+    required this.saving,
+    required this.onToggle,
+    this.dragHandle,
   });
   final InstalledMusicSource source;
   final bool mobile;
-  final bool switching;
-  final VoidCallback onActivate;
+  final String label;
+  final bool saving;
+  final ValueChanged<bool> onToggle;
+  final Widget? dragHandle;
 
   @override
   Widget build(BuildContext context) => ShadCard(
@@ -121,16 +186,18 @@ final class _SourceCard extends StatelessWidget {
                       style: AppTypography.title,
                     ),
                   ),
-                  if (!mobile && source.active)
-                    const AppStatusBadge(
-                      label: '当前启用',
-                      tone: StatusTone.success,
+                  if (!mobile)
+                    AppStatusBadge(
+                      label: label,
+                      tone: source.enabled
+                          ? StatusTone.success
+                          : StatusTone.neutral,
                     ),
                 ],
               ),
               Text(
                 '${sourceVersionLabel(source.version)} · '
-                '${source.active ? '当前启用' : '已安装'}',
+                '${source.enabled ? label : '已安装 · 未启用'}',
                 style: AppTypography.metadata.copyWith(
                   color: AppTokens.of(context).foregroundSecondary,
                 ),
@@ -165,27 +232,12 @@ final class _SourceCard extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 18),
-        if (source.active && mobile)
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTokens.of(context).success,
-            ),
-          )
-        else
-          ShadButton(
-            enabled: !source.active && !switching,
-            onPressed: onActivate,
-            child: Text(
-              source.active
-                  ? '能力详情'
-                  : switching
-                  ? '正在切换'
-                  : '启用',
-            ),
-          ),
+        if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 6)],
+        ShadSwitch(
+          value: source.enabled,
+          onChanged: saving ? null : onToggle,
+          label: Text(source.enabled ? '已启用' : '未启用'),
+        ),
       ],
     ),
   );
