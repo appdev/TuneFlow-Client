@@ -34,6 +34,7 @@ final class PlayerState {
     this.quality = '128k',
     this.playing = false,
     this.processing = PlayerProcessing.idle,
+    this.playbackPending = false,
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.buffered = Duration.zero,
@@ -52,6 +53,7 @@ final class PlayerState {
   final String quality;
   final bool playing;
   final PlayerProcessing processing;
+  final bool playbackPending;
   final Duration position;
   final Duration duration;
   final Duration buffered;
@@ -68,6 +70,13 @@ final class PlayerState {
       ? queue[currentIndex]
       : null;
 
+  bool get isPlaybackLoading =>
+      playbackPending ||
+      processing == PlayerProcessing.loading ||
+      processing == PlayerProcessing.buffering;
+
+  bool get isPlaybackActive => playing && !isPlaybackLoading;
+
   bool get canPrevious =>
       queue.length > 1 &&
       (playbackMode == PlaybackMode.shuffle || currentIndex > 0);
@@ -82,6 +91,7 @@ final class PlayerState {
     String? quality,
     bool? playing,
     PlayerProcessing? processing,
+    bool? playbackPending,
     Duration? position,
     Duration? duration,
     Duration? buffered,
@@ -100,6 +110,7 @@ final class PlayerState {
     quality: quality ?? this.quality,
     playing: playing ?? this.playing,
     processing: processing ?? this.processing,
+    playbackPending: playbackPending ?? this.playbackPending,
     position: position ?? this.position,
     duration: duration ?? this.duration,
     buffered: buffered ?? this.buffered,

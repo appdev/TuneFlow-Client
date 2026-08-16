@@ -60,6 +60,7 @@ final class PlayerController extends ChangeNotifier {
       currentIndex: startIndex,
       quality: state.quality,
       processing: PlayerProcessing.loading,
+      playbackPending: true,
       showLyrics: state.showLyrics,
       showTranslation: state.showTranslation,
       view: state.view,
@@ -140,6 +141,7 @@ final class PlayerController extends ChangeNotifier {
       queue: List.unmodifiable(queue),
       currentIndex: nextIndex,
       processing: PlayerProcessing.loading,
+      playbackPending: true,
       position: Duration.zero,
       duration: Duration.zero,
       buffered: Duration.zero,
@@ -182,6 +184,7 @@ final class PlayerController extends ChangeNotifier {
     state = state.copyWith(
       currentIndex: index,
       processing: PlayerProcessing.loading,
+      playbackPending: true,
       clearLyrics: true,
       bundleCompleteness: null,
       error: null,
@@ -215,7 +218,11 @@ final class PlayerController extends ChangeNotifier {
       return;
     }
     if (state.processing == PlayerProcessing.error || state.error != null) {
-      state = state.copyWith(processing: PlayerProcessing.loading, error: null);
+      state = state.copyWith(
+        processing: PlayerProcessing.loading,
+        playbackPending: true,
+        error: null,
+      );
       notifyListeners();
       await _playCurrent();
       return;
@@ -231,7 +238,12 @@ final class PlayerController extends ChangeNotifier {
   Future<bool> setQuality(String quality) async {
     if (quality == state.quality) return true;
     final previousQuality = state.quality;
-    state = state.copyWith(quality: quality);
+    final hasCurrentTrack = state.current != null;
+    state = state.copyWith(
+      quality: quality,
+      processing: hasCurrentTrack ? PlayerProcessing.loading : null,
+      playbackPending: hasCurrentTrack,
+    );
     notifyListeners();
     if (state.current == null) return true;
     final played = await _playCurrent(startSession: false);
@@ -388,7 +400,7 @@ final class PlayerController extends ChangeNotifier {
     try {
       if (await audio.playCachedTrack(track, state.quality)) {
         if (!_isCurrent(generation, track)) return false;
-        state = state.copyWith(error: null);
+        state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
         unawaited(_refreshCachedLocalResources(track, generation));
         if (startSession) await _startSession(track);
@@ -408,7 +420,7 @@ final class PlayerController extends ChangeNotifier {
         );
         await audio.playTrack(playbackTrack, source.streamUri, state.quality);
         if (!_isCurrent(generation, playbackTrack)) return false;
-        state = state.copyWith(error: null);
+        state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
         if (startSession) await _startSession(playbackTrack);
         return true;
@@ -424,6 +436,7 @@ final class PlayerController extends ChangeNotifier {
     }
     if (!_isCurrent(generation, track)) return false;
     state = state.copyWith(
+      playbackPending: false,
       processing: PlayerProcessing.error,
       error: lastError,
     );
@@ -579,6 +592,7 @@ final class PlayerController extends ChangeNotifier {
       case PlaybackMode.repeatOne:
         state = state.copyWith(
           processing: PlayerProcessing.loading,
+          playbackPending: true,
           position: Duration.zero,
         );
         notifyListeners();

@@ -622,7 +622,7 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
                   artworkSource: artworkSource,
                   rotating:
                       state.view == PlayerView.artwork &&
-                      state.playing &&
+                      state.isPlaybackActive &&
                       state.processing == PlayerProcessing.ready,
                 ),
                 SizedBox.expand(

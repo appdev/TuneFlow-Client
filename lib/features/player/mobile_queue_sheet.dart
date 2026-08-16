@@ -241,10 +241,7 @@ final class _MobileQueueRow extends StatelessWidget {
             children: [
               SizedBox(
                 width: 26,
-                child:
-                    active &&
-                        (state.processing == PlayerProcessing.loading ||
-                            state.processing == PlayerProcessing.buffering)
+                child: active && state.isPlaybackLoading
                     ? Center(
                         child: SizedBox.square(
                           dimension: 16,

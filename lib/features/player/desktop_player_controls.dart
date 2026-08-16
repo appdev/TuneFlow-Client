@@ -97,12 +97,19 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                       const SizedBox(width: AppSpacing.md),
                       _ControlButton(
                         key: const Key('player-play-pause'),
-                        label: state.playing ? '暂停' : '播放',
-                        icon: state.playing
+                        label: state.isPlaybackLoading
+                            ? '正在加载'
+                            : state.isPlaybackActive
+                            ? '暂停'
+                            : '播放',
+                        icon: state.isPlaybackActive
                             ? AppPlaybackIcons.pause
                             : AppPlaybackIcons.play,
                         prominent: true,
-                        onPressed: state.playing
+                        loading: state.isPlaybackLoading,
+                        onPressed: state.isPlaybackLoading
+                            ? controller.pause
+                            : state.playing
                             ? controller.pause
                             : controller.resume,
                       ),
@@ -242,6 +249,7 @@ final class _ControlButton extends StatelessWidget {
     required this.onPressed,
     this.enabled = true,
     this.prominent = false,
+    this.loading = false,
   });
 
   final String label;
@@ -249,6 +257,7 @@ final class _ControlButton extends StatelessWidget {
   final VoidCallback onPressed;
   final bool enabled;
   final bool prominent;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -262,7 +271,17 @@ final class _ControlButton extends StatelessWidget {
               onTap: enabled ? onPressed : null,
               child: SizedBox.square(
                 dimension: 56,
-                child: Icon(icon, size: 23, color: Colors.white),
+                child: Center(
+                  child: loading
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(icon, size: 23, color: Colors.white),
+                ),
               ),
             ),
           )

@@ -131,13 +131,11 @@ final class MobilePlayerControls extends StatelessWidget {
                     _TransportButton(
                       key: const Key('player-play-pause'),
                       label: _playLabel,
-                      icon: state.playing
+                      icon: state.isPlaybackActive
                           ? AppPlaybackIcons.pause
                           : AppPlaybackIcons.play,
                       prominent: true,
-                      loading:
-                          state.processing == PlayerProcessing.loading ||
-                          state.processing == PlayerProcessing.buffering,
+                      loading: state.isPlaybackLoading,
                       onPressed: onPlayPause,
                     ),
                     const SizedBox(width: 12),
@@ -168,11 +166,10 @@ final class MobilePlayerControls extends StatelessWidget {
   }
 
   String get _playLabel {
-    if (state.processing == PlayerProcessing.loading ||
-        state.processing == PlayerProcessing.buffering) {
+    if (state.isPlaybackLoading) {
       return '正在加载';
     }
-    return state.playing ? '暂停' : '播放';
+    return state.isPlaybackActive ? '暂停' : '播放';
   }
 
   String get _playbackModeLabel => switch (state.playbackMode) {

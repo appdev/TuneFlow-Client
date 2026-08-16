@@ -66,11 +66,18 @@ final class MiniPlayer extends StatelessWidget {
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(child: _TrackIdentity(controller: controller)),
                       _TransportButton(
-                        tooltip: state.playing ? '暂停' : '播放',
-                        icon: state.playing
+                        tooltip: state.isPlaybackLoading
+                            ? '正在加载'
+                            : state.isPlaybackActive
+                            ? '暂停'
+                            : '播放',
+                        icon: state.isPlaybackActive
                             ? AppPlaybackIcons.pause
                             : AppPlaybackIcons.play,
-                        onPressed: state.playing
+                        loading: state.isPlaybackLoading,
+                        onPressed: state.isPlaybackLoading
+                            ? controller.pause
+                            : state.playing
                             ? controller.pause
                             : controller.resume,
                       ),
@@ -257,8 +264,7 @@ typedef _TransportPresentation = ({
 
 _TransportPresentation _transportPresentation(PlayerController controller) {
   final state = controller.state;
-  if (state.processing == PlayerProcessing.loading ||
-      state.processing == PlayerProcessing.buffering) {
+  if (state.isPlaybackLoading) {
     return (
       tooltip: '正在加载',
       icon: null,
@@ -446,12 +452,14 @@ final class _TransportButton extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     this.enabled = true,
+    this.loading = false,
   });
 
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
   final bool enabled;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -462,7 +470,12 @@ final class _TransportButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       enabled: enabled,
       onPressed: enabled ? () => onPressed() : null,
-      child: Icon(icon, size: 20),
+      child: loading
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon, size: 20),
     );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

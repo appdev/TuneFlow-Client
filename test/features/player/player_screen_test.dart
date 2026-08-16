@@ -20,6 +20,7 @@ import 'package:musicfree_service_client/features/player/artwork_palette_control
 import 'package:musicfree_service_client/features/player/current_track_actions_controller.dart';
 import 'package:musicfree_service_client/features/player/mini_player.dart';
 import 'package:musicfree_service_client/features/player/lyrics_view.dart';
+import 'package:musicfree_service_client/features/player/mobile_player_controls.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
 import 'package:musicfree_service_client/features/player/player_screen.dart';
@@ -641,6 +642,22 @@ void main() {
     await tester.tap(find.byKey(const Key('desktop-play-pause')));
     expect(audio.pauseCalls, 2);
 
+    controller.state = controller.state.copyWith(
+      processing: PlayerProcessing.ready,
+      playing: true,
+      playbackPending: true,
+    );
+    controller.notifyListeners();
+    await tester.pump();
+    expect(find.byKey(const Key('desktop-player-loading')), findsOneWidget);
+    expect(find.bySemanticsLabel('正在加载'), findsOneWidget);
+
+    controller.state = controller.state.copyWith(playbackPending: false);
+    controller.notifyListeners();
+    await tester.pump();
+    expect(find.byKey(const Key('desktop-player-loading')), findsNothing);
+    expect(find.bySemanticsLabel('暂停'), findsOneWidget);
+
     audio.emit(
       const AudioSnapshot(processing: PlayerProcessing.ready, playing: true),
     );
@@ -691,6 +708,42 @@ void main() {
 
     expect(audio.playCalls, 2);
     expect(find.byKey(const Key('desktop-player-loading')), findsOneWidget);
+  });
+
+  testWidgets('mobile transport presents pending ready playback as loading', (
+    tester,
+  ) async {
+    final state = PlayerState(
+      queue: [
+        Track.fromJson({
+          'id': 'mobile-pending',
+          'name': 'Mobile Pending',
+          'source': 'kw',
+        }),
+      ],
+      currentIndex: 0,
+      playing: true,
+      processing: PlayerProcessing.ready,
+      playbackPending: true,
+    );
+
+    await tester.pumpWidget(
+      harness(
+        MobilePlayerControls(
+          state: state,
+          onSeek: (_) {},
+          onPrevious: () {},
+          onPlayPause: () {},
+          onNext: () {},
+          onPlaybackMode: () {},
+          onQualityChanged: (_) {},
+          onQueue: () {},
+        ),
+      ),
+    );
+
+    expect(find.bySemanticsLabel('正在加载'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
   testWidgets('full player exposes controls and scopes keep-awake to route', (
@@ -1166,6 +1219,19 @@ void main() {
     final initial = turns();
     await tester.pump(const Duration(seconds: 1));
     expect(turns(), greaterThan(initial));
+
+    controller.state = controller.state.copyWith(playbackPending: true);
+    controller.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+    final pending = turns();
+    await tester.pump(const Duration(seconds: 1));
+    expect(turns(), closeTo(pending, 1e-6));
+
+    controller.state = controller.state.copyWith(playbackPending: false);
+    controller.notifyListeners();
+    await tester.pump();
+    await tester.pump();
 
     audio.emit(
       const AudioSnapshot(

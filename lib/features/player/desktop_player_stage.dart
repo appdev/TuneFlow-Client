@@ -86,7 +86,7 @@ final class DesktopPlayerStage extends StatelessWidget {
                       seed: '${track.source}:${track.id}',
                       semanticLabel: '${track.title}封面',
                       rotating:
-                          state.playing &&
+                          state.isPlaybackActive &&
                           state.processing == PlayerProcessing.ready,
                     ),
                   ),

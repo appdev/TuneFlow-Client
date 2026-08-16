@@ -37,6 +37,7 @@ class FakeAudio implements AudioPort {
   final List<Track> playedTracks = [];
   Object? playError;
   Object? stopPlaybackError;
+  Completer<void>? playBlock;
   bool cached = false;
   Future<void> Function()? previousCallback;
   Future<void> Function()? nextCallback;
@@ -61,6 +62,7 @@ class FakeAudio implements AudioPort {
     playCalls++;
     playedTracks.add(track);
     if (playError case final error?) throw error;
+    await playBlock?.future;
   }
 
   @override
@@ -707,6 +709,31 @@ void main() {
   });
 
   test(
+    'quality switch stays pending until replacement playback starts',
+    () async {
+      final resolver = DeferredResolver();
+      final controller = PlayerController(
+        resolver: resolver,
+        audio: FakeAudio(),
+      );
+      final first = controller.play(track('a'));
+      await Future<void>.delayed(Duration.zero);
+      resolver.requests[0].complete(bundleSource());
+      await first;
+
+      final switching = controller.setQuality('320k');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.playbackPending, isTrue);
+      expect(controller.state.isPlaybackLoading, isTrue);
+
+      resolver.requests[1].complete(bundleSource());
+      expect(await switching, isTrue);
+      expect(controller.state.playbackPending, isFalse);
+    },
+  );
+
+  test(
     'audio snapshots update transport state and controls delegate',
     () async {
       final audio = FakeAudio();
@@ -733,6 +760,22 @@ void main() {
       expect(audio.resumeCalls, 1);
     },
   );
+
+  test('pending playback overrides raw ready playback presentation', () {
+    const pending = PlayerState(
+      playing: true,
+      processing: PlayerProcessing.ready,
+      playbackPending: true,
+    );
+
+    expect(pending.playbackPending, isTrue);
+    expect(pending.isPlaybackLoading, isTrue);
+    expect(pending.isPlaybackActive, isFalse);
+
+    final started = pending.copyWith(playbackPending: false);
+    expect(started.isPlaybackLoading, isFalse);
+    expect(started.isPlaybackActive, isTrue);
+  });
 
   test('playback mode cycles through sequential repeat-one and shuffle', () {
     final controller = PlayerController(
@@ -770,6 +813,31 @@ void main() {
       expect(audio.playCalls, 2);
     },
   );
+
+  test('repeat-one stays pending while replay is resolving', () async {
+    final resolver = DeferredResolver();
+    final audio = FakeAudio();
+    final controller = PlayerController(resolver: resolver, audio: audio);
+    final first = controller.play(track('a'));
+    await Future<void>.delayed(Duration.zero);
+    resolver.requests[0].complete(bundleSource());
+    await first;
+    controller.cyclePlaybackMode();
+
+    audio.controller.add(
+      const AudioSnapshot(processing: PlayerProcessing.completed),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.playbackPending, isTrue);
+    expect(controller.state.isPlaybackLoading, isTrue);
+
+    resolver.requests[1].complete(bundleSource());
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state.playbackPending, isFalse);
+  });
 
   test('sequential completion advances to the next queued track', () async {
     final audio = FakeAudio();
@@ -1034,11 +1102,20 @@ void main() {
       expect(controller.state.processing, PlayerProcessing.error);
 
       audio.playError = null;
-      await controller.resume();
+      audio.playBlock = Completer<void>();
+      final retrying = controller.resume();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.playbackPending, isTrue);
+      expect(controller.state.isPlaybackLoading, isTrue);
+
+      audio.playBlock!.complete();
+      await retrying;
 
       expect(audio.playCalls, 2);
       expect(audio.resumeCalls, 0);
       expect(controller.state.error, isNull);
+      expect(controller.state.playbackPending, isFalse);
     },
   );
 
@@ -1107,67 +1184,81 @@ void main() {
   });
 
   test(
-    'ready snapshot during previous session end remains authoritative',
+    'old ready snapshot keeps a new track pending until playback starts',
     () async {
-      final audio = FakeAudio()..cached = true;
-      final sessions = DeferredEndSessions();
-      final controller = PlayerController(
-        resolver: FakeResolver(),
-        audio: audio,
-        sessions: sessions,
-      );
-      await controller.play(track('first'));
+      final audio = FakeAudio();
+      final resolver = DeferredResolver();
+      final controller = PlayerController(resolver: resolver, audio: audio);
+
+      final first = controller.play(track('first'));
+      await Future<void>.delayed(Duration.zero);
+      resolver.requests[0].complete(bundleSource());
+      await first;
       audio.controller.add(
-        const AudioSnapshot(processing: PlayerProcessing.ready),
+        const AudioSnapshot(playing: true, processing: PlayerProcessing.ready),
       );
       await Future<void>.delayed(Duration.zero);
 
-      final switching = controller.play(track('second'));
+      final second = controller.play(track('second'));
       await Future<void>.delayed(Duration.zero);
       audio.controller.add(
-        const AudioSnapshot(processing: PlayerProcessing.ready),
+        const AudioSnapshot(playing: true, processing: PlayerProcessing.ready),
       );
       await Future<void>.delayed(Duration.zero);
-      sessions.pendingEnds.single.complete();
-      await switching;
 
       expect(controller.state.current?.id, 'second');
-      expect(controller.state.processing, PlayerProcessing.ready);
+      expect(controller.state.playbackPending, isTrue);
+      expect(controller.state.isPlaybackLoading, isTrue);
+      expect(controller.state.isPlaybackActive, isFalse);
+
+      resolver.requests[1].complete(bundleSource());
+      await second;
+      audio.controller.add(
+        const AudioSnapshot(playing: true, processing: PlayerProcessing.ready),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.playbackPending, isFalse);
+      expect(controller.state.isPlaybackLoading, isFalse);
+      expect(controller.state.isPlaybackActive, isTrue);
     },
   );
 
+  test('queue selection stays pending during an old ready snapshot', () async {
+    final audio = FakeAudio()..cached = true;
+    final sessions = DeferredEndSessions();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      sessions: sessions,
+    );
+    await controller.playTracks([track('first'), track('second')]);
+    audio.controller.add(
+      const AudioSnapshot(processing: PlayerProcessing.ready),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final switching = controller.playIndex(1);
+    await Future<void>.delayed(Duration.zero);
+    audio.controller.add(
+      const AudioSnapshot(processing: PlayerProcessing.ready),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.processing, PlayerProcessing.ready);
+    expect(controller.state.playbackPending, isTrue);
+    expect(controller.state.isPlaybackLoading, isTrue);
+
+    sessions.pendingEnds.single.complete();
+    await switching;
+
+    expect(controller.state.current?.id, 'second');
+    expect(controller.state.playbackPending, isFalse);
+    expect(controller.state.processing, PlayerProcessing.ready);
+  });
+
   test(
-    'ready snapshot during session end remains authoritative for queue selection',
-    () async {
-      final audio = FakeAudio()..cached = true;
-      final sessions = DeferredEndSessions();
-      final controller = PlayerController(
-        resolver: FakeResolver(),
-        audio: audio,
-        sessions: sessions,
-      );
-      await controller.playTracks([track('first'), track('second')]);
-      audio.controller.add(
-        const AudioSnapshot(processing: PlayerProcessing.ready),
-      );
-      await Future<void>.delayed(Duration.zero);
-
-      final switching = controller.playIndex(1);
-      await Future<void>.delayed(Duration.zero);
-      audio.controller.add(
-        const AudioSnapshot(processing: PlayerProcessing.ready),
-      );
-      await Future<void>.delayed(Duration.zero);
-      sessions.pendingEnds.single.complete();
-      await switching;
-
-      expect(controller.state.current?.id, 'second');
-      expect(controller.state.processing, PlayerProcessing.ready);
-    },
-  );
-
-  test(
-    'ready snapshot during session end remains authoritative after removing current track',
+    'removing the current track stays pending during an old ready snapshot',
     () async {
       final audio = FakeAudio()..cached = true;
       final sessions = DeferredEndSessions();
@@ -1188,10 +1279,16 @@ void main() {
         const AudioSnapshot(processing: PlayerProcessing.ready),
       );
       await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.processing, PlayerProcessing.ready);
+      expect(controller.state.playbackPending, isTrue);
+      expect(controller.state.isPlaybackLoading, isTrue);
+
       sessions.pendingEnds.single.complete();
       await removing;
 
       expect(controller.state.current?.id, 'second');
+      expect(controller.state.playbackPending, isFalse);
       expect(controller.state.processing, PlayerProcessing.ready);
     },
   );
