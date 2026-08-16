@@ -165,6 +165,17 @@ void main() {
     }
   });
 
+  testWidgets('fallback artwork is borderless by default', (tester) async {
+    await tester.pumpWidget(
+      fallbackHarness(mode: ThemeMode.light, seed: 'borderless'),
+    );
+
+    final fallback = tester.widget<DecoratedBox>(
+      find.byKey(const Key('artwork-fallback-borderless')),
+    );
+    expect((fallback.decoration as BoxDecoration).border, isNull);
+  });
+
   testWidgets('both themes preserve a playlist-specific icon', (tester) async {
     for (final mode in [ThemeMode.light, ThemeMode.dark]) {
       await tester.pumpWidget(
@@ -313,9 +324,6 @@ void main() {
     );
 
     expect(find.byType(CachedNetworkImage), findsNothing);
-    expect(
-      find.byKey(const Key('artwork-fallback-unmanaged')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('artwork-fallback-unmanaged')), findsOneWidget);
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../app/app_error.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_mobile_chrome.dart';
@@ -51,44 +52,55 @@ final class _PlaylistsScreenState extends State<PlaylistsScreen> {
   Future<void> _create() async {
     final name = TextEditingController();
     String? validation;
-    final accepted = await showShadDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => ShadDialog(
-          title: const Text('新建歌单'),
-          description: const Text('歌单将保存在当前 Service。'),
-          actions: [
-            AppButton(
-              variant: ShadButtonVariant.outline,
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
+    final accepted = await AppBottomSheet.showContent<bool>(
+      context,
+      title: '新建歌单',
+      message: '歌单将保存在当前 Service。',
+      child: StatefulBuilder(
+        builder: (modalContext, setModalState) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AppTextField(
+              key: const Key('playlist-name-field'),
+              controller: name,
+              placeholder: '歌单名称',
             ),
-            AppButton(
-              onPressed: () {
-                if (name.text.trim().isEmpty) {
-                  setDialogState(() => validation = '请输入歌单名称');
-                  return;
-                }
-                Navigator.pop(dialogContext, true);
-              },
-              child: const Text('创建'),
+            if (validation != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                validation!,
+                style: TextStyle(color: AppTokens.of(modalContext).danger),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    expands: true,
+                    variant: ShadButtonVariant.outline,
+                    onPressed: () => Navigator.pop(modalContext, false),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AppButton(
+                    expands: true,
+                    onPressed: () {
+                      if (name.text.trim().isEmpty) {
+                        setModalState(() => validation = '请输入歌单名称');
+                        return;
+                      }
+                      Navigator.pop(modalContext, true);
+                    },
+                    child: const Text('创建'),
+                  ),
+                ),
+              ],
             ),
           ],
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppTextField(
-                key: const Key('playlist-name-field'),
-                controller: name,
-                placeholder: '歌单名称',
-              ),
-              if (validation != null) ...[
-                const SizedBox(height: 8),
-                Text(validation!, style: const TextStyle(color: Colors.red)),
-              ],
-            ],
-          ),
         ),
       ),
     );
@@ -110,7 +122,7 @@ final class _PlaylistsScreenState extends State<PlaylistsScreen> {
   }
 
   Future<void> _delete(String id, String name) async {
-    final accepted = await showAppDestructiveDialog(
+    final accepted = await AppBottomSheet.showDestructive(
       context,
       title: '删除歌单？',
       message: '“$name”将从 Service 中删除。',

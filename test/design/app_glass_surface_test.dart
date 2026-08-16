@@ -5,6 +5,7 @@ import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/app_theme_definition.dart';
 import 'package:musicfree_service_client/design/app_theme_scope.dart';
 import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 Widget harness({
@@ -12,6 +13,7 @@ Widget harness({
   bool highContrast = false,
   bool disableAnimations = false,
   bool reduceTransparency = false,
+  bool performanceDegraded = false,
 }) {
   final definition = AppThemeRegistry.mistSea;
   return ShadApp(
@@ -25,7 +27,7 @@ Widget harness({
         definition: definition,
         child: AppGlassPolicyScope(
           reduceTransparency: reduceTransparency,
-          performanceDegraded: false,
+          performanceDegraded: performanceDegraded,
           child: child,
         ),
       ),
@@ -76,7 +78,7 @@ void main() {
     expect(dark[AppGlassRole.clear]!.blurSigma, 20);
   });
 
-  testWidgets('glass surface enables blur in the normal policy', (
+  testWidgets('glass surface uses adaptive liquid rendering normally', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -90,12 +92,99 @@ void main() {
       ),
     );
 
-    final filter = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
-    expect(filter.enabled, isTrue);
+    expect(find.byType(AdaptiveGlass), findsOneWidget);
+    expect(find.byKey(const Key('app-liquid-glass-nav')), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('content'))),
       const Size(120, 48),
     );
+  });
+
+  testWidgets('every semantic role uses the isolated adaptive renderer', (
+    tester,
+  ) async {
+    for (final role in AppGlassRole.values.where(
+      (role) => role != AppGlassRole.fallback,
+    )) {
+      await tester.pumpWidget(
+        harness(
+          child: Center(
+            child: AppGlassSurface(
+              role: role,
+              child: const SizedBox(width: 120, height: 80),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(AdaptiveGlass), findsOneWidget, reason: role.name);
+      expect(
+        find.byKey(Key('app-liquid-glass-${role.name}')),
+        findsOneWidget,
+        reason: role.name,
+      );
+    }
+  });
+
+  testWidgets('glass surface keeps the existing opaque fallback', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        reduceTransparency: true,
+        child: const Center(
+          child: AppGlassSurface(
+            role: AppGlassRole.sheet,
+            child: SizedBox(width: 120, height: 80),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(AdaptiveGlass), findsNothing);
+    expect(
+      tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled,
+      isFalse,
+    );
+  });
+
+  testWidgets('performance degradation uses the same opaque fallback', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        performanceDegraded: true,
+        child: const AppGlassSurface(
+          role: AppGlassRole.nav,
+          child: SizedBox(width: 120, height: 64),
+        ),
+      ),
+    );
+
+    expect(find.byType(AdaptiveGlass), findsNothing);
+    expect(
+      tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled,
+      isFalse,
+    );
+  });
+
+  testWidgets('vertical sheet radii are preserved by the liquid shape', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        child: const AppGlassSurface(
+          role: AppGlassRole.sheet,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          child: SizedBox(width: 160, height: 120),
+        ),
+      ),
+    );
+
+    final glass = tester.widget<AdaptiveGlass>(find.byType(AdaptiveGlass));
+    final shape = glass.shape as LiquidVerticalRoundedRectangle;
+    expect(shape.topRadius, 24);
+    expect(shape.bottomRadius, 0);
   });
 
   testWidgets('reduced transparency disables blur without changing geometry', (
@@ -113,8 +202,15 @@ void main() {
           ),
         ),
       );
-      final filter = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
-      expect(filter.enabled, !reduced);
+      if (reduced) {
+        expect(find.byType(AdaptiveGlass), findsNothing);
+        expect(
+          tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled,
+          isFalse,
+        );
+      } else {
+        expect(find.byType(AdaptiveGlass), findsOneWidget);
+      }
       return tester.getSize(find.byKey(const Key('content')));
     }
 

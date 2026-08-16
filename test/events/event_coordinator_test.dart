@@ -63,7 +63,7 @@ void main() {
     expect(coordinator.sequence, 9);
   });
 
-  test('library and download events invalidate authoritative local music', () {
+  test('download and library events invalidate only their own resources', () {
     var downloads = 0;
     var library = 0;
     final coordinator = EventCoordinator(
@@ -75,17 +75,21 @@ void main() {
     );
 
     coordinator.accept(
-      const DomainEvent(type: 'library.updated', data: null, sequence: 1),
+      const DomainEvent(type: 'downloads.updated', data: null, sequence: 1),
     );
+
+    expect(downloads, 1);
+    expect(library, 0);
+
     coordinator.accept(
-      const DomainEvent(type: 'downloads.completed', data: null, sequence: 2),
+      const DomainEvent(type: 'library.updated', data: null, sequence: 2),
     );
     coordinator.accept(
       const DomainEvent(type: 'downloads.updated', data: null, sequence: 1),
     );
 
-    expect(library, 2);
     expect(downloads, 1);
+    expect(library, 1);
   });
 
   test('source events invalidate source routes once per fresh event', () {
@@ -107,4 +111,59 @@ void main() {
 
     expect(sources, 1);
   });
+
+  test(
+    'track resource events target the newly available resource identity',
+    () {
+      final resources = <(String, String, Set<String>)>[];
+      final coordinator = EventCoordinator(
+        invalidateSources: () {},
+        invalidatePlaylists: () {},
+        invalidateDownloads: () {},
+        invalidateLibrary: () {},
+        invalidatePlaylistDetail: (_) {},
+        trackResourcesUpdated: (source, trackId, updated) {
+          resources.add((source, trackId, updated));
+        },
+      );
+
+      coordinator.accept(
+        const DomainEvent(
+          type: 'track.resources.updated',
+          data: {
+            'source': 'tx',
+            'trackId': 'track-1',
+            'resources': ['lyrics'],
+          },
+          sequence: 1,
+        ),
+      );
+      coordinator.accept(
+        const DomainEvent(
+          type: 'track.resources.updated',
+          data: {
+            'source': 'tx',
+            'trackId': 'track-1',
+            'resources': ['picture'],
+          },
+          sequence: 2,
+        ),
+      );
+      coordinator.accept(
+        const DomainEvent(
+          type: 'track.resources.updated',
+          data: {'source': 'tx'},
+          sequence: 3,
+        ),
+      );
+
+      expect(resources, hasLength(2));
+      expect(resources[0].$1, 'tx');
+      expect(resources[0].$2, 'track-1');
+      expect(resources[0].$3, {'lyrics'});
+      expect(resources[1].$1, 'tx');
+      expect(resources[1].$2, 'track-1');
+      expect(resources[1].$3, {'picture'});
+    },
+  );
 }

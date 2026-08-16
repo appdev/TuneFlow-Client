@@ -106,7 +106,12 @@ void main() {
             ],
           };
         } else if (request.url.path.endsWith('/picture')) {
-          value = {'url': 'https://cdn.example.test/one.jpg'};
+          value = {
+            'url':
+                '/api/v1/playback/resources/'
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+                'picture',
+          };
         } else {
           value = <Object?>[];
         }
@@ -149,7 +154,9 @@ void main() {
     expect(find.byKey(const Key('catalog-track-kw-one')), findsOneWidget);
     expect(
       player.state.current?.raw['pic'],
-      'https://cdn.example.test/one.jpg',
+      'http://service.local/api/v1/playback/resources/'
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+          'picture',
     );
 
     await tester.tap(find.byKey(const Key('search-track-kw-one')));
@@ -164,7 +171,9 @@ void main() {
     expect(player.state.queue.map((track) => track.id), ['one', 'two']);
     expect(
       player.state.current?.raw['pic'],
-      'https://cdn.example.test/one.jpg',
+      'http://service.local/api/v1/playback/resources/'
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+          'picture',
     );
     expect(find.text('重命名'), findsNothing);
     expect(find.text('删除歌单'), findsNothing);

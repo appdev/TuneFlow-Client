@@ -7,6 +7,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
@@ -16,6 +17,7 @@ import '../../design/components/app_states.dart';
 import '../../design/app_theme_definition.dart';
 import '../../design/design_tokens.dart';
 import '../downloads/download_repository.dart';
+import '../downloads/redownload_confirmation.dart';
 import '../player/player_controller.dart';
 import '../playlists/playlist_repository.dart';
 import 'adaptive_track_actions.dart';
@@ -56,6 +58,7 @@ final class _SearchScreenState extends State<SearchScreen> {
   final searchFocus = FocusNode();
   final scroll = ScrollController();
   final searchTapGroup = Object();
+  late final SearchController _controller;
   String selectedSource = 'kw';
   var mobileLayout = false;
   List<String> historyItems = const [];
@@ -70,22 +73,31 @@ final class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
-    query.text = widget.controller.state.query;
-    selectedSource = widget.controller.state.source;
+    _controller = widget.controller;
+    query.text = _controller.state.query;
+    selectedSource = _controller.state.source;
     scroll.addListener(_loadMore);
     query.addListener(_historyChanged);
     searchFocus.addListener(_historyChanged);
     unawaited(_loadHistory());
     unawaited(
-      widget.controller.loadCapabilities().then((_) {
+      _controller.loadCapabilities().then((_) {
         if (!mounted) return;
         setState(() {
           selectedSource = mobileLayout && query.text.trim().isEmpty
               ? SearchController.aggregateSource
-              : widget.controller.state.source;
+              : _controller.state.source;
         });
       }),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant SearchScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(widget.controller, _controller)) {
+      widget.controller.dispose();
+    }
   }
 
   Future<void> _loadHistory() async {
@@ -101,16 +113,13 @@ final class _SearchScreenState extends State<SearchScreen> {
 
   void _loadMore() {
     if (mobileLayout && scroll.position.extentAfter < 240) {
-      unawaited(widget.controller.loadNextPage());
+      unawaited(_controller.loadNextPage());
     }
   }
 
   Future<void> _search({String? submittedKeyword}) async {
     final keyword = (submittedKeyword ?? query.text).trim();
-    final search = widget.controller.search(
-      source: selectedSource,
-      query: keyword,
-    );
+    final search = _controller.search(source: selectedSource, query: keyword);
     if (keyword.isNotEmpty) {
       final items = await widget.history.record(keyword);
       if (mounted) {
@@ -146,14 +155,14 @@ final class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _play(Track track) async {
-    final tracks = [...widget.controller.state.tracks];
+    final tracks = [..._controller.state.tracks];
     final index = tracks.indexWhere(
       (item) => item.source == track.source && item.id == track.id,
     );
     var playable = track;
     final embedded = track.raw['pic'];
     if (embedded is! String || embedded.isEmpty) {
-      final picture = await widget.controller.loadPicture(track);
+      final picture = await _controller.loadPicture(track);
       if (picture != null) {
         playable = Track.fromJson({
           ...track.toJson(),
@@ -194,9 +203,9 @@ final class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _lyrics(Track track) async {
-    final lyrics = await widget.controller.loadLyrics(track);
+    final lyrics = await _controller.loadLyrics(track);
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: track.title.isEmpty ? '歌词' : track.title,
       child: ConstrainedBox(
@@ -213,10 +222,31 @@ final class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  Future<void> _download(Track track, String quality) async {
+    try {
+      final result = await const AppUserDownloadCoordinator().create(
+        context,
+        widget.downloads,
+        track,
+        quality,
+      );
+      if (!mounted || result.job == null) return;
+      showAppMessage(context, title: result.replaced ? '已加入重新下载队列' : '已加入下载队列');
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '操作失败',
+        message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
+        destructive: true,
+      );
+    }
+  }
+
   Future<void> _choosePlaylist(Track track) async {
     final items = await widget.playlists.list();
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: '添加到歌单',
       child: items.isEmpty
@@ -248,10 +278,7 @@ final class _SearchScreenState extends State<SearchScreen> {
       player: widget.player,
       showLyrics: (value) => _run(() => _lyrics(value)),
       addToPlaylist: (value) => _run(() => _choosePlaylist(value)),
-      download: (value, quality) => _run(
-        () => widget.downloads.create(value, quality),
-        successTitle: '已加入下载队列',
-      ),
+      download: _download,
     );
     return [
       TrackAction(
@@ -276,7 +303,7 @@ final class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _page(int page) async {
-    await widget.controller.goToPage(page);
+    await _controller.goToPage(page);
     if (scroll.hasClients) scroll.jumpTo(0);
   }
 
@@ -304,14 +331,14 @@ final class _SearchScreenState extends State<SearchScreen> {
       if (fallback == null) return;
       source = fallback;
       setState(() => selectedSource = source);
-      await widget.controller.search(source: source, query: query.text);
+      await _controller.search(source: source, query: query.text);
     }
-    await widget.controller.selectView(view);
+    await _controller.selectView(view);
   }
 
   Future<void> _chooseSource(SearchState state) async {
     final optionWidth = MediaQuery.sizeOf(context).width - 112;
-    final selected = await showAppSheet<String>(
+    final selected = await AppBottomSheet.showContent<String>(
       context,
       title: '音乐来源',
       child: Column(
@@ -351,16 +378,16 @@ final class _SearchScreenState extends State<SearchScreen> {
       ..dispose();
     query.dispose();
     searchFocus.dispose();
-    widget.controller.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.controller,
+    listenable: _controller,
     builder: (context, _) => LayoutBuilder(
       builder: (context, constraints) {
-        final state = widget.controller.state;
+        final state = _controller.state;
         final mobile =
             classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
         mobileLayout = mobile;
@@ -456,11 +483,10 @@ final class _SearchScreenState extends State<SearchScreen> {
                                 },
                               ),
                               _ViewTabs(
-                                controller: widget.controller,
+                                controller: _controller,
                                 state: state,
-                                onSelected: (view) => unawaited(
-                                  widget.controller.selectView(view),
-                                ),
+                                onSelected: (view) =>
+                                    unawaited(_controller.selectView(view)),
                               ),
                             ],
                             if (!(mobile && showHistory))
@@ -469,8 +495,7 @@ final class _SearchScreenState extends State<SearchScreen> {
                                       state: state,
                                       scrollController: scroll,
                                       embedded: true,
-                                      loadPicture:
-                                          widget.controller.loadPicture,
+                                      loadPicture: _controller.loadPicture,
                                       onPlay: (track) =>
                                           unawaited(_run(() => _play(track))),
                                       onFavorite: (track) => unawaited(
@@ -478,10 +503,10 @@ final class _SearchScreenState extends State<SearchScreen> {
                                       ),
                                       onMore: _more,
                                       onViewAll: (view) => unawaited(
-                                        widget.controller.selectView(view),
+                                        _controller.selectView(view),
                                       ),
                                       onRetry: (kind) => unawaited(
-                                        widget.controller.retrySection(kind),
+                                        _controller.retrySection(kind),
                                       ),
                                       onOpenCollection:
                                           widget.onOpenCollection ?? (_) {},
@@ -490,8 +515,7 @@ final class _SearchScreenState extends State<SearchScreen> {
                                       child: SearchDesktopResults(
                                         state: state,
                                         scrollController: scroll,
-                                        loadPicture:
-                                            widget.controller.loadPicture,
+                                        loadPicture: _controller.loadPicture,
                                         onPlay: (track) =>
                                             unawaited(_run(() => _play(track))),
                                         onFavorite: (track) => unawaited(
@@ -499,12 +523,12 @@ final class _SearchScreenState extends State<SearchScreen> {
                                         ),
                                         actionsFor: _actionsFor,
                                         onViewAll: (view) => unawaited(
-                                          widget.controller.selectView(view),
+                                          _controller.selectView(view),
                                         ),
                                         onPage: (page) =>
                                             unawaited(_page(page)),
                                         onRetry: (kind) => unawaited(
-                                          widget.controller.retrySection(kind),
+                                          _controller.retrySection(kind),
                                         ),
                                         onOpenCollection:
                                             widget.onOpenCollection ?? (_) {},

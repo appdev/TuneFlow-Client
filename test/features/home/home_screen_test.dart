@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/home/home_controller.dart';
@@ -285,6 +286,13 @@ void main() {
     expect(find.text('继续听点熟悉的。'), findsOneWidget);
     expect(find.byKey(const Key('home-feature-card')), findsOneWidget);
     expect(find.text('晚风'), findsWidgets);
+    final galleryArtwork = tester.widget<AppArtwork>(
+      find.descendant(
+        of: find.byType(InkWell),
+        matching: find.byType(AppArtwork),
+      ),
+    );
+    expect(galleryArtwork.showFallbackBorder, isFalse);
     expect(find.text('1 首本地音乐'), findsNothing);
     expect(find.text('音源元数据已更新，缓存音乐仍可播放。'), findsNothing);
     expect(tester.takeException(), isNull);

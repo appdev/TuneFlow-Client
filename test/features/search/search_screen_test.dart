@@ -708,7 +708,10 @@ void main() {
                 'total': 2,
               },
               final path when path.endsWith('/tracks/picture') => {
-                'url': 'https://example.test/one.jpg',
+                'url':
+                    '/api/v1/playback/resources/'
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+                    'picture',
               },
               _ => <Object?>[],
             },
@@ -744,7 +747,12 @@ void main() {
     expect(player.state.current?.id, 'one');
     expect(player.state.queue.map((track) => track.id), ['one', 'two']);
     expect(player.state.currentIndex, 0);
-    expect(player.state.current?.raw['pic'], 'https://example.test/one.jpg');
+    expect(
+      player.state.current?.raw['pic'],
+      'http://service.local/api/v1/playback/resources/'
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+          'picture',
+    );
     expect(find.byKey(const Key('search-wide-layout')), findsOneWidget);
 
     final secondRow = tester

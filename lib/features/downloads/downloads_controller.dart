@@ -13,6 +13,7 @@ final class DownloadsState {
     this.error,
     this.bytesPerSecond = const {},
     this.lastBulkResult,
+    this.clearingHistory = false,
   });
 
   final List<DownloadJob> jobs;
@@ -21,6 +22,7 @@ final class DownloadsState {
   final Object? error;
   final Map<String, double> bytesPerSecond;
   final BulkDownloadResult? lastBulkResult;
+  final bool clearingHistory;
 }
 
 final class DownloadsController extends ChangeNotifier {
@@ -32,6 +34,15 @@ final class DownloadsController extends ChangeNotifier {
   Timer? _refreshTimer;
   DateTime? _sampledAt;
   Map<String, num> _sampledBytes = const {};
+  Future<int>? _clearHistoryOperation;
+
+  int get clearableHistoryCount => state.jobs
+      .where(
+        (job) =>
+            job.status == DownloadStatus.completed ||
+            job.status == DownloadStatus.error,
+      )
+      .length;
 
   Future<void> refresh() async {
     state = DownloadsState(
@@ -41,6 +52,7 @@ final class DownloadsController extends ChangeNotifier {
       error: state.error,
       bytesPerSecond: state.bytesPerSecond,
       lastBulkResult: state.lastBulkResult,
+      clearingHistory: state.clearingHistory,
     );
     notifyListeners();
     try {
@@ -62,13 +74,18 @@ final class DownloadsController extends ChangeNotifier {
       }
       _sampledAt = now;
       _sampledBytes = {for (final job in jobs) job.id: job.downloaded};
-      state = DownloadsState(jobs: jobs, bytesPerSecond: speeds);
+      state = DownloadsState(
+        jobs: jobs,
+        bytesPerSecond: speeds,
+        clearingHistory: state.clearingHistory,
+      );
     } on Object catch (error) {
       state = DownloadsState(
         jobs: state.jobs,
         stale: true,
         error: error,
         bytesPerSecond: state.bytesPerSecond,
+        clearingHistory: state.clearingHistory,
       );
     }
     notifyListeners();
@@ -78,6 +95,39 @@ final class DownloadsController extends ChangeNotifier {
   Future<void> pause(String id) => _mutate(() => repository.pause(id));
   Future<void> resume(String id) => _mutate(() => repository.resume(id));
   Future<void> delete(String id) => _mutate(() => repository.delete(id));
+
+  Future<int> clearHistory() =>
+      _clearHistoryOperation ??= _performClearHistory().whenComplete(() {
+        _clearHistoryOperation = null;
+      });
+
+  Future<int> _performClearHistory() async {
+    state = DownloadsState(
+      jobs: state.jobs,
+      loading: state.loading,
+      stale: state.stale,
+      error: state.error,
+      bytesPerSecond: state.bytesPerSecond,
+      lastBulkResult: state.lastBulkResult,
+      clearingHistory: true,
+    );
+    notifyListeners();
+    try {
+      final cleared = await repository.clearHistory();
+      await refresh();
+      return cleared;
+    } finally {
+      state = DownloadsState(
+        jobs: state.jobs,
+        loading: state.loading,
+        stale: state.stale,
+        error: state.error,
+        bytesPerSecond: state.bytesPerSecond,
+        lastBulkResult: state.lastBulkResult,
+      );
+      notifyListeners();
+    }
+  }
 
   Future<Uri?> loadPicture(Track track) {
     final embedded = Uri.tryParse(track.raw['pic'] as String? ?? '');
@@ -127,6 +177,7 @@ final class DownloadsController extends ChangeNotifier {
       error: state.error,
       bytesPerSecond: state.bytesPerSecond,
       lastBulkResult: result,
+      clearingHistory: state.clearingHistory,
     );
     notifyListeners();
     return result;
@@ -144,6 +195,7 @@ final class DownloadsController extends ChangeNotifier {
       error: state.error,
       bytesPerSecond: state.bytesPerSecond,
       lastBulkResult: state.lastBulkResult,
+      clearingHistory: state.clearingHistory,
     );
     notifyListeners();
     _refreshTimer ??= Timer(Duration.zero, () {

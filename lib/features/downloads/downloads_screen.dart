@@ -1,9 +1,17 @@
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+/* Hallmark · component: clear-download-history · genre: atmospheric · theme: Mist Sea
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * contrast: inherited from project semantic tokens
+ */
+
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../api/service_exception.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_mobile_chrome.dart';
@@ -12,6 +20,8 @@ import '../../design/components/artwork.dart';
 import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
 import 'downloads_controller.dart';
+
+enum _DownloadAction { start, pause, resume, delete }
 
 final class DownloadsScreen extends StatefulWidget {
   const DownloadsScreen({super.key, required this.controller});
@@ -62,7 +72,7 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
   }
 
   Future<void> _delete(DownloadJob job) async {
-    final accepted = await showAppDestructiveDialog(
+    final accepted = await AppBottomSheet.showDestructive(
       context,
       title: '删除下载任务？',
       message: job.fileName,
@@ -72,43 +82,66 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
     if (accepted) await _run(() => widget.controller.delete(job.id));
   }
 
-  Future<void> _actions(DownloadJob job) => showAppSheet<void>(
-    context,
-    title: job.fileName,
-    child: Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (job.canStart)
-            AppButton(
-              variant: ShadButtonVariant.ghost,
-              onPressed: () => _run(() => widget.controller.start(job.id)),
-              child: const Text('开始'),
-            ),
-          if (job.canPause)
-            AppButton(
-              variant: ShadButtonVariant.ghost,
-              onPressed: () => _run(() => widget.controller.pause(job.id)),
-              child: const Text('暂停'),
-            ),
-          if (job.canResume)
-            AppButton(
-              variant: ShadButtonVariant.ghost,
-              onPressed: () => _run(() => widget.controller.resume(job.id)),
-              child: const Text('继续'),
-            ),
-          if (job.canDelete)
-            AppButton(
-              variant: ShadButtonVariant.destructive,
-              onPressed: () => _delete(job),
-              child: const Text('删除'),
-            ),
-        ],
-      ),
-    ),
-  );
+  Future<void> _clearHistory() async {
+    final count = widget.controller.clearableHistoryCount;
+    if (count == 0 || widget.controller.state.clearingHistory) return;
+    final accepted = await AppBottomSheet.showDestructive(
+      context,
+      title: '清除下载记录？',
+      message: '将清除 $count 条已完成或失败记录。已下载的歌曲文件会保留，进行中的任务不受影响。',
+      confirmLabel: '清除',
+    );
+    if (!accepted || !mounted) return;
+    try {
+      await widget.controller.clearHistory();
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = error is ServiceException && error.status == 404
+          ? '当前 Service 版本不支持清除记录，请更新 Service 后重试。'
+          : appErrorMessage(error, fallback: '下载记录未清除，请重试。');
+      showAppMessage(
+        context,
+        title: '下载记录未清除',
+        message: message,
+        destructive: true,
+      );
+    }
+  }
+
+  Future<void> _actions(DownloadJob job) async {
+    final selected = await AppBottomSheet.showActions<_DownloadAction>(
+      context,
+      title: job.fileName,
+      actions: [
+        if (job.canStart)
+          const AppBottomSheetAction(value: _DownloadAction.start, label: '开始'),
+        if (job.canPause)
+          const AppBottomSheetAction(value: _DownloadAction.pause, label: '暂停'),
+        if (job.canResume)
+          const AppBottomSheetAction(
+            value: _DownloadAction.resume,
+            label: '继续',
+          ),
+        if (job.canDelete)
+          const AppBottomSheetAction(
+            value: _DownloadAction.delete,
+            label: '删除',
+            destructive: true,
+          ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    switch (selected) {
+      case _DownloadAction.start:
+        await _run(() => widget.controller.start(job.id));
+      case _DownloadAction.pause:
+        await _run(() => widget.controller.pause(job.id));
+      case _DownloadAction.resume:
+        await _run(() => widget.controller.resume(job.id));
+      case _DownloadAction.delete:
+        await _delete(job);
+    }
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -137,7 +170,33 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (mobile)
-                      const AppMobilePageHeader(title: '下载', eyebrow: '离线曲库')
+                      AppMobilePageHeader(
+                        title: '下载',
+                        eyebrow: '离线曲库',
+                        actions: [
+                          IconButton(
+                            key: const Key('clear-download-history'),
+                            tooltip: '清除下载记录',
+                            constraints: const BoxConstraints(
+                              minWidth: 44,
+                              minHeight: 44,
+                            ),
+                            onPressed:
+                                widget.controller.clearableHistoryCount > 0 &&
+                                    !state.clearingHistory
+                                ? _clearHistory
+                                : null,
+                            icon: state.clearingHistory
+                                ? const SizedBox.square(
+                                    dimension: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(LucideIcons.listX, size: 19),
+                          ),
+                        ],
+                      )
                     else
                       Row(
                         children: [
@@ -160,6 +219,18 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
                               onPressed: _pauseAll,
                               child: const Text('全部暂停'),
                             ),
+                          const SizedBox(width: 8),
+                          AppButton(
+                            key: const Key('clear-download-history'),
+                            variant: ShadButtonVariant.ghost,
+                            loading: state.clearingHistory,
+                            onPressed:
+                                widget.controller.clearableHistoryCount > 0
+                                ? _clearHistory
+                                : null,
+                            leading: const Icon(LucideIcons.listX, size: 18),
+                            child: const Text('清除记录'),
+                          ),
                           ...[
                             const SizedBox(width: 8),
                             AppButton(

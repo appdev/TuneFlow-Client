@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,41 @@ http.Response data(Object value, [int status = 200]) => http.Response(
 );
 
 void main() {
+  test('ignores a pending detail response after disposal', () async {
+    final response = Completer<http.Response>();
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) => response.future),
+    );
+    final controller = OnlinePlaylistDetailController(
+      catalog: SearchRepository(api),
+      playlists: PlaylistRepository(api),
+      source: 'kw',
+      playlistId: 'list-1',
+    );
+
+    final loading = controller.load();
+    controller.dispose();
+    response.complete(
+      data({
+        'source': 'kw',
+        'page': 1,
+        'limit': 0,
+        'total': 0,
+        'hasMore': false,
+        'playlist': {
+          'id': 'list-1',
+          'kind': 'playlist',
+          'name': 'Disposed list',
+          'source': 'kw',
+        },
+        'tracks': <Object?>[],
+      }),
+    );
+
+    await expectLater(loading, completes);
+  });
+
   test('keeps the human-readable browse author over a provider id', () async {
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),

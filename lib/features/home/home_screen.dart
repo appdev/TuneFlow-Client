@@ -576,6 +576,7 @@ final class _MobileTrackGallery extends StatelessWidget {
                           semanticLabel: '${track.title}封面',
                           size: width,
                           borderRadius: AppRadii.card,
+                          showFallbackBorder: false,
                         ),
                         const SizedBox(height: 8),
                         Text(

@@ -10,7 +10,7 @@
 <p align="center">把喜欢的音乐，安静地留在自己的节奏里。</p>
 
 <p align="center">
-  <a href="https://github.com/appdev/TuneFlow-Client/releases/tag/v1.0.2%2B3">下载最新版 v1.0.2</a>
+  <a href="https://github.com/appdev/TuneFlow-Client/releases/tag/v1.0.3%2B4">下载最新版 v1.0.3</a>
   ·
   <a href="https://github.com/appdev/TuneFlow">TuneFlow Service</a>
 </p>
@@ -44,7 +44,7 @@ TuneFlow 会顺着不同屏幕调整布局。桌面上适合慢慢整理，手�
 
 ## 获取 TuneFlow
 
-推荐使用最新版 [TuneFlow v1.0.2（构建 3）](https://github.com/appdev/TuneFlow-Client/releases/tag/v1.0.2%2B3)。在 Release 页面中下载适合设备的文件即可，无需从 GitHub Actions 获取临时构建产物。
+推荐使用最新版 [TuneFlow v1.0.3（构建 4）](https://github.com/appdev/TuneFlow-Client/releases/tag/v1.0.3%2B4)。在 Release 页面中下载适合设备的文件即可，无需从 GitHub Actions 获取临时构建产物。
 
 | 设备 | 当前提供的文件 |
 | --- | --- |

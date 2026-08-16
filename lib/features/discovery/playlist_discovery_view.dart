@@ -6,6 +6,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_button.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_states.dart';
@@ -47,7 +48,7 @@ final class _PlaylistDiscoveryViewState extends State<PlaylistDiscoveryView> {
       setState(() => categoriesExpanded = !categoriesExpanded);
       return;
     }
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: '全部分类',
       child: ConstrainedBox(

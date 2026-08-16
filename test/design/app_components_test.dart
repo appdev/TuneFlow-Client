@@ -10,6 +10,7 @@ import 'package:musicfree_service_client/design/components/app_navigation.dart';
 import 'package:musicfree_service_client/design/components/app_playback_button.dart';
 import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
+import 'package:musicfree_service_client/design/components/app_bottom_sheet.dart';
 import 'package:musicfree_service_client/design/components/app_feedback.dart';
 import 'package:musicfree_service_client/design/components/app_form.dart';
 import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
@@ -396,7 +397,7 @@ void main() {
     expect(retries, 1);
   });
 
-  testWidgets('destructive dialog returns only the confirmed result', (
+  testWidgets('destructive bottom sheet returns only the confirmed result', (
     tester,
   ) async {
     late BuildContext context;
@@ -412,7 +413,7 @@ void main() {
       ),
     );
 
-    final result = showAppDestructiveDialog(
+    final result = AppBottomSheet.showDestructive(
       context,
       title: '删除歌单？',
       message: '此操作不可撤销',
@@ -508,7 +509,9 @@ void main() {
     }
   });
 
-  testWidgets('showAppSheet uses a bottom Shad sheet', (tester) async {
+  testWidgets('AppBottomSheet content uses a bottom Shad sheet', (
+    tester,
+  ) async {
     late BuildContext context;
     await tester.pumpWidget(
       ShadApp(
@@ -522,13 +525,17 @@ void main() {
       ),
     );
 
-    showAppSheet<void>(context, title: '歌曲操作', child: const Text('加入歌单'));
+    AppBottomSheet.showContent<void>(
+      context,
+      title: '歌曲操作',
+      child: const Text('加入歌单'),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(ShadSheet), findsOneWidget);
     expect(find.text('加入歌单'), findsOneWidget);
   });
 
-  testWidgets('showAppSheet supports bounded draggable mobile extents', (
+  testWidgets('AppBottomSheet supports bounded draggable mobile extents', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -548,7 +555,7 @@ void main() {
       ),
     );
 
-    showAppSheet<void>(
+    AppBottomSheet.showDraggable<void>(
       context,
       title: '播放队列',
       initialChildSize: .64,

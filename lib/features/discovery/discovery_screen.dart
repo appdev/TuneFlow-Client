@@ -6,6 +6,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_glass_surface.dart';
@@ -72,7 +73,7 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
     if (repository == null) return;
     final playlists = await repository.list();
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: '添加到歌单',
       child: playlists.isEmpty

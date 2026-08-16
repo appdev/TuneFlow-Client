@@ -51,7 +51,7 @@ final class AppArtwork extends StatelessWidget {
     this.borderRadius = AppRadii.card,
     this.icon = LucideIcons.music2,
     this.showFallback = true,
-    this.showFallbackBorder = true,
+    this.showFallbackBorder = false,
     this.fallback,
   });
 

@@ -3,11 +3,16 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../api/models.dart';
+import '../downloads/user_download_coordinator.dart';
 import '../playlists/favorite_playlist.dart';
 import 'player_controller.dart';
 
 typedef DownloadCurrentTrack =
-    Future<void> Function(Track track, String quality);
+    Future<UserDownloadResult> Function(
+      Track track,
+      String quality, {
+      required ConfirmRedownload confirmReplacement,
+    });
 
 final class CurrentTrackActionsController extends ChangeNotifier {
   CurrentTrackActionsController({
@@ -99,15 +104,21 @@ final class CurrentTrackActionsController extends ChangeNotifier {
     }
   }
 
-  Future<void> downloadCurrent() async {
-    if (!canDownload) return;
+  Future<UserDownloadResult?> downloadCurrent({
+    required ConfirmRedownload confirmReplacement,
+  }) async {
+    if (!canDownload) return null;
     final value = _track!;
     final generation = _generation;
     final quality = _player.state.quality;
     _downloadPending = true;
     notifyListeners();
     try {
-      await _download(value, quality);
+      return await _download(
+        value,
+        quality,
+        confirmReplacement: confirmReplacement,
+      );
     } finally {
       if (_isCurrent(value, generation)) {
         _downloadPending = false;

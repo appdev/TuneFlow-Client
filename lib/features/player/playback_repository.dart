@@ -35,7 +35,7 @@ final class PlaybackRepository implements PlaybackResolver {
           'source': track.source,
           'quality': quality,
           'preferLocal': true,
-          'info': track.toJson(),
+          'info': track.toServiceMusicInfoJson(),
         },
       ),
     );

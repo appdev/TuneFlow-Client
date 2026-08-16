@@ -91,10 +91,7 @@ final class AppShell extends StatelessWidget {
           _ => null,
         };
         if (branchIndex != null) {
-          navigationShell.goBranch(
-            branchIndex,
-            initialLocation: branchIndex == navigationShell.currentIndex,
-          );
+          navigationShell.goBranch(branchIndex, initialLocation: true);
           return;
         }
       }

@@ -12,6 +12,7 @@ import '../features/settings/settings_controller.dart';
 import '../features/playlists/playlist_repository.dart';
 import '../platform/macos_menu_bar_coordinator.dart';
 import '../features/settings/service_settings_repository.dart';
+import '../features/search/search_repository.dart';
 import '../storage/app_settings_controller.dart';
 import 'app_providers.dart';
 import 'player_providers.dart';
@@ -117,14 +118,42 @@ final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
   final connected = ref.watch(connectionProvider).value;
   if (connected == null) return null;
   final invalidation = ref.read(eventInvalidationProvider);
+  final player = ref.watch(playerControllerProvider);
+  final search = SearchRepository(connected.api);
+  final lyricsLoader = search.lyrics;
   final coordinator = EventCoordinator(
     invalidateSources: invalidation.sources,
     invalidatePlaylists: invalidation.playlists,
     invalidateDownloads: invalidation.downloads,
     invalidateLibrary: invalidation.library,
     invalidatePlaylistDetail: invalidation.playlistDetail,
+    trackResourcesUpdated: (source, trackId, resources) {
+      if (resources.contains('lyrics')) {
+        unawaited(
+          player?.refreshLyricsIfMissing(
+            lyricsLoader,
+            source: source,
+            trackId: trackId,
+          ),
+        );
+      }
+      if (resources.contains('picture')) {
+        unawaited(
+          player?.refreshArtworkIfMissing(
+            search.picture,
+            source: source,
+            trackId: trackId,
+          ),
+        );
+      }
+    },
   );
-  final transport = SseTransport(connected.api);
+  final transport = SseTransport(
+    connected.api,
+    onConnected: () async {
+      await player?.refreshLyricsIfMissing(lyricsLoader);
+    },
+  );
   final subscription = transport.events().listen(coordinator.accept);
   ref.onDispose(() {
     subscription.cancel();

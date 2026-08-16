@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/connection/connection_controller.dart';
 import '../features/downloads/download_repository.dart';
+import '../features/downloads/user_download_coordinator.dart';
 import '../features/playback_history/playback_history_repository.dart';
 import '../features/playback_history/playback_platform.dart';
 import '../features/player/current_track_actions_controller.dart';
@@ -44,9 +45,10 @@ final currentTrackActionsProvider = Provider<CurrentTrackActionsController?>((
   final controller = CurrentTrackActionsController(
     player: player,
     favorites: LovePlaylistFavorites(playlists),
-    download: (track, quality) async {
-      await downloads.create(track, quality);
-    },
+    download: (track, quality, {required confirmReplacement}) =>
+        UserDownloadCoordinator(
+          downloads,
+        ).create(track, quality, confirmReplacement: confirmReplacement),
   );
   ref.onDispose(controller.dispose);
   return controller;

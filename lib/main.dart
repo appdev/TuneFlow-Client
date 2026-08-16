@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app/app.dart';
@@ -18,6 +19,11 @@ import 'storage/media_cache.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await LiquidGlassWidgets.initialize();
+  } on Object catch (error) {
+    debugPrint('Liquid glass shader warm-up skipped: $error');
+  }
   final appPlatform = resolveAppPlatform(defaultTargetPlatform);
   await initializeDesktopWindow(appPlatform);
   final preferences = SharedAppPreferences();

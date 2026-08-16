@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
-import '../../design/components/app_feedback.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import 'search_track_metadata.dart';
 import 'track_action.dart';
 import 'track_action_sheet.dart';
@@ -19,7 +19,7 @@ Future<void> showMobileTrackActions(
   required Track track,
   required SearchTrackMetadata metadata,
   required List<TrackAction> actions,
-}) => showAppSheet<void>(
+}) => AppBottomSheet.showContent<void>(
   context,
   title: track.title.isEmpty ? track.id : track.title,
   child: TrackActionSheet(track: track, metadata: metadata, actions: actions),

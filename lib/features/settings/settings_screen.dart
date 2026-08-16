@@ -5,6 +5,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
@@ -168,7 +169,7 @@ final class _CacheCard extends StatelessWidget {
   }
 
   Future<void> _clear(BuildContext context) async {
-    final accepted = await showAppDestructiveDialog(
+    final accepted = await AppBottomSheet.showDestructive(
       context,
       title: '清理本机缓存？',
       message: '仅清理此设备上的音频播放缓存和封面缓存，不会影响 Service 端下载内容。',

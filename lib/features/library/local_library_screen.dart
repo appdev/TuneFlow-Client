@@ -6,6 +6,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_playback_button.dart';
@@ -50,7 +51,7 @@ final class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
     try {
       final playlists = await widget.playlists.list();
       if (!mounted) return;
-      await showAppSheet<void>(
+      await AppBottomSheet.showContent<void>(
         context,
         title: '添加到歌单',
         child: playlists.isEmpty
@@ -103,7 +104,7 @@ final class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
   }
 
   Future<void> _delete(LibraryTrack item) async {
-    final accepted = await showAppDestructiveDialog(
+    final accepted = await AppBottomSheet.showDestructive(
       context,
       title: '从 Service 删除这首音乐？',
       message:

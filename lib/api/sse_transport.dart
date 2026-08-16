@@ -49,17 +49,24 @@ final class SseParser {
 }
 
 typedef ReconnectDelay = Future<void> Function(Duration duration);
+typedef SseConnected = FutureOr<void> Function();
 
 final class SseTransport {
-  SseTransport(this.api, {http.Client? client, ReconnectDelay? delay})
-    : _client = client ?? http.Client(),
-      _ownsClient = client == null,
-      _customDelay = delay;
+  SseTransport(
+    this.api, {
+    http.Client? client,
+    ReconnectDelay? delay,
+    SseConnected? onConnected,
+  }) : _client = client ?? http.Client(),
+       _ownsClient = client == null,
+       _customDelay = delay,
+       _onConnected = onConnected;
 
   final ServiceApi api;
   final http.Client _client;
   final bool _ownsClient;
   final ReconnectDelay? _customDelay;
+  final SseConnected? _onConnected;
   bool _closed = false;
   Timer? _reconnectTimer;
   Completer<void>? _reconnectCompleter;
@@ -105,6 +112,11 @@ final class SseTransport {
           );
         }
         attempt = 0;
+        try {
+          await _onConnected?.call();
+        } on Object {
+          // State revalidation is best-effort and must not tear down SSE.
+        }
         await for (final chunk in response.stream) {
           if (_closed) break;
           for (final event in parser.add(chunk)) {

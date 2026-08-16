@@ -57,8 +57,11 @@ interface friction as possible.
 ## Mobile material — Liquid Glass
 
 All mobile platforms use the same restrained Liquid Glass visual language.
-This is a TuneFlow-owned cross-platform material system inspired by iOS 26,
-not a claim that Flutter controls inherit native UIKit rendering.
+TuneFlow owns the semantic roles, tokens, composition rules, accessibility
+policy, and fallback behaviour. The visual renderer is the exactly pinned
+`liquid_glass_widgets` package behind `AppGlassSurface`; feature components do
+not import it directly. This is inspired by iOS 26, not a claim that Flutter
+controls inherit native UIKit rendering.
 
 Liquid Glass is a functional layer for navigation and controls, never a filter
 placed indiscriminately over music content. Mobile screens use three layers:

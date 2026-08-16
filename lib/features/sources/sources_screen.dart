@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/status_badge.dart';
@@ -33,7 +34,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
 
   Future<void> _toggle(InstalledMusicSource source, bool enabled) async {
     if (!enabled && widget.controller.state.enabledSources.length == 1) {
-      final accepted = await showAppDestructiveDialog(
+      final accepted = await AppBottomSheet.showDestructive(
         context,
         title: '禁用最后一个音源？',
         message: '在线播放和下载将不可用，本地音乐不受影响。',

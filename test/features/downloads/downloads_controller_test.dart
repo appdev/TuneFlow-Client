@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
+import 'package:musicfree_service_client/api/service_exception.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_controller.dart';
 
@@ -28,6 +30,85 @@ http.Response data(Object? value, [int status = 200]) =>
     http.Response(jsonEncode({'data': value}), status);
 
 void main() {
+  test(
+    'clear history counts terminal jobs and coalesces duplicate requests',
+    () async {
+      final deleteResponse = Completer<http.Response>();
+      var deleteCalls = 0;
+      var cleared = false;
+      final controller = DownloadsController(
+        DownloadRepository(
+          ServiceApi(
+            ServiceOrigin.parse('http://service.local'),
+            client: MockClient((request) async {
+              if (request.method == 'DELETE') {
+                deleteCalls += 1;
+                return deleteResponse.future;
+              }
+              return data(
+                cleared
+                    ? [job('running', id: 'running')]
+                    : [
+                        job('completed', id: 'completed'),
+                        job('error', id: 'error'),
+                        job('running', id: 'running'),
+                      ],
+              );
+            }),
+          ),
+        ),
+      );
+      await controller.refresh();
+      expect(controller.clearableHistoryCount, 2);
+
+      final first = controller.clearHistory();
+      final second = controller.clearHistory();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.clearingHistory, isTrue);
+      expect(deleteCalls, 1);
+      cleared = true;
+      deleteResponse.complete(data({'cleared': 2}));
+
+      expect(await first, 2);
+      expect(await second, 2);
+      expect(controller.state.clearingHistory, isFalse);
+      expect(controller.state.jobs.map((job) => job.id), ['running']);
+    },
+  );
+
+  test('failed history clear preserves jobs and releases busy state', () async {
+    final controller = DownloadsController(
+      DownloadRepository(
+        ServiceApi(
+          ServiceOrigin.parse('http://service.local'),
+          client: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              return http.Response(
+                jsonEncode({
+                  'error': {
+                    'code': 'CLEAR_FAILED',
+                    'message': 'History was not cleared',
+                  },
+                }),
+                500,
+              );
+            }
+            return data([job('completed')]);
+          }),
+        ),
+      ),
+    );
+    await controller.refresh();
+
+    await expectLater(
+      controller.clearHistory(),
+      throwsA(isA<ServiceException>()),
+    );
+
+    expect(controller.state.jobs.single.status, DownloadStatus.completed);
+    expect(controller.state.clearingHistory, isFalse);
+  });
+
   test('every mutation finishes with an authoritative list refresh', () async {
     final calls = <String>[];
     final repository = DownloadRepository(

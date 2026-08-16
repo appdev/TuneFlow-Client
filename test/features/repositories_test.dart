@@ -81,7 +81,10 @@ void main() {
           });
         }
         if (request.url.path.endsWith('picture')) {
-          return data({'url': 'https://image'});
+          return data({
+            'url':
+                '/api/v1/playback/resources/${List.filled(64, 'a').join()}/picture',
+          });
         }
         return data({'lyric': 'line'});
       }),
@@ -93,7 +96,7 @@ void main() {
       pageSize: 30,
     );
     final lyrics = await repository.lyrics(page.tracks.single);
-    await repository.picture(page.tracks.single);
+    final picture = await repository.picture(page.tracks.single);
 
     expect(calls.map((e) => e.url.path), [
       '/api/v1/catalog/tracks/search',
@@ -106,8 +109,19 @@ void main() {
       'page': 1,
       'pageSize': 30,
     });
+    for (final call in calls.skip(1)) {
+      final body = jsonDecode(call.body) as Map<String, Object?>;
+      expect(
+        body['musicInfo'],
+        containsPair('meta', containsPair('songId', '1')),
+      );
+    }
     expect(page.total, 1);
     expect(lyrics.original, 'line');
+    expect(
+      picture,
+      'http://service.local/api/v1/playback/resources/${List.filled(64, 'a').join()}/picture',
+    );
   });
 
   test(
@@ -165,24 +179,59 @@ void main() {
   );
 
   test(
-    'local track without a lyrics resource returns empty without a request',
+    'local track without a lyrics resource asks Service to resolve it',
     () async {
-      var calls = 0;
+      late http.Request captured;
       final repository = SearchRepository(
-        apiWith((_) async {
-          calls++;
-          return data({'lyric': 'unexpected'});
+        apiWith((request) async {
+          captured = request;
+          return data({'lyric': '[00:01.00]resolved'});
         }),
       );
 
       final lyrics = await repository.lyrics(
-        Track.fromJson({'id': 'local-a', 'source': 'local'}),
+        Track.fromJson({
+          'id': 'local-a',
+          'name': 'Fixture',
+          'singer': 'Artist',
+          'source': 'local',
+          'interval': '03:00',
+        }),
       );
 
-      expect(lyrics.original, isEmpty);
-      expect(calls, 0);
+      expect(lyrics.original, '[00:01.00]resolved');
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/v1/catalog/tracks/lyrics');
+      expect(jsonDecode(captured.body), {
+        'source': 'local',
+        'musicInfo': {
+          'id': 'local-a',
+          'name': 'Fixture',
+          'singer': 'Artist',
+          'source': 'local',
+          'interval': '03:00',
+          'meta': {'songId': 'local-a'},
+        },
+      });
     },
   );
+
+  test('catalog picture rejects a non-Service resource URL', () async {
+    final repository = SearchRepository(
+      apiWith((_) async => data({'url': 'https://external.test/cover.jpg'})),
+    );
+
+    await expectLater(
+      repository.picture(Track.fromJson({'id': 'track-a', 'source': 'kw'})),
+      throwsA(
+        isA<ServiceException>().having(
+          (error) => error.code,
+          'code',
+          'INVALID_RESPONSE',
+        ),
+      ),
+    );
+  });
 
   test(
     'catalog capability gates and collection searches use typed routes',
@@ -373,7 +422,7 @@ void main() {
         'source': 'kw',
         'quality': '128k',
         'preferLocal': true,
-        'info': track.toJson(),
+        'info': track.toServiceMusicInfoJson(),
       });
 
       url = '/api/v1/library/tracks/${List.filled(64, 'a').join()}/stream';
@@ -501,6 +550,10 @@ void main() {
     );
     final body = jsonDecode(captured.body) as Map<String, Object?>;
     expect(body.keys, containsAll(<String>['musicInfo', 'quality']));
+    expect(
+      body['musicInfo'],
+      containsPair('meta', containsPair('songId', '1')),
+    );
     expect(body.keys, isNot(contains('path')));
     expect(body.keys, isNot(contains('fileName')));
   });

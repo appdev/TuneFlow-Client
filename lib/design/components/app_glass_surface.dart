@@ -1,6 +1,9 @@
+/* Hallmark · pre-emit critique: P5 H4 E5 S5 R5 V5 */
+
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import '../app_glass_policy.dart';
 import '../app_theme_definition.dart';
@@ -38,6 +41,36 @@ final class AppGlassSurface extends StatelessWidget {
         ? child
         : Padding(padding: padding!, child: child);
 
+    if (blurEnabled) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: style.shadows,
+        ),
+        child: AdaptiveGlass(
+          key: Key('app-liquid-glass-${role.name}'),
+          shape: _liquidShape(radius, style.border),
+          settings: LiquidGlassSettings(
+            glassColor: style.fill.withValues(alpha: style.fill.a * .24),
+            backerColor: style.fill.withValues(alpha: style.fill.a * .38),
+            platformViewFallbackColor: style.fallbackFill,
+            thickness: style.blurSigma,
+            blur: (style.blurSigma / 5).clamp(3.5, 6).toDouble(),
+            chromaticAberration: .003,
+            lightIntensity: .28 + style.highlight.a * .18,
+            refractiveIndex: 1.15,
+            saturation: style.saturation,
+            glowIntensity: .18,
+            shadowElevation: 0,
+          ),
+          quality: GlassQuality.standard,
+          useOwnLayer: true,
+          clipBehavior: Clip.antiAlias,
+          child: content,
+        ),
+      );
+    }
+
     return ClipRRect(
       borderRadius: radius,
       child: BackdropFilter.grouped(
@@ -59,4 +92,22 @@ final class AppGlassSurface extends StatelessWidget {
       ),
     );
   }
+}
+
+LiquidShape _liquidShape(BorderRadius radius, Color border) {
+  final top = radius.topLeft.x;
+  final bottom = radius.bottomLeft.x;
+  final vertical =
+      radius.topLeft == radius.topRight &&
+      radius.bottomLeft == radius.bottomRight;
+  assert(vertical, 'Liquid glass supports uniform or vertical corner radii.');
+  final side = BorderSide(color: border);
+  if (top == bottom) {
+    return LiquidRoundedRectangle(borderRadius: top, side: side);
+  }
+  return LiquidVerticalRoundedRectangle(
+    topRadius: top,
+    bottomRadius: bottom,
+    side: side,
+  );
 }

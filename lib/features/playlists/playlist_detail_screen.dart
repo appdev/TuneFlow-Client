@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_playback_button.dart';
 import '../../design/components/app_feedback.dart';
@@ -46,23 +47,38 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   Future<void> _rename(String current) async {
     final name = TextEditingController(text: current);
-    final accepted = await showShadDialog<bool>(
-      context: context,
-      builder: (dialogContext) => ShadDialog(
-        title: const Text('重命名歌单'),
-        description: const Text('新名称将同步到当前 Service。'),
-        actions: [
-          AppButton(
-            variant: ShadButtonVariant.outline,
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('取消'),
-          ),
-          AppButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('保存'),
-          ),
-        ],
-        child: AppTextField(controller: name, placeholder: '歌单名称'),
+    final accepted = await AppBottomSheet.showContent<bool>(
+      context,
+      title: '重命名歌单',
+      message: '新名称将同步到当前 Service。',
+      child: Builder(
+        builder: (modalContext) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppTextField(controller: name, placeholder: '歌单名称'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    expands: true,
+                    variant: ShadButtonVariant.outline,
+                    onPressed: () => Navigator.pop(modalContext, false),
+                    child: const Text('取消'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AppButton(
+                    expands: true,
+                    onPressed: () => Navigator.pop(modalContext, true),
+                    child: const Text('保存'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
     final value = name.text.trim();
@@ -73,7 +89,7 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   Future<void> _delete(String name) async {
-    final accepted = await showAppDestructiveDialog(
+    final accepted = await AppBottomSheet.showDestructive(
       context,
       title: '删除歌单？',
       message: '“$name”及其排序将从 Service 中删除，此操作不可撤销。',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/design_tokens.dart';
@@ -37,7 +38,7 @@ final class _MobileQueueSheetState extends State<MobileQueueSheet> {
   }
 
   Future<void> clearQueue() async {
-    final confirmed = await showAppDestructiveDialog(
+    final confirmed = await AppBottomSheet.showDestructive(
       context,
       title: '清空播放队列？',
       message: '当前播放将停止，此操作无法撤销。',

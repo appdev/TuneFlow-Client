@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../app/app_error.dart';
 import '../../design/components/app_feedback.dart';
+import '../downloads/redownload_confirmation.dart';
 import 'current_track_actions_controller.dart';
 
 final class CurrentTrackActionButtons extends StatelessWidget {
@@ -100,9 +101,15 @@ final class CurrentTrackActionButtons extends StatelessWidget {
 
   Future<void> _download(BuildContext context) async {
     try {
-      await controller.downloadCurrent();
-      if (!context.mounted) return;
-      showAppMessage(context, title: '已加入下载队列');
+      final result = await controller.downloadCurrent(
+        confirmReplacement: (message) =>
+            const AppRedownloadConfirmation().confirm(context, message),
+      );
+      if (!context.mounted || result?.job == null) return;
+      showAppMessage(
+        context,
+        title: result!.replaced ? '已加入重新下载队列' : '已加入下载队列',
+      );
     } on Object catch (error) {
       if (!context.mounted) return;
       showAppMessage(

@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
-import '../../design/components/status_badge.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_mobile_chrome.dart';
-import '../../design/components/app_feedback.dart';
+import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
 
 final class MoreScreen extends StatelessWidget {
@@ -25,7 +25,7 @@ final class MoreScreen extends StatelessWidget {
   final Future<void> Function() onDisconnect;
 
   Future<void> _disconnect(BuildContext context) async {
-    final accepted = await showAppDestructiveDialog(
+    final accepted = await AppBottomSheet.showDestructive(
       context,
       title: '断开当前 Service？',
       message: '将停止使用当前服务器，并返回连接页面。',

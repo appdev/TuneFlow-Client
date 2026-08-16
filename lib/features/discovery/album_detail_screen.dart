@@ -6,6 +6,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_states.dart';
@@ -13,6 +14,7 @@ import '../../design/components/artwork.dart';
 import '../../design/design_tokens.dart';
 import '../catalog/catalog_track_list.dart';
 import '../downloads/download_repository.dart';
+import '../downloads/redownload_confirmation.dart';
 import '../player/player_controller.dart';
 import '../playlists/playlist_repository.dart';
 import '../search/adaptive_track_actions.dart';
@@ -91,6 +93,27 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     }
   }
 
+  Future<void> _download(Track track, String quality) async {
+    try {
+      final result = await const AppUserDownloadCoordinator().create(
+        context,
+        widget.downloads,
+        track,
+        quality,
+      );
+      if (!mounted || result.job == null) return;
+      showAppMessage(context, title: result.replaced ? '已加入重新下载队列' : '已加入下载队列');
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '操作失败',
+        message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
+        destructive: true,
+      );
+    }
+  }
+
   Future<Uri?> _loadPicture(Track track) =>
       _pictures.putIfAbsent((track.source, track.id), () async {
         final embedded = track.raw['pic'];
@@ -143,7 +166,7 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   Future<void> _choosePlaylist(Track track) async {
     final playlists = await widget.playlists.list();
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: '添加到歌单',
       child: playlists.isEmpty
@@ -177,7 +200,7 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   Future<void> _showLyrics(Track track) async {
     final lyrics = await widget.controller.catalog.lyrics(track);
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: track.title.isEmpty ? '歌词' : track.title,
       child: SingleChildScrollView(
@@ -196,10 +219,7 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     player: widget.player,
     showLyrics: (value) => _run(() => _showLyrics(value)),
     addToPlaylist: (value) => _run(() => _choosePlaylist(value)),
-    download: (value, quality) => _run(
-      () => widget.downloads.create(value, quality),
-      successTitle: '已加入下载队列',
-    ),
+    download: _download,
   );
 
   void _more(Track track) => unawaited(

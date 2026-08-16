@@ -45,6 +45,268 @@ Map<String, Object?> job(String status) => {
 };
 
 void main() {
+  testWidgets('desktop history clear uses the centered confirmation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [job('completed'), job('error'), job('running')],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    await tester.tap(find.byKey(const Key('clear-download-history')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ShadDialog), findsOneWidget);
+    expect(find.text('清除下载记录？'), findsOneWidget);
+    expect(find.textContaining('将清除 2 条'), findsOneWidget);
+    expect(find.textContaining('已下载的歌曲文件会保留'), findsOneWidget);
+  });
+
+  testWidgets('mobile history clear uses the bottom confirmation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [job('completed'), job('error'), job('running')],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    final action = tester.widget<IconButton>(
+      find.byKey(const Key('clear-download-history')),
+    );
+    expect(action.tooltip, '清除下载记录');
+    expect(action.constraints!.minWidth, greaterThanOrEqualTo(44));
+    expect(action.constraints!.minHeight, greaterThanOrEqualTo(44));
+    await tester.tap(find.byKey(const Key('clear-download-history')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ShadDialog), findsNothing);
+    expect(find.byKey(const Key('app-action-sheet-actions')), findsOneWidget);
+    expect(find.text('清除下载记录？'), findsOneWidget);
+  });
+
+  testWidgets('history clear is disabled when only active jobs remain', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [job('waiting'), job('running'), job('paused')],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    final action = tester.widget<IconButton>(
+      find.byKey(const Key('clear-download-history')),
+    );
+    expect(action.onPressed, isNull);
+  });
+
+  testWidgets(
+    'confirming history clear sends one request and keeps active jobs',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var deleteCalls = 0;
+      var cleared = false;
+      final repository = DownloadRepository(
+        ServiceApi(
+          ServiceOrigin.parse('http://service.local'),
+          client: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              deleteCalls += 1;
+              cleared = true;
+              return http.Response(
+                jsonEncode({
+                  'data': {'cleared': 2},
+                }),
+                200,
+              );
+            }
+            return http.Response(
+              jsonEncode({
+                'data': cleared
+                    ? [job('running')]
+                    : [job('completed'), job('error'), job('running')],
+              }),
+              200,
+            );
+          }),
+        ),
+      );
+      final controller = DownloadsController(repository);
+      await controller.refresh();
+      await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+      await tester.tap(find.byKey(const Key('clear-download-history')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('app-bottom-sheet-destructive')));
+      await tester.pumpAndSettle();
+
+      expect(deleteCalls, 1);
+      expect(find.text('completed'), findsNothing);
+      expect(find.text('error'), findsNothing);
+      expect(find.text('running'), findsOneWidget);
+    },
+  );
+
+  testWidgets('unsupported history clear preserves rows and requests upgrade', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.method == 'DELETE') {
+            return http.Response(
+              jsonEncode({
+                'error': {'code': 'NOT_FOUND', 'message': 'Route not found'},
+              }),
+              404,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'data': [job('completed')],
+            }),
+            200,
+          );
+        }),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    await tester.tap(find.byKey(const Key('clear-download-history')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('app-bottom-sheet-destructive')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('completed'), findsOneWidget);
+    expect(find.text('下载记录未清除'), findsOneWidget);
+    expect(find.textContaining('请更新 Service 后重试'), findsOneWidget);
+  });
+
+  testWidgets('download menu uses the shared choice presentation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [job('waiting')],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    await tester.tap(find.byKey(const Key('download-actions-waiting')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('app-action-sheet-actions')), findsOneWidget);
+    expect(find.byType(ShadSheet), findsNothing);
+    expect(find.text('开始'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
+  });
+
+  testWidgets('delete choice replaces the menu with one confirmation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = DownloadRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': [job('waiting')],
+            }),
+            200,
+          ),
+        ),
+      ),
+    );
+    final controller = DownloadsController(repository);
+    await controller.refresh();
+    await tester.pumpWidget(harness(DownloadsScreen(controller: controller)));
+
+    await tester.tap(find.byKey(const Key('download-actions-waiting')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('删除下载任务？'), findsOneWidget);
+    expect(find.byKey(const Key('app-action-sheet-actions')), findsOneWidget);
+    expect(find.byType(ShadSheet), findsNothing);
+    expect(find.text('删除'), findsOneWidget);
+  });
+
   testWidgets('mobile downloads use one coordinated page scroll', (
     tester,
   ) async {

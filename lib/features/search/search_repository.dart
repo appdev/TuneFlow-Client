@@ -1,5 +1,6 @@
 import '../../api/models.dart';
 import '../../api/service_api.dart';
+import '../../api/service_exception.dart';
 
 final class SearchRepository {
   const SearchRepository(this.api);
@@ -61,12 +62,14 @@ final class SearchRepository {
     if (resourcePath != null) {
       return Lyrics.fromJson(await api.request('GET', resourcePath));
     }
-    if (track.source == 'local') return const Lyrics(original: '');
     return Lyrics.fromJson(
       await api.request(
         'POST',
         '/api/v1/catalog/tracks/lyrics',
-        body: {'source': track.source, 'musicInfo': track.toJson()},
+        body: {
+          'source': track.source,
+          'musicInfo': track.toServiceMusicInfoJson(),
+        },
       ),
     );
   }
@@ -173,9 +176,50 @@ final class SearchRepository {
     final value = await api.request(
       'POST',
       '/api/v1/catalog/tracks/picture',
-      body: {'source': track.source, 'musicInfo': track.toJson()},
+      body: {
+        'source': track.source,
+        'musicInfo': track.toServiceMusicInfoJson(),
+      },
     );
     final json = jsonObject(value, 'picture');
-    return jsonString(json['url'], 'picture.url');
+    final path = _pictureResourcePath(jsonString(json['url'], 'picture.url'));
+    if (path == null) {
+      throw const ServiceException(
+        'INVALID_RESPONSE',
+        'Service response contains an invalid picture.url field.',
+        details: {'field': 'picture.url'},
+      );
+    }
+    return api.origin.resolve(path).toString();
+  }
+
+  String? _pictureResourcePath(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        uri.userInfo.isNotEmpty) {
+      return null;
+    }
+    final origin = api.origin.uri;
+    if (uri.hasScheme &&
+        (uri.scheme != origin.scheme ||
+            uri.host != origin.host ||
+            uri.port != origin.port)) {
+      return null;
+    }
+    if (!uri.hasScheme && (uri.hasAuthority || !value.startsWith('/'))) {
+      return null;
+    }
+    final segments = uri.pathSegments;
+    final valid =
+        segments.length == 6 &&
+        segments[0] == 'api' &&
+        segments[1] == 'v1' &&
+        segments[2] == 'playback' &&
+        segments[3] == 'resources' &&
+        RegExp(r'^[a-f0-9]{64}$').hasMatch(segments[4]) &&
+        segments[5] == 'picture';
+    return valid ? uri.path : null;
   }
 }

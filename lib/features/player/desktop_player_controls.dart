@@ -129,8 +129,8 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                   : CurrentTrackActionButtons(
                       controller: widget.actions!,
                       keyPrefix: 'desktop-full',
-                      foreground: widget.palette.foreground,
-                      selectedForeground: widget.palette.foreground,
+                      foreground: widget.palette.vinylAccent,
+                      selectedForeground: widget.palette.vinylAccent,
                       selectedBackground: widget.palette.vinylAccent.withValues(
                         alpha: .18,
                       ),

@@ -1,5 +1,16 @@
 # TuneFlow Project Rules
 
+## Project Coordination
+
+- The TuneFlow Service is a separate project at
+  `/Volumes/ext/lx-music-server-web`.
+- Work that changes both the Flutter client and Service must coordinate across
+  the two project roots and follow each project's applicable instructions
+  independently.
+- Keep repository-local `AGENTS.md` files local to their respective projects;
+  do not copy rules between repositories unless the rule explicitly documents
+  a cross-project contract.
+
 ## Icon System
 
 `design.md` is the visual source of truth. Keep icon choices consistent with

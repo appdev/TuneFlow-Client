@@ -102,6 +102,13 @@ final class OnlinePlaylistDetailController extends ChangeNotifier {
   String? _importTarget;
   final Set<(String, String)> _confirmedImports = {};
 
+  @override
+  void dispose() {
+    _generation++;
+    _cancelImport = true;
+    super.dispose();
+  }
+
   Future<void> load() async {
     final generation = ++_generation;
     state = OnlinePlaylistDetailState(

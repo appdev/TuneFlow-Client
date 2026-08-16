@@ -91,6 +91,54 @@ final class Track {
   final Map<String, Object?> raw;
 
   Map<String, Object?> toJson() => Map<String, Object?>.from(raw);
+
+  Map<String, Object?> toServiceMusicInfoJson() {
+    final output = Map<String, Object?>.from(raw);
+    final existingMeta = raw['meta'] is Map
+        ? Map<String, Object?>.from(raw['meta']! as Map)
+        : <String, Object?>{};
+    final meta = <String, Object?>{
+      ...existingMeta,
+      'songId': existingMeta['songId'] ?? raw['songmid'] ?? raw['id'],
+      'albumName': existingMeta['albumName'] ?? raw['albumName'],
+      'albumId': existingMeta['albumId'] ?? raw['albumId'],
+      'qualitys': existingMeta['qualitys'] ?? raw['types'],
+      '_qualitys': existingMeta['_qualitys'] ?? raw['_types'],
+    };
+    final picture = _firstHttpUrl([
+      existingMeta['picUrl'],
+      raw['img'],
+      raw['pic'],
+    ]);
+    if (picture != null) meta['picUrl'] = picture;
+    switch (source) {
+      case 'kg':
+        meta['hash'] ??= raw['hash'];
+      case 'tx':
+        meta['strMediaMid'] ??= raw['strMediaMid'];
+        meta['id'] ??= raw['songId'];
+        meta['albumMid'] ??= raw['albumMid'];
+      case 'mg':
+        meta['copyrightId'] ??= raw['copyrightId'];
+        meta['lrcUrl'] ??= raw['lrcUrl'];
+        meta['mrcUrl'] ??= raw['mrcUrl'];
+        meta['trcUrl'] ??= raw['trcUrl'];
+    }
+    meta.removeWhere((_, value) => value == null);
+    output['meta'] = meta;
+    return output;
+  }
+}
+
+String? _firstHttpUrl(Iterable<Object?> candidates) {
+  for (final value in candidates) {
+    if (value is! String || value.trim().isEmpty) continue;
+    final uri = Uri.tryParse(value.trim());
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      return uri.toString();
+    }
+  }
+  return null;
 }
 
 final class SearchPage {

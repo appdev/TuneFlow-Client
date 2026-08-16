@@ -210,7 +210,7 @@ final class _DesktopMiniPlayer extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      ShadButton.outline(
+                      ShadButton.ghost(
                         key: const Key('desktop-quality'),
                         height: 44,
                         onPressed: onOpen,
@@ -259,7 +259,12 @@ _TransportPresentation _transportPresentation(PlayerController controller) {
   final state = controller.state;
   if (state.processing == PlayerProcessing.loading ||
       state.processing == PlayerProcessing.buffering) {
-    return (tooltip: '正在加载', icon: null, loading: true, onPressed: null);
+    return (
+      tooltip: '正在加载',
+      icon: null,
+      loading: true,
+      onPressed: controller.pause,
+    );
   }
   if (state.processing == PlayerProcessing.error || state.error != null) {
     return (

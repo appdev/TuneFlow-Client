@@ -59,6 +59,104 @@ void main() {
     expect(track.raw['pic'], url);
   });
 
+  test('Track serializes legacy Web query context for Service requests', () {
+    final track = Track.fromJson({
+      'id': 'legacy-id',
+      'songmid': 'song-mid',
+      'name': '大梦',
+      'singer': '瓦依那、任素汐',
+      'source': 'tx',
+      'albumName': '专辑',
+      'albumId': 'album-id',
+      'img': 'https://img.example.test/cover.jpg',
+      'types': <Object?>[
+        <String, Object?>{'type': '128k', 'size': '123'},
+      ],
+      '_types': <String, Object?>{
+        'high': <String, Object?>{'size': '456'},
+      },
+      'strMediaMid': 'media-mid',
+      'songId': 'qq-id',
+      'albumMid': 'album-mid',
+    });
+
+    final serialized = track.toServiceMusicInfoJson();
+    final meta = Map<String, Object?>.from(serialized['meta']! as Map);
+
+    expect(meta['songId'], 'song-mid');
+    expect(meta['albumName'], '专辑');
+    expect(meta['albumId'], 'album-id');
+    expect(meta['picUrl'], 'https://img.example.test/cover.jpg');
+    expect(meta['qualitys'], track.raw['types']);
+    expect(meta['_qualitys'], track.raw['_types']);
+    expect(meta['strMediaMid'], 'media-mid');
+    expect(meta['id'], 'qq-id');
+    expect(meta['albumMid'], 'album-mid');
+    expect(track.raw['pic'], 'https://img.example.test/cover.jpg');
+  });
+
+  test('Track Service artwork precedence rejects non-HTTP candidates', () {
+    final canonical = Track.fromJson({
+      'id': 'cover-3',
+      'source': 'wy',
+      'meta': {'songId': 'cover-3', 'picUrl': 'https://canonical.test/a.jpg'},
+      'img': 'https://img.test/a.jpg',
+      'pic': 'https://pic.test/a.jpg',
+    });
+    final legacy = Track.fromJson({
+      'id': 'cover-4',
+      'source': 'wy',
+      'meta': {'songId': 'cover-4', 'picUrl': 'file:///tmp/a.jpg'},
+      'img': 'data:image/png;base64,AA==',
+      'pic': 'https://pic.test/a.jpg',
+    });
+
+    expect(
+      (canonical.toServiceMusicInfoJson()['meta']! as Map)['picUrl'],
+      'https://canonical.test/a.jpg',
+    );
+    expect(
+      (legacy.toServiceMusicInfoJson()['meta']! as Map)['picUrl'],
+      'https://pic.test/a.jpg',
+    );
+  });
+
+  test('Track preserves Kugou and Migu Service query fields', () {
+    final kugou = Track.fromJson({
+      'id': 'kg-id',
+      'songmid': 'kg-song',
+      'source': 'kg',
+      'hash': 'kg-hash',
+    });
+    final migu = Track.fromJson({
+      'id': 'mg-id',
+      'songmid': 'mg-song',
+      'source': 'mg',
+      'copyrightId': 'copyright-id',
+      'lrcUrl': 'lrc',
+      'mrcUrl': 'mrc',
+      'trcUrl': 'trc',
+    });
+
+    expect((kugou.toServiceMusicInfoJson()['meta']! as Map)['hash'], 'kg-hash');
+    expect(
+      migu.toServiceMusicInfoJson()['meta'],
+      containsPair('copyrightId', 'copyright-id'),
+    );
+    expect(
+      migu.toServiceMusicInfoJson()['meta'],
+      containsPair('lrcUrl', 'lrc'),
+    );
+    expect(
+      migu.toServiceMusicInfoJson()['meta'],
+      containsPair('mrcUrl', 'mrc'),
+    );
+    expect(
+      migu.toServiceMusicInfoJson()['meta'],
+      containsPair('trcUrl', 'trc'),
+    );
+  });
+
   test('Leaderboard pages retain board ids and real track artwork', () {
     final boards = LeaderboardPage.fromJson({
       'list': [

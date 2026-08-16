@@ -8,6 +8,7 @@ import '../../app/app_error.dart';
 import '../../api/models.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/app_theme_definition.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_glass_surface.dart';
@@ -16,10 +17,8 @@ import '../../design/components/artwork.dart';
 import '../../design/components/queue_panel.dart';
 import '../../design/design_tokens.dart';
 import '../../storage/app_image_cache_scope.dart';
+import '../downloads/redownload_confirmation.dart';
 import '../playlists/playlist_repository.dart';
-import '../search/adaptive_track_actions.dart';
-import '../search/search_track_metadata.dart';
-import '../search/track_action.dart';
 import 'artwork_palette.dart';
 import 'artwork_palette_controller.dart';
 import 'current_track_actions_controller.dart';
@@ -34,6 +33,8 @@ import 'player_backdrop.dart';
 import 'player_controller.dart';
 import 'player_state.dart';
 import 'wake_lock_port.dart';
+
+enum _PlayerAction { favorite, playlist, download }
 
 final class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
@@ -164,26 +165,31 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _queue() {
     final mobile =
         classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
-    return showAppSheet<void>(
+    if (mobile) {
+      return AppBottomSheet.showDraggable<void>(
+        context,
+        title: '播放队列',
+        initialChildSize: .64,
+        minChildSize: .48,
+        maxChildSize: .90,
+        child: MobileQueueSheet(controller: widget.controller),
+      );
+    }
+    return AppBottomSheet.showContent<void>(
       context,
       title: '播放队列',
-      initialChildSize: mobile ? .64 : null,
-      minChildSize: .48,
-      maxChildSize: .90,
-      child: mobile
-          ? MobileQueueSheet(controller: widget.controller)
-          : ListenableBuilder(
-              listenable: widget.controller,
-              builder: (context, _) {
-                final state = widget.controller.state;
-                return QueuePanel(
-                  compact: true,
-                  tracks: state.queue,
-                  currentIndex: state.currentIndex,
-                  onSelected: widget.controller.playIndex,
-                );
-              },
-            ),
+      child: ListenableBuilder(
+        listenable: widget.controller,
+        builder: (context, _) {
+          final state = widget.controller.state;
+          return QueuePanel(
+            compact: true,
+            tracks: state.queue,
+            currentIndex: state.currentIndex,
+            onSelected: widget.controller.playIndex,
+          );
+        },
+      ),
     );
   }
 
@@ -191,6 +197,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
     Future<void> Function() operation, {
     String? success,
     String? successTitle,
+    String errorTitle = '操作失败',
   }) async {
     try {
       await operation();
@@ -203,7 +210,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
       if (!mounted) return;
       showAppMessage(
         context,
-        title: '操作失败',
+        title: errorTitle,
         message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
         destructive: true,
       );
@@ -213,7 +220,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _choosePlaylist(Track track) async {
     final playlists = await widget.playlists!.list();
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: '添加到歌单',
       child: playlists.isEmpty
@@ -242,26 +249,72 @@ final class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _more(Track track) async {
     final playlists = widget.playlists;
-    if (playlists == null) return;
-    final metadata = SearchTrackMetadata.fromTrack(track);
-    Future<void> Function()? selectedAction;
-    await showMobileTrackActions(
+    final actions = widget.actions;
+    if (playlists == null || actions == null) return;
+    final quality = switch (widget.controller.state.quality) {
+      'flac24bit' => 'Hi-Res',
+      'flac' => '无损',
+      final value => value,
+    };
+    final message = [
+      track.artist.trim(),
+      quality.trim(),
+    ].where((value) => value.isNotEmpty).join(' · ');
+    final selected = await AppBottomSheet.showActions<_PlayerAction>(
       context,
-      track: track,
-      metadata: metadata,
+      title: track.title.isEmpty ? track.id : track.title,
+      message: message.isEmpty ? null : message,
       actions: [
-        TrackAction(
-          id: TrackActionId.addToPlaylist,
+        AppBottomSheetAction(
+          key: const Key('track-action-favorite'),
+          value: _PlayerAction.favorite,
+          label: actions.favorite ? '取消收藏' : '收藏歌曲',
+          enabled: actions.canToggleFavorite,
+        ),
+        const AppBottomSheetAction(
+          key: Key('track-action-addToPlaylist'),
+          value: _PlayerAction.playlist,
           label: '添加到歌单',
-          icon: LucideIcons.heartPlus,
-          invoke: () async {
-            selectedAction = () => _run(() => _choosePlaylist(track));
-            Navigator.of(context).pop();
-          },
+        ),
+        AppBottomSheetAction(
+          key: const Key('track-action-download'),
+          value: _PlayerAction.download,
+          label: '下载当前歌曲',
+          enabled: actions.canDownload,
         ),
       ],
     );
-    await selectedAction?.call();
+    if (!mounted || selected == null) return;
+    switch (selected) {
+      case _PlayerAction.favorite:
+        await _run(actions.toggleFavorite, errorTitle: '收藏失败');
+      case _PlayerAction.playlist:
+        await _run(() => _choosePlaylist(track));
+      case _PlayerAction.download:
+        await _downloadCurrent(actions);
+    }
+  }
+
+  Future<void> _downloadCurrent(CurrentTrackActionsController actions) async {
+    try {
+      final result = await actions.downloadCurrent(
+        confirmReplacement: (message) =>
+            const AppRedownloadConfirmation().confirm(context, message),
+      );
+      if (!mounted || result?.job == null) return;
+      showAppMessage(
+        context,
+        title: result!.replaced ? '已加入重新下载队列' : '已加入下载队列',
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '下载失败',
+        message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
+        destructive: true,
+      );
+    }
   }
 
   @override
@@ -372,54 +425,73 @@ final class _PlayerScreenState extends State<PlayerScreen> {
   );
 }
 
-final class _DesktopPlayerTheme extends StatelessWidget {
+final class _DesktopPlayerTheme extends StatefulWidget {
   const _DesktopPlayerTheme({required this.palette, required this.child});
 
   final ArtworkPalette palette;
   final Widget child;
 
   @override
+  State<_DesktopPlayerTheme> createState() => _DesktopPlayerThemeState();
+}
+
+final class _DesktopPlayerThemeState extends State<_DesktopPlayerTheme> {
+  ShadThemeData? _baseShad;
+  ShadThemeData? _localShad;
+  ThemeData? _baseMaterial;
+  ThemeData? _localMaterial;
+  Color? _accent;
+
+  @override
   Widget build(BuildContext context) {
-    final accent = palette.vinylAccent;
+    final accent = widget.palette.vinylAccent;
     final onAccent = contrastRatio(Colors.black, accent) >= 4.5
         ? Colors.black
         : Colors.white;
     final shad = ShadTheme.of(context);
     final material = Theme.of(context);
+    if (_accent != accent || !identical(_baseShad, shad)) {
+      _baseShad = shad;
+      _localShad = shad.copyWith(
+        colorScheme: shad.colorScheme.copyWith(
+          primary: accent,
+          primaryForeground: onAccent,
+          ring: accent,
+        ),
+        ghostButtonTheme: shad.ghostButtonTheme.copyWith(
+          foregroundColor: accent,
+          hoverForegroundColor: accent,
+          pressedForegroundColor: accent,
+        ),
+        sliderTheme: shad.sliderTheme.copyWith(
+          activeTrackColor: accent,
+          thumbBorderColor: accent,
+        ),
+      );
+    }
+    if (_accent != accent || !identical(_baseMaterial, material)) {
+      _baseMaterial = material;
+      _localMaterial = material.copyWith(
+        colorScheme: material.colorScheme.copyWith(
+          primary: accent,
+          onPrimary: onAccent,
+        ),
+      );
+    }
+    _accent = accent;
     final duration = MediaQuery.disableAnimationsOf(context)
         ? AppDurations.reducedMotion
         : const Duration(milliseconds: 560);
-    final shadData = shad.copyWith(
-      colorScheme: shad.colorScheme.copyWith(
-        primary: accent,
-        primaryForeground: onAccent,
-        ring: accent,
-      ),
-      ghostButtonTheme: shad.ghostButtonTheme.copyWith(
-        foregroundColor: accent,
-        hoverForegroundColor: accent,
-        pressedForegroundColor: accent,
-      ),
-      sliderTheme: shad.sliderTheme.copyWith(
-        activeTrackColor: accent,
-        thumbBorderColor: accent,
-      ),
-    );
     return ShadAnimatedTheme(
       key: const Key('player-local-shad-theme'),
-      data: shadData,
+      data: _localShad!,
       duration: duration,
       curve: AppCurves.out,
       child: AnimatedTheme(
-        data: material.copyWith(
-          colorScheme: material.colorScheme.copyWith(
-            primary: accent,
-            onPrimary: onAccent,
-          ),
-        ),
+        data: _localMaterial!,
         duration: duration,
         curve: AppCurves.out,
-        child: child,
+        child: widget.child,
       ),
     );
   }
@@ -582,7 +654,6 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
             onQualityChanged: (quality) =>
                 unawaited(controller.setQuality(quality)),
             onQueue: onQueue,
-            actions: widget.actions,
           ),
         ],
       ),

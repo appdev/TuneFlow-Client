@@ -14,6 +14,7 @@ import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/components/app_glass_surface.dart';
 import 'package:musicfree_service_client/design/components/artwork.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
+import 'package:musicfree_service_client/features/downloads/user_download_coordinator.dart';
 import 'package:musicfree_service_client/features/player/artwork_palette.dart';
 import 'package:musicfree_service_client/features/player/artwork_palette_controller.dart';
 import 'package:musicfree_service_client/features/player/current_track_actions_controller.dart';
@@ -83,6 +84,7 @@ final class FakeAudio implements AudioPort {
 final class SnapshotAudio implements AudioPort {
   final snapshotsController = StreamController<AudioSnapshot>.broadcast();
   Object? nextPlayError;
+  int pauseCalls = 0;
   int playCalls = 0;
   int resumeCalls = 0;
 
@@ -96,7 +98,7 @@ final class SnapshotAudio implements AudioPort {
     required Future<void> Function() next,
   }) {}
   @override
-  Future<void> pause() async {}
+  Future<void> pause() async => pauseCalls += 1;
   @override
   Future<bool> playCachedTrack(Track track, String quality) async => false;
   @override
@@ -184,9 +186,10 @@ Future<PlayerController> pumpMobileActionPlayer(
   final actions = CurrentTrackActionsController(
     player: controller,
     favorites: FakeFavorites(),
-    download: (track, quality) async {
-      await repositories.downloads.create(track, quality);
-    },
+    download: (track, quality, {required confirmReplacement}) =>
+        UserDownloadCoordinator(
+          repositories.downloads,
+        ).create(track, quality, confirmReplacement: confirmReplacement),
   );
   addTearDown(actions.dispose);
   await tester.pumpWidget(
@@ -205,29 +208,28 @@ Future<PlayerController> pumpMobileActionPlayer(
 }
 
 void main() {
-  testWidgets(
-    'mobile player exposes direct actions and keeps playlist selection in more',
-    (tester) async {
-      await pumpMobileActionPlayer(
-        tester,
-        (_) async => http.Response(jsonEncode({'data': <Object?>[]}), 200),
-      );
+  testWidgets('mobile player groups current-track choices in the ActionSheet', (
+    tester,
+  ) async {
+    await pumpMobileActionPlayer(
+      tester,
+      (_) async => http.Response(jsonEncode({'data': <Object?>[]}), 200),
+    );
 
-      expect(find.byKey(const Key('mobile-full-favorite')), findsOneWidget);
-      expect(find.byKey(const Key('mobile-full-download')), findsOneWidget);
-      expect(find.bySemanticsLabel('更多操作'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('player-mobile-more')));
-      await pumpFiniteAnimations(tester);
+    expect(find.byKey(const Key('mobile-full-favorite')), findsNothing);
+    expect(find.byKey(const Key('mobile-full-download')), findsNothing);
+    expect(find.bySemanticsLabel('更多操作'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-mobile-more')));
+    await pumpFiniteAnimations(tester);
 
-      expect(
-        find.byKey(const Key('track-action-addToPlaylist')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('track-action-download')), findsNothing);
-      expect(find.byKey(const Key('track-action-enqueue')), findsNothing);
-      expect(find.byKey(const Key('player-mobile-queue')), findsOneWidget);
-    },
-  );
+    expect(find.byKey(const Key('track-action-addToPlaylist')), findsOneWidget);
+    expect(find.byKey(const Key('track-action-favorite')), findsOneWidget);
+    expect(find.byKey(const Key('track-action-download')), findsOneWidget);
+    expect(find.byKey(const Key('track-action-enqueue')), findsNothing);
+    expect(find.text('One'), findsWidgets);
+    expect(find.text('128k'), findsWidgets);
+    expect(find.byKey(const Key('player-mobile-queue')), findsOneWidget);
+  });
 
   testWidgets('mobile player adds the current track to a selected playlist', (
     tester,
@@ -302,7 +304,9 @@ void main() {
       );
     });
 
-    await tester.tap(find.byKey(const Key('mobile-full-download')));
+    await tester.tap(find.byKey(const Key('player-mobile-more')));
+    await pumpFiniteAnimations(tester);
+    await tester.tap(find.byKey(const Key('track-action-download')));
     await pumpFiniteAnimations(tester);
 
     final request = requests.single;
@@ -310,7 +314,61 @@ void main() {
     final body = jsonDecode(request.body) as Map<String, Object?>;
     expect((body['musicInfo']! as Map<String, Object?>)['id'], 'one');
     expect(body['quality'], '128k');
+    expect(body['existingFilePolicy'], 'error');
     expect(find.text('已加入下载队列'), findsOneWidget);
+  });
+
+  testWidgets('mobile player confirms before replacing an existing download', (
+    tester,
+  ) async {
+    final policies = <String?>[];
+    await pumpMobileActionPlayer(tester, (request) async {
+      final body = jsonDecode(request.body) as Map<String, Object?>;
+      final policy = body['existingFilePolicy'] as String?;
+      policies.add(policy);
+      if (policy == 'error') {
+        return http.Response(
+          jsonEncode({
+            'error': {
+              'code': 'DOWNLOAD_ALREADY_EXISTS',
+              'message': 'already exists',
+            },
+          }),
+          409,
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'data': {
+            'id': 'replacement-one',
+            'status': 'waiting',
+            'musicInfo': {'id': 'one', 'name': 'One', 'source': 'kw'},
+            'quality': '128k',
+            'extension': 'mp3',
+            'fileName': 'one.mp3',
+            'downloaded': 0,
+            'total': 0,
+            'progress': 0,
+            'queuePosition': 1,
+            'createdAt': 1000,
+            'updatedAt': 1000,
+          },
+        }),
+        201,
+      );
+    });
+
+    await tester.tap(find.byKey(const Key('player-mobile-more')));
+    await pumpFiniteAnimations(tester);
+    await tester.tap(find.byKey(const Key('track-action-download')));
+    await pumpFiniteAnimations(tester);
+
+    expect(find.text('重新下载成功后将替换现有文件。'), findsOneWidget);
+    await tester.tap(find.text('确定'));
+    await pumpFiniteAnimations(tester);
+
+    expect(policies, ['error', 'replace']);
+    expect(find.text('已加入重新下载队列'), findsOneWidget);
   });
 
   testWidgets('failed mobile player action preserves the current track', (
@@ -326,7 +384,9 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byKey(const Key('mobile-full-download')));
+    await tester.tap(find.byKey(const Key('player-mobile-more')));
+    await pumpFiniteAnimations(tester);
+    await tester.tap(find.byKey(const Key('track-action-download')));
     await pumpFiniteAnimations(tester);
 
     expect(find.text('下载失败'), findsOneWidget);
@@ -395,7 +455,8 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: controller,
       favorites: favorites,
-      download: (_, _) async {},
+      download: (_, _, {required confirmReplacement}) async =>
+          const UserDownloadResult(replaced: false),
     );
     addTearDown(actions.dispose);
 
@@ -442,6 +503,12 @@ void main() {
       expect(size.width, greaterThanOrEqualTo(44), reason: key);
       expect(size.height, greaterThanOrEqualTo(44), reason: key);
     }
+    expect(
+      tester
+          .widget<ShadButton>(find.byKey(const Key('desktop-quality')))
+          .variant,
+      ShadButtonVariant.ghost,
+    );
     final playerRect = tester.getRect(
       find.byKey(const Key('desktop-persistent-player')),
     );
@@ -534,7 +601,7 @@ void main() {
     expect(artwork.showFallbackBorder, isFalse);
   });
 
-  testWidgets('desktop player maps loading and playback transport states', (
+  testWidgets('desktop loading transport remains available for pause', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 160);
@@ -558,8 +625,21 @@ void main() {
     );
 
     expect(find.byKey(const Key('desktop-player-loading')), findsOneWidget);
+    expect(find.bySemanticsLabel('正在加载'), findsOneWidget);
     await tester.tap(find.byKey(const Key('desktop-play-pause')));
+    expect(audio.pauseCalls, 1);
     expect(audio.resumeCalls, 0);
+
+    audio.emit(
+      const AudioSnapshot(
+        processing: PlayerProcessing.buffering,
+        playing: true,
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('desktop-player-loading')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('desktop-play-pause')));
+    expect(audio.pauseCalls, 2);
 
     audio.emit(
       const AudioSnapshot(processing: PlayerProcessing.ready, playing: true),
@@ -630,7 +710,8 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: controller,
       favorites: FakeFavorites(),
-      download: (_, _) async {},
+      download: (_, _, {required confirmReplacement}) async =>
+          const UserDownloadResult(replaced: false),
     );
     addTearDown(actions.dispose);
     final wakeLock = FakeWakeLock();
@@ -796,6 +877,13 @@ void main() {
       await controller.playTracks([
         Track.fromJson({'id': 'themed', 'name': 'Themed', 'source': 'kw'}),
       ]);
+      final actions = CurrentTrackActionsController(
+        player: controller,
+        favorites: FakeFavorites(),
+        download: (_, _, {required confirmReplacement}) async =>
+            const UserDownloadResult(replaced: false),
+      );
+      addTearDown(actions.dispose);
 
       await tester.pumpWidget(
         harness(
@@ -807,6 +895,7 @@ void main() {
             keepAwake: false,
             paletteController: paletteController,
             onAccentChanged: reported.add,
+            actions: actions,
           ),
         ),
       );
@@ -838,6 +927,12 @@ void main() {
         ),
       );
       expect(playIcon.color, Colors.white);
+      for (final key in ['desktop-full-favorite', 'desktop-full-download']) {
+        expect(
+          tester.widget<ShadButton>(find.byKey(Key(key))).foregroundColor,
+          expected.vinylAccent,
+        );
+      }
       final scrollConfiguration = tester.widget<ScrollConfiguration>(
         find.byKey(const Key('lyrics-scroll-configuration')),
       );
@@ -851,6 +946,63 @@ void main() {
         same(scrollbarProbe),
       );
       expect(reported, contains(expected.vinylAccent));
+    },
+  );
+
+  testWidgets(
+    'desktop player reuses its local theme for position-only snapshots',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const source = AppArtworkSource.fallback(fallbackSeed: 'kw:stable-theme');
+      final paletteController = ArtworkPaletteController(
+        loadBytes: (_) async => null,
+      );
+      addTearDown(paletteController.dispose);
+      await paletteController.select(source, brightness: Brightness.light);
+      final audio = SnapshotAudio();
+      addTearDown(audio.close);
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+      );
+      await controller.playTracks([
+        Track.fromJson({
+          'id': 'stable-theme',
+          'name': 'Stable Theme',
+          'source': 'kw',
+        }),
+      ]);
+
+      await tester.pumpWidget(
+        harness(
+          PlayerScreen(
+            controller: controller,
+            lyricsLoader: (_) async => const Lyrics(original: '[00:00]line'),
+            wakeLock: FakeWakeLock(),
+            keepAwake: false,
+            paletteController: paletteController,
+          ),
+        ),
+      );
+      await tester.pump();
+      final themeFinder = find.byKey(const Key('player-local-shad-theme'));
+      final before = tester.widget<ShadAnimatedTheme>(themeFinder).data;
+
+      audio.emit(
+        const AudioSnapshot(
+          playing: true,
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 1),
+          duration: Duration(minutes: 3),
+        ),
+      );
+      await tester.pump();
+
+      final after = tester.widget<ShadAnimatedTheme>(themeFinder).data;
+      expect(after, same(before));
     },
   );
 
@@ -1527,6 +1679,17 @@ void main() {
       matching: find.text('320k'),
     );
     expect(selectedQuality, findsOneWidget);
+    expect(
+      tester
+          .widget<ShadSelect<String>>(
+            find.descendant(
+              of: find.byKey(const Key('player-mobile-quality')),
+              matching: find.byType(ShadSelect<String>),
+            ),
+          )
+          .decoration,
+      ShadDecoration.none,
+    );
     expect(tester.getSize(selectedQuality).height, lessThan(30));
     expect(tester.takeException(), isNull);
   });

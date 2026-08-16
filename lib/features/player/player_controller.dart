@@ -43,6 +43,10 @@ final class PlayerController extends ChangeNotifier {
   int _playGeneration = 0;
   int? _bundleLyricsGeneration;
   int _lyricsRequestGeneration = 0;
+  ({String source, String id, int generation, Future<bool> future})?
+  _lyricsRefresh;
+  ({String source, String id, int generation, Future<bool> future})?
+  _artworkRefresh;
 
   Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
@@ -283,6 +287,99 @@ final class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> refreshLyricsIfMissing(
+    Future<Lyrics> Function(Track track) loader, {
+    String? source,
+    String? trackId,
+  }) {
+    final track = state.current;
+    if (track == null ||
+        (source != null && track.source != source) ||
+        (trackId != null && track.id != trackId) ||
+        state.lyrics?.original.trim().isNotEmpty == true) {
+      return Future.value(false);
+    }
+    final generation = _playGeneration;
+    final pending = _lyricsRefresh;
+    if (pending != null &&
+        pending.source == track.source &&
+        pending.id == track.id &&
+        pending.generation == generation) {
+      return pending.future;
+    }
+    late final Future<bool> operation;
+    operation =
+        (() async {
+          await loadLyrics(loader);
+          final current = state.current;
+          return current?.source == track.source &&
+              current?.id == track.id &&
+              state.lyrics?.original.trim().isNotEmpty == true;
+        })().whenComplete(() {
+          if (identical(_lyricsRefresh?.future, operation)) {
+            _lyricsRefresh = null;
+          }
+        });
+    _lyricsRefresh = (
+      source: track.source,
+      id: track.id,
+      generation: generation,
+      future: operation,
+    );
+    return operation;
+  }
+
+  Future<bool> refreshArtworkIfMissing(
+    Future<String> Function(Track track) loader, {
+    String? source,
+    String? trackId,
+  }) {
+    final track = state.current;
+    if (track == null ||
+        (source != null && track.source != source) ||
+        (trackId != null && track.id != trackId) ||
+        _hasArtwork(track)) {
+      return Future.value(false);
+    }
+    final generation = _playGeneration;
+    final pending = _artworkRefresh;
+    if (pending != null &&
+        pending.source == track.source &&
+        pending.id == track.id &&
+        pending.generation == generation) {
+      return pending.future;
+    }
+    late final Future<bool> operation;
+    operation =
+        (() async {
+          try {
+            final picture = await loader(track);
+            if (!_isCurrent(generation, track) || picture.trim().isEmpty) {
+              return false;
+            }
+            final raw = state.current!.toJson()..['pic'] = picture;
+            final updated = Track.fromJson(raw);
+            final queue = [...state.queue]..[state.currentIndex] = updated;
+            state = state.copyWith(queue: List.unmodifiable(queue));
+            notifyListeners();
+            return true;
+          } on Object {
+            return false;
+          }
+        })().whenComplete(() {
+          if (identical(_artworkRefresh?.future, operation)) {
+            _artworkRefresh = null;
+          }
+        });
+    _artworkRefresh = (
+      source: track.source,
+      id: track.id,
+      generation: generation,
+      future: operation,
+    );
+    return operation;
+  }
+
   Future<bool> _playCurrent({bool startSession = true}) async {
     final track = state.current;
     if (track == null) return false;
@@ -293,6 +390,7 @@ final class PlayerController extends ChangeNotifier {
         if (!_isCurrent(generation, track)) return false;
         state = state.copyWith(error: null);
         notifyListeners();
+        unawaited(_refreshCachedLocalResources(track, generation));
         if (startSession) await _startSession(track);
         return true;
       }
@@ -340,7 +438,40 @@ final class PlayerController extends ChangeNotifier {
         current?.id == track.id;
   }
 
+  Future<void> _refreshCachedLocalResources(Track track, int generation) async {
+    if (track.source != 'local' ||
+        (_hasArtwork(track) && _hasLyricsResource(track))) {
+      return;
+    }
+    try {
+      final source = await resolver.resolve(track, state.quality);
+      if (!_isCurrent(generation, track)) return;
+      _applyResolvedResources(source, generation: generation);
+    } on Object {
+      // Optional resource refresh must not make cached audio unavailable.
+    }
+  }
+
+  bool _hasArtwork(Track track) {
+    final value = track.raw['pic'];
+    return value is String && value.trim().isNotEmpty;
+  }
+
+  bool _hasLyricsResource(Track track) {
+    final meta = track.raw['meta'];
+    return meta is Map &&
+        meta['lyricsUrl'] is String &&
+        (meta['lyricsUrl']! as String).trim().isNotEmpty;
+  }
+
   Track _applyResolvedBundle(PlaybackSource source, {required int generation}) {
+    return _applyResolvedResources(source, generation: generation);
+  }
+
+  Track _applyResolvedResources(
+    PlaybackSource source, {
+    required int generation,
+  }) {
     final current = state.current!;
     final raw = current.toJson();
     final pictureUri = source.pictureUri;

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/features/downloads/user_download_coordinator.dart';
 import 'package:musicfree_service_client/features/player/current_track_action_buttons.dart';
 import 'package:musicfree_service_client/features/player/current_track_actions_controller.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
@@ -111,9 +112,10 @@ Future<_ActionsFixture> _pumpActions(
   final actions = CurrentTrackActionsController(
     player: player,
     favorites: favorites,
-    download: (track, quality) async {
+    download: (track, quality, {required confirmReplacement}) async {
       downloadCalls.add('${track.source}:${track.id}:$quality');
       if (downloadGate != null) await downloadGate.future;
+      return UserDownloadResult(job: _queuedDownload(), replaced: false);
     },
   );
   addTearDown(actions.dispose);
@@ -140,6 +142,21 @@ Future<_ActionsFixture> _pumpActions(
   await tester.pump();
   return _ActionsFixture(favorites: favorites, downloadCalls: downloadCalls);
 }
+
+DownloadJob _queuedDownload() => DownloadJob.fromJson({
+  'id': 'download-a',
+  'status': 'waiting',
+  'musicInfo': {'id': 'a', 'name': 'A', 'source': 'kw'},
+  'quality': '128k',
+  'extension': 'mp3',
+  'fileName': 'a.mp3',
+  'downloaded': 0,
+  'total': 0,
+  'progress': 0,
+  'queuePosition': 1,
+  'createdAt': 1000,
+  'updatedAt': 1000,
+});
 
 Future<void> _pumpFiniteAnimations(WidgetTester tester) async {
   for (var frame = 0; frame < 8; frame++) {

@@ -5,6 +5,7 @@ import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/app_theme_definition.dart';
 import 'package:musicfree_service_client/design/app_theme_scope.dart';
 import 'package:musicfree_service_client/design/components/app_navigation.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 const destinations = [
@@ -91,8 +92,15 @@ void main() {
           ),
         ),
       );
-      final filter = tester.widget<BackdropFilter>(find.byType(BackdropFilter));
-      expect(filter.enabled, !(highContrast || reduced));
+      if (highContrast || reduced) {
+        expect(find.byType(AdaptiveGlass), findsNothing);
+        expect(
+          tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled,
+          isFalse,
+        );
+      } else {
+        expect(find.byType(AdaptiveGlass), findsOneWidget);
+      }
       return tester.getSize(find.byKey(const Key('mobile-bottom-navigation')));
     }
 

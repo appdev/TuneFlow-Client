@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/app/app_shell.dart';
@@ -166,6 +167,10 @@ const _mobilePages = <String>[
 
 void main() {
   setUpAll(() async {
+    await LiquidGlassWidgets.initialize(
+      enablePerformanceMonitor: false,
+      warmUpImpellerPipeline: false,
+    );
     final chineseFontLoader = FontLoader('NotoSansCJKsc')
       ..addFont(rootBundle.load('assets/fonts/NotoSansCJKsc-Regular.otf'));
     final displayFontLoader = FontLoader('NotoSerifSC')

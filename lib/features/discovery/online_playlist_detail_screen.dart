@@ -6,6 +6,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../../api/models.dart';
 import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
+import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_playback_button.dart';
@@ -14,6 +15,7 @@ import '../../design/components/artwork.dart';
 import '../../design/design_tokens.dart';
 import '../catalog/catalog_track_list.dart';
 import '../downloads/download_repository.dart';
+import '../downloads/redownload_confirmation.dart';
 import '../player/player_controller.dart';
 import '../search/adaptive_track_actions.dart';
 import '../search/search_track_metadata.dart';
@@ -110,6 +112,27 @@ final class _OnlinePlaylistDetailScreenState
     }
   }
 
+  Future<void> _download(Track track, String quality) async {
+    try {
+      final result = await const AppUserDownloadCoordinator().create(
+        context,
+        widget.downloads,
+        track,
+        quality,
+      );
+      if (!mounted || result.job == null) return;
+      showAppMessage(context, title: result.replaced ? '已加入重新下载队列' : '已加入下载队列');
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '操作失败',
+        message: appErrorMessage(error, fallback: '操作未完成，请稍后重试。'),
+        destructive: true,
+      );
+    }
+  }
+
   Future<void> _playAll() async {
     await _controller.loadAllPages();
     if (!mounted) return;
@@ -176,7 +199,7 @@ final class _OnlinePlaylistDetailScreenState
   Future<void> _lyrics(Track track) async {
     final lyrics = await _controller.catalog.lyrics(track);
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: track.title.isEmpty ? '歌词' : track.title,
       child: ConstrainedBox(
@@ -196,7 +219,7 @@ final class _OnlinePlaylistDetailScreenState
   Future<void> _choosePlaylist({Track? track, bool importAll = false}) async {
     final playlists = await _controller.playlists.list();
     if (!mounted) return;
-    await showAppSheet<void>(
+    await AppBottomSheet.showContent<void>(
       context,
       title: importAll ? '导入到本地歌单' : '添加到歌单',
       child: playlists.isEmpty
@@ -239,10 +262,7 @@ final class _OnlinePlaylistDetailScreenState
       player: widget.player,
       showLyrics: (value) => _run(() => _lyrics(value)),
       addToPlaylist: (value) => _run(() => _choosePlaylist(track: value)),
-      download: (value, quality) => _run(
-        () => widget.downloads.create(value, quality),
-        successTitle: '已加入下载队列',
-      ),
+      download: _download,
     );
     return [
       TrackAction(

@@ -367,6 +367,138 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets(
+    'search survives opening a playlist and returning before another search',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = ConnectionRepository(
+        (origin) => ServiceApi(
+          origin,
+          client: MockClient((request) async {
+            final body = request.body.isEmpty
+                ? const <String, Object?>{}
+                : jsonDecode(request.body) as Map<String, Object?>;
+            final query = body['text'] as String? ?? '';
+            final value = switch (request.url.path) {
+              '/api/v1/health' => {'status': 'ok'},
+              '/api/v1/capabilities' => {
+                'runtime': 'service',
+                'apiVersion': 'v1',
+                'features': <String, Object?>{},
+              },
+              '/api/v1/events/snapshot' => {
+                'sequence': 0,
+                'events': <Object?>[],
+              },
+              '/api/v1/catalog/capabilities' => {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track', 'playlist'],
+                  },
+                ],
+              },
+              '/api/v1/catalog/tracks/search' => {
+                'list': [
+                  {'id': 'track-$query', 'name': query, 'source': 'kw'},
+                ],
+                'total': 1,
+              },
+              '/api/v1/catalog/playlists/search' => {
+                'list': [
+                  {
+                    'id': query == '任素汐' ? 'list-1' : 'list-2',
+                    'kind': 'playlist',
+                    'name': query == '任素汐' ? '任素汐歌单' : '第二次搜索结果',
+                    'source': 'kw',
+                  },
+                ],
+                'total': 1,
+              },
+              '/api/v1/catalog/playlists/detail' => {
+                'source': 'kw',
+                'page': 1,
+                'limit': 30,
+                'total': 1,
+                'hasMore': false,
+                'playlist': {
+                  'id': 'list-1',
+                  'kind': 'playlist',
+                  'name': '任素汐歌单',
+                  'source': 'kw',
+                },
+                'tracks': [
+                  {'id': 'detail-track', 'name': '歌单内容', 'source': 'kw'},
+                ],
+              },
+              _ => <Object?>[],
+            };
+            return http.Response(
+              jsonEncode({'data': value}),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MusicFreeServiceApp(
+          connectionRepository: repository,
+          preferences: MemoryAppPreferences(
+            const AppSettings(origin: 'http://service.local'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final router = GoRouter.of(
+        tester.element(find.byKey(const Key('main-shell'))),
+      );
+      router.go('/search');
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('search-field')), '任素汐');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('search-view-playlists')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('search-collection-kw-list-1')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('search-collection-kw-list-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('歌单内容'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('desktop-back')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('search-source-kw')), findsOneWidget);
+      expect(
+        find.byKey(const Key('search-collection-kw-list-1')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byKey(const Key('search-field')), '第二次搜索');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('search-collection-kw-list-2')),
+        findsOneWidget,
+      );
+      expect(find.text('第二次搜索结果'), findsOneWidget);
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
   testWidgets('local library card uses its read-only production route', (
     tester,
   ) async {
@@ -459,6 +591,22 @@ void main() {
         tester.element(find.byKey(const Key('playlist-detail-route'))),
       ).uri.path,
       '/playlists/love',
+    );
+
+    await tester.tap(find.text('搜索').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('search-field')), findsOneWidget);
+
+    await tester.tap(find.text('我的歌单').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('playlists-screen')), findsOneWidget);
+    expect(find.byKey(const Key('playlist-detail-route')), findsNothing);
+    expect(
+      GoRouterState.of(
+        tester.element(find.byKey(const Key('playlists-screen'))),
+      ).uri.path,
+      '/playlists',
     );
     debugDefaultTargetPlatformOverride = null;
   });
@@ -570,11 +718,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('更多'));
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('downloads-route')),
-      findsOneWidget,
-      reason: 'mobile Home downloads must belong to the More branch',
-    );
+    expect(find.byKey(const Key('more-mobile-layout')), findsOneWidget);
+    expect(find.byKey(const Key('downloads-route')), findsNothing);
 
     await tester.tap(find.bySemanticsLabel('搜索'));
     await tester.pumpAndSettle();
@@ -585,11 +730,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('更多'));
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('settings-route')),
-      findsOneWidget,
-      reason: 'mobile Search settings must belong to the More branch',
-    );
+    expect(find.byKey(const Key('more-mobile-layout')), findsOneWidget);
+    expect(find.byKey(const Key('settings-route')), findsNothing);
     await tester.tap(find.bySemanticsLabel('首页'));
     await tester.pumpAndSettle();
 

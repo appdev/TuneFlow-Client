@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/api/models.dart';
+import 'package:musicfree_service_client/features/downloads/user_download_coordinator.dart';
 import 'package:musicfree_service_client/features/player/current_track_actions_controller.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
@@ -17,7 +18,8 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: player,
       favorites: favorites,
-      download: (_, _) async {},
+      download: (_, _, {required confirmReplacement}) async =>
+          const UserDownloadResult(replaced: false),
     );
     addTearDown(actions.dispose);
 
@@ -36,7 +38,8 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: player,
       favorites: favorites,
-      download: (_, _) async {},
+      download: (_, _, {required confirmReplacement}) async =>
+          const UserDownloadResult(replaced: false),
     );
     addTearDown(actions.dispose);
 
@@ -59,7 +62,8 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: player,
       favorites: favorites,
-      download: (_, _) async {},
+      download: (_, _, {required confirmReplacement}) async =>
+          const UserDownloadResult(replaced: false),
     );
     addTearDown(actions.dispose);
     await _flushAsyncWork();
@@ -81,7 +85,8 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: player,
       favorites: favorites,
-      download: (_, _) async {},
+      download: (_, _, {required confirmReplacement}) async =>
+          const UserDownloadResult(replaced: false),
     );
     addTearDown(actions.dispose);
     await _flushAsyncWork();
@@ -102,15 +107,20 @@ void main() {
     final actions = CurrentTrackActionsController(
       player: player,
       favorites: favorites,
-      download: (value, quality) async {
+      download: (value, quality, {required confirmReplacement}) async {
         calls.add('${value.source}:${value.id}:$quality');
         await gate.future;
+        return const UserDownloadResult(replaced: false);
       },
     );
     addTearDown(actions.dispose);
 
-    final first = actions.downloadCurrent();
-    final second = actions.downloadCurrent();
+    final first = actions.downloadCurrent(
+      confirmReplacement: (_) async => true,
+    );
+    final second = actions.downloadCurrent(
+      confirmReplacement: (_) async => true,
+    );
     expect(actions.downloadPending, isTrue);
     expect(calls, ['kw:a:flac']);
 

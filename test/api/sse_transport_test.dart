@@ -1,7 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/models.dart';
+import 'package:musicfree_service_client/api/service_api.dart';
+import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/api/sse_transport.dart';
 
 void main() {
@@ -35,5 +40,41 @@ void main() {
 
     expect(events.map((event) => event.type), ['new']);
     expect(parser.sequence, 10);
+  });
+
+  test('revalidates current state after an SSE connection succeeds', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/snapshot')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'sequence': 0, 'events': <Object?>[]},
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        '',
+        200,
+        headers: {'content-type': 'text/event-stream'},
+      );
+    });
+    final origin = ServiceOrigin.parse('http://service.local:18080');
+    final api = ServiceApi(origin, client: client);
+    final connected = Completer<void>();
+    final transport = SseTransport(
+      api,
+      client: client,
+      delay: (_) async {},
+      onConnected: () {
+        if (!connected.isCompleted) connected.complete();
+      },
+    );
+
+    final subscription = transport.events().listen((_) {});
+    await connected.future;
+    transport.close();
+    await subscription.cancel();
+
+    api.close();
   });
 }

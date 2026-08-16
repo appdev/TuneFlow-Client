@@ -8,8 +8,6 @@ import '../../design/components/app_glass_surface.dart';
 import '../../design/components/app_playback_button.dart';
 import '../../design/components/playback_progress.dart';
 import '../../design/design_tokens.dart';
-import 'current_track_action_buttons.dart';
-import 'current_track_actions_controller.dart';
 import 'player_state.dart';
 
 final class MobilePlayerControls extends StatelessWidget {
@@ -23,7 +21,6 @@ final class MobilePlayerControls extends StatelessWidget {
     required this.onPlaybackMode,
     required this.onQualityChanged,
     required this.onQueue,
-    this.actions,
   });
 
   final PlayerState state;
@@ -34,7 +31,6 @@ final class MobilePlayerControls extends StatelessWidget {
   final VoidCallback onPlaybackMode;
   final ValueChanged<String> onQualityChanged;
   final VoidCallback onQueue;
-  final CurrentTrackActionsController? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +74,7 @@ final class MobilePlayerControls extends StatelessWidget {
                 width: 92,
                 child: ShadSelect<String>(
                   initialValue: state.quality,
+                  decoration: ShadDecoration.none,
                   options: const [
                     ShadOption(value: '128k', child: Text('128k')),
                     ShadOption(value: '320k', child: Text('320k')),
@@ -96,16 +93,6 @@ final class MobilePlayerControls extends StatelessWidget {
               ),
             ],
           ),
-          if (actions case final value?) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: CurrentTrackActionButtons(
-                controller: value,
-                keyPrefix: 'mobile-full',
-              ),
-            ),
-          ],
           const SizedBox(height: AppSpacing.sm),
           PlaybackProgress(
             key: const Key('player-mobile-progress'),

@@ -121,6 +121,13 @@ final class DeferredResolver implements PlaybackResolver {
   }
 }
 
+final class ErrorResolver implements PlaybackResolver {
+  @override
+  Future<PlaybackSource> resolve(Track track, String quality) async {
+    throw StateError('resource refresh unavailable');
+  }
+}
+
 class FakeSessions implements PlaybackSessionPort {
   final List<String> starts = [];
   Object? startError;
@@ -291,6 +298,100 @@ void main() {
       contains('/lyrics'),
     );
   });
+
+  test(
+    'cached local playback refreshes missing lyrics and artwork without replacing audio',
+    () async {
+      final resolver = FixedResolver(
+        bundleSource(
+          lyrics: const Lyrics(original: '[00:01.00]resolved'),
+          pictureUri: Uri.parse(
+            'http://service.local/api/v1/playback/resources/token/picture',
+          ),
+          completeness: PlaybackBundleCompleteness.mixed,
+        ),
+      );
+      final audio = FakeAudio()..cached = true;
+      final controller = PlayerController(resolver: resolver, audio: audio);
+      final local = Track.fromJson({
+        'id': 'local-missing',
+        'name': 'Fixture',
+        'singer': 'Artist',
+        'source': 'local',
+      });
+
+      await controller.play(local);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(audio.playCalls, 0);
+      expect(resolver.calls, 1);
+      expect(controller.state.lyrics?.original, '[00:01.00]resolved');
+      expect(controller.state.current?.raw['pic'], contains('/picture'));
+      expect(
+        controller.state.bundleCompleteness,
+        PlaybackBundleCompleteness.mixed,
+      );
+    },
+  );
+
+  test(
+    'cached local resource refresh failure does not fail playback',
+    () async {
+      final audio = FakeAudio()..cached = true;
+      final controller = PlayerController(
+        resolver: ErrorResolver(),
+        audio: audio,
+      );
+      final local = Track.fromJson({
+        'id': 'local-offline',
+        'name': 'Fixture',
+        'singer': 'Artist',
+        'source': 'local',
+      });
+
+      await controller.play(local);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(audio.playCalls, 0);
+      expect(controller.state.current?.id, 'local-offline');
+      expect(controller.state.error, isNull);
+    },
+  );
+
+  test(
+    'late cached local resource refresh cannot mutate a newer track',
+    () async {
+      final resolver = DeferredResolver();
+      final audio = FakeAudio()..cached = true;
+      final controller = PlayerController(resolver: resolver, audio: audio);
+      final first = Track.fromJson({
+        'id': 'local-a',
+        'name': 'A',
+        'source': 'local',
+      });
+      final second = Track.fromJson({
+        'id': 'local-b',
+        'name': 'B',
+        'source': 'local',
+      });
+
+      await controller.play(first);
+      await Future<void>.delayed(Duration.zero);
+      await controller.play(second);
+      await Future<void>.delayed(Duration.zero);
+      resolver.requests[1].complete(
+        bundleSource(pictureUri: Uri.parse('http://service.local/b-picture')),
+      );
+      await Future<void>.delayed(Duration.zero);
+      resolver.requests[0].complete(
+        bundleSource(pictureUri: Uri.parse('http://service.local/a-picture')),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.current?.id, 'local-b');
+      expect(controller.state.current?.raw['pic'], endsWith('/b-picture'));
+    },
+  );
 
   test('late lyric loading cannot overwrite a newly resolved bundle', () async {
     final resolver = DeferredResolver();
@@ -782,6 +883,145 @@ void main() {
     expect(controller.state.lyrics, isNull);
     expect(controller.state.lyricsError, isA<StateError>());
   });
+
+  test(
+    'resource notification refreshes only the matching current track with missing lyrics',
+    () async {
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      await controller.play(track('a'));
+      var calls = 0;
+      Future<Lyrics> loader(Track _) async {
+        calls++;
+        return const Lyrics(original: '[00:01]new line');
+      }
+
+      expect(
+        await controller.refreshLyricsIfMissing(
+          loader,
+          source: 'kw',
+          trackId: 'other',
+        ),
+        isFalse,
+      );
+      expect(
+        await controller.refreshLyricsIfMissing(
+          loader,
+          source: 'kw',
+          trackId: 'a',
+        ),
+        isTrue,
+      );
+      expect(
+        await controller.refreshLyricsIfMissing(
+          loader,
+          source: 'kw',
+          trackId: 'a',
+        ),
+        isFalse,
+      );
+
+      expect(calls, 1);
+      expect(controller.state.lyrics?.original, '[00:01]new line');
+    },
+  );
+
+  test(
+    'reconnect lyric revalidation coalesces duplicate in-flight refreshes',
+    () async {
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      await controller.play(track('a'));
+      final completer = Completer<Lyrics>();
+      var calls = 0;
+      Future<Lyrics> loader(Track _) {
+        calls++;
+        return completer.future;
+      }
+
+      final first = controller.refreshLyricsIfMissing(loader);
+      final second = controller.refreshLyricsIfMissing(loader);
+      completer.complete(const Lyrics(original: '[00:01]connected'));
+
+      expect(await first, isTrue);
+      expect(await second, isTrue);
+      expect(calls, 1);
+    },
+  );
+
+  test(
+    'a pending lyric refresh for an old track does not block the new track',
+    () async {
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      final firstLyrics = Completer<Lyrics>();
+      var firstCalls = 0;
+      var secondCalls = 0;
+
+      await controller.play(track('a'));
+      final first = controller.refreshLyricsIfMissing((_) {
+        firstCalls++;
+        return firstLyrics.future;
+      });
+      await controller.play(track('b'));
+      final second = controller.refreshLyricsIfMissing((_) async {
+        secondCalls++;
+        return const Lyrics(original: '[00:02]track b');
+      });
+
+      expect(await second, isTrue);
+      firstLyrics.complete(const Lyrics(original: '[00:01]track a'));
+      expect(await first, isFalse);
+      expect(firstCalls, 1);
+      expect(secondCalls, 1);
+      expect(controller.state.current?.id, 'b');
+      expect(controller.state.lyrics?.original, '[00:02]track b');
+    },
+  );
+
+  test(
+    'picture resource notification updates only the matching current track',
+    () async {
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+      );
+      await controller.play(track('a'));
+      var calls = 0;
+
+      expect(
+        await controller.refreshArtworkIfMissing(
+          (_) async {
+            calls++;
+            return '/api/v1/playback/resources/picture-token/picture';
+          },
+          source: 'kw',
+          trackId: 'other',
+        ),
+        isFalse,
+      );
+      expect(
+        await controller.refreshArtworkIfMissing(
+          (_) async {
+            calls++;
+            return '/api/v1/playback/resources/picture-token/picture';
+          },
+          source: 'kw',
+          trackId: 'a',
+        ),
+        isTrue,
+      );
+
+      expect(calls, 1);
+      expect(controller.state.current?.raw['pic'], contains('picture-token'));
+    },
+  );
 
   test(
     'resume retries a failed track instead of delegating a stale resume',
