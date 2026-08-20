@@ -7,7 +7,6 @@ import '../api/models.dart';
 import '../api/sse_transport.dart';
 import '../events/event_coordinator.dart';
 import '../features/connection/connection_controller.dart';
-import '../features/connection/connection_repository.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/playlists/playlist_repository.dart';
 import '../platform/macos_menu_bar_coordinator.dart';
@@ -20,15 +19,15 @@ import 'player_providers.dart';
 final macOSMenuBarCoordinatorProvider = Provider<MacOSMenuBarCoordinator>((
   ref,
 ) {
-  final connected = ref.watch(
-    connectionProvider.select((connection) => connection.value),
+  final api = ref.watch(
+    connectionProvider.select((connection) => connection.value?.api),
   );
   final messages = ref.read(appMessageCenterProvider);
   final coordinator = MacOSMenuBarCoordinator(
     player: ref.watch(playerControllerProvider),
-    favorites: connected == null
+    favorites: api == null
         ? null
-        : LovePlaylistFavorites(PlaylistRepository(connected.api)),
+        : LovePlaylistFavorites(PlaylistRepository(api)),
     menuBar: ref.read(macOSMenuBarPortProvider),
     reportFailure: messages.enqueue,
     revealPendingMessages: messages.revealPending,
@@ -45,10 +44,11 @@ final settingsControllerProvider = Provider<SettingsController?>((ref) {
   );
   if (!ready) return null;
   final settings = ref.read(appSettingsProvider).value!;
-  final connected = ref.watch(connectionProvider).value;
-  final serviceSettings = connected == null
-      ? null
-      : ServiceSettingsRepository(connected.api);
+  final api = ref.watch(
+    connectionProvider.select((connection) => connection.value?.api),
+  );
+  final diagnostics = ref.read(connectionProvider).value?.diagnostics;
+  final serviceSettings = api == null ? null : ServiceSettingsRepository(api);
   final controller = SettingsController(
     settings: settings,
     save: ref.read(appSettingsProvider.notifier).saveSettings,
@@ -57,16 +57,23 @@ final settingsControllerProvider = Provider<SettingsController?>((ref) {
     setPlayerQuality: (quality) async {
       await ref.read(playerControllerProvider)?.setQuality(quality);
     },
-    diagnostics: ConnectionRepository().diagnostics,
+    initialDiagnostics: diagnostics,
     mediaCache: ref.read(mediaCacheProvider),
     imageCache: ref.read(appImageCacheProvider),
     loadAutoDownloadOnPlay: serviceSettings?.getAutoDownloadOnPlay,
     updateAutoDownloadOnPlay: serviceSettings?.setAutoDownloadOnPlay,
+    loadServiceAccessOrigins: serviceSettings?.getAccessOrigins,
+    updateServiceAccessOrigins: serviceSettings?.updateAccessOrigins,
+    applyServiceEndpoints: ref.read(connectionProvider.notifier).applyEndpoints,
   );
   ref.listen(appSettingsProvider, (previous, next) {
     final updated = next.value;
     if (updated != null) controller.syncSettings(updated);
   });
+  ref.listen(
+    connectionProvider.select((connection) => connection.value?.diagnostics),
+    (previous, next) => controller.syncConnection(next),
+  );
   ref.onDispose(controller.dispose);
   return controller;
 });
@@ -115,11 +122,13 @@ final eventInvalidationProvider = Provider<EventInvalidation>((ref) {
 final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
   ref,
 ) {
-  final connected = ref.watch(connectionProvider).value;
-  if (connected == null) return null;
+  final api = ref.watch(
+    connectionProvider.select((connection) => connection.value?.api),
+  );
+  if (api == null) return null;
   final invalidation = ref.read(eventInvalidationProvider);
   final player = ref.watch(playerControllerProvider);
-  final search = SearchRepository(connected.api);
+  final search = SearchRepository(api);
   final lyricsLoader = search.lyrics;
   final coordinator = EventCoordinator(
     invalidateSources: invalidation.sources,
@@ -149,7 +158,7 @@ final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
     },
   );
   final transport = SseTransport(
-    connected.api,
+    api,
     onConnected: () async {
       await player?.refreshLyricsIfMissing(lyricsLoader);
     },

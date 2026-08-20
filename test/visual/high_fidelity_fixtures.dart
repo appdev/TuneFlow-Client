@@ -12,6 +12,7 @@ import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_controller.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
+import 'package:musicfree_service_client/features/connection/network_type_monitor.dart';
 import 'package:musicfree_service_client/features/home/home_controller.dart';
 import 'package:musicfree_service_client/features/library/library_repository.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
@@ -421,11 +422,13 @@ SettingsController fixtureSettingsController() => SettingsController(
   connect: (_) async {},
   disconnect: () async {},
   setPlayerQuality: (_) async {},
-  diagnostics: (origin) async => ConnectionDiagnostics(
-    origin: origin,
+  initialDiagnostics: ConnectionDiagnostics(
+    origin: 'http://192.168.1.24:23330',
     connected: true,
     latency: const Duration(milliseconds: 18),
     apiVersion: 'v1',
+    networkRoute: NetworkRoute.lan,
+    endpointRole: EndpointRole.lan,
     checkedAt: DateTime(2026),
   ),
 );

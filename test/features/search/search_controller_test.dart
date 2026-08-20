@@ -251,6 +251,55 @@ void main() {
   });
 
   test(
+    'search changes source and category in one collection request',
+    () async {
+      final requestedPaths = <String>[];
+      final controller = controllerWith((request) async {
+        requestedPaths.add(request.url.path);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'list': [
+                {
+                  'id': 'playlist-1',
+                  'kind': 'playlist',
+                  'name': 'Playlist',
+                  'source': 'kw',
+                },
+              ],
+              'total': 1,
+            },
+          }),
+          200,
+        );
+      });
+      controller.state = const SearchState(
+        query: 'wind',
+        source: SearchController.aggregateSource,
+        view: SearchView.tracks,
+        providers: [
+          CatalogProvider(
+            id: 'kw',
+            name: '酷我音乐',
+            searchKinds: {CatalogSearchKind.track, CatalogSearchKind.playlist},
+          ),
+        ],
+      );
+
+      await controller.search(
+        source: 'kw',
+        query: 'wind',
+        view: SearchView.playlists,
+      );
+
+      expect(controller.state.source, 'kw');
+      expect(controller.state.view, SearchView.playlists);
+      expect(controller.state.collections.single.id, 'playlist-1');
+      expect(requestedPaths, ['/api/v1/catalog/playlists/search']);
+    },
+  );
+
+  test(
     'switching categories restores cached results and falls back by source',
     () async {
       final controller = controllerWith((request) async {

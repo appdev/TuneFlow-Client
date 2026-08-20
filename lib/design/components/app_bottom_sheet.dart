@@ -25,6 +25,7 @@ final class AppBottomSheetAction<T> {
     this.key,
     this.enabled = true,
     this.destructive = false,
+    this.selected = false,
   });
 
   final T? value;
@@ -32,6 +33,22 @@ final class AppBottomSheetAction<T> {
   final Key? key;
   final bool enabled;
   final bool destructive;
+  final bool selected;
+}
+
+@immutable
+final class AppBottomSheetSelection<T> {
+  const AppBottomSheetSelection({
+    required this.value,
+    required this.label,
+    this.key,
+    this.enabled = true,
+  });
+
+  final T value;
+  final String label;
+  final Key? key;
+  final bool enabled;
 }
 
 abstract final class AppBottomSheet {
@@ -108,6 +125,57 @@ abstract final class AppBottomSheet {
     String? message,
     required Widget child,
   }) => _showContent<T>(context, title: title, message: message, child: child);
+
+  static Future<T?> showSelection<T>(
+    BuildContext context, {
+    required String title,
+    String? message,
+    required List<AppBottomSheetSelection<T>> options,
+    required T selectedValue,
+  }) {
+    if (options.isEmpty) {
+      throw ArgumentError.value(
+        options.length,
+        'options.length',
+        'A selection sheet requires at least one option.',
+      );
+    }
+    if (!_usesBottomPresentation(context)) {
+      return showContent<T>(
+        context,
+        title: title,
+        message: message,
+        child: _SelectionList<T>(
+          options: options,
+          selectedValue: selectedValue,
+        ),
+      );
+    }
+    final tokens = AppTokens.of(context);
+    return showCupertinoModalPopup<T>(
+      context: context,
+      barrierColor: tokens.overlay,
+      barrierDismissible: true,
+      semanticsDismissible: true,
+      builder: (context) => _ActionSheet<T>(
+        title: title,
+        message: message,
+        scrollable: true,
+        actions: options
+            .map(
+              (option) => AppBottomSheetAction<T>(
+                key: option.key,
+                value: option.value,
+                label: option.label,
+                enabled: option.enabled,
+                selected: option.value == selectedValue,
+              ),
+            )
+            .toList(growable: false),
+        cancelLabel: '取消',
+      ),
+    );
+  }
 
   static Future<T?> showDraggable<T>(
     BuildContext context, {
@@ -193,6 +261,69 @@ abstract final class AppBottomSheet {
           ),
         );
       },
+    );
+  }
+}
+
+final class _SelectionList<T> extends StatelessWidget {
+  const _SelectionList({required this.options, required this.selectedValue});
+
+  final List<AppBottomSheetSelection<T>> options;
+  final T selectedValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 480),
+      child: ListView.builder(
+        shrinkWrap: true,
+        itemCount: options.length,
+        itemBuilder: (context, index) {
+          final option = options[index];
+          final selected = option.value == selectedValue;
+          return Semantics(
+            key: option.key,
+            button: true,
+            enabled: option.enabled,
+            selected: selected,
+            label: option.label,
+            excludeSemantics: true,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppRadii.control),
+                onTap: option.enabled
+                    ? () => Navigator.of(context).pop(option.value)
+                    : null,
+                child: SizedBox(
+                  height: 44,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            option.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (selected)
+                          Icon(
+                            LucideIcons.check,
+                            size: 18,
+                            color: tokens.accent,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -311,12 +442,14 @@ final class _ActionSheet<T> extends StatelessWidget {
     required this.message,
     required this.actions,
     required this.cancelLabel,
+    this.scrollable = false,
   });
 
   final String title;
   final String? message;
   final List<AppBottomSheetAction<T>> actions;
   final String cancelLabel;
+  final bool scrollable;
 
   @override
   Widget build(BuildContext context) {
@@ -377,10 +510,30 @@ final class _ActionSheet<T> extends StatelessWidget {
                         ),
                       ),
                       _Divider(color: tokens.border),
-                      for (var index = 0; index < actions.length; index++) ...[
-                        if (index > 0) _Divider(color: tokens.border),
-                        _ActionRow<T>(action: actions[index]),
-                      ],
+                      if (scrollable)
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.sizeOf(context).height * .52,
+                          ),
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            itemCount: actions.length,
+                            separatorBuilder: (_, _) =>
+                                _Divider(color: tokens.border),
+                            itemBuilder: (context, index) =>
+                                _ActionRow<T>(action: actions[index]),
+                          ),
+                        )
+                      else
+                        for (
+                          var index = 0;
+                          index < actions.length;
+                          index++
+                        ) ...[
+                          if (index > 0) _Divider(color: tokens.border),
+                          _ActionRow<T>(action: actions[index]),
+                        ],
                     ],
                   ),
                 ),
@@ -432,6 +585,7 @@ final class _ActionRow<T> extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: action.enabled,
+      selected: action.selected,
       label: action.label,
       child: Material(
         color: Colors.transparent,

@@ -92,4 +92,29 @@ void main() {
       ),
     );
   });
+
+  test('subsequent requests use a switched origin', () async {
+    final urls = <String>[];
+    final api = ServiceApi(
+      ServiceOrigin.parse('https://external.example'),
+      client: MockClient((request) async {
+        urls.add(request.url.toString());
+        return http.Response(
+          jsonEncode({
+            'data': {'ok': true},
+          }),
+          200,
+        );
+      }),
+    );
+
+    await api.request('GET', '/api/v1/test');
+    api.switchOrigin(ServiceOrigin.parse('http://192.168.1.20:3124'));
+    await api.request('GET', '/api/v1/test');
+
+    expect(urls, [
+      'https://external.example/api/v1/test',
+      'http://192.168.1.20:3124/api/v1/test',
+    ]);
+  });
 }

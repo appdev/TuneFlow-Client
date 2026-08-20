@@ -47,10 +47,13 @@ interface friction as possible.
 
 - Desktop: a quiet full sidebar at desktop width and an icon rail at narrow
   width. Do not place a permanent queue beside unrelated pages.
-- Mobile: five destinations in the existing bottom navigation, with the mini
-  player immediately above it. On both iOS and Android, the bottom navigation
-  is a floating Liquid Glass tab bar and the mini player is its attached
-  accessory. They remain visually distinct surfaces with coordinated geometry.
+- Mobile primary pages: five destinations in the bottom navigation, with the
+  mini player immediately above it. Secondary pages hide the five-destination
+  navigation, retain the mini player when a current track exists, and provide
+  an explicit top back action plus platform/system back behaviour. On both iOS
+  and Android, the bottom navigation is a floating Liquid Glass tab bar and the
+  mini player is its attached accessory. They remain visually distinct surfaces
+  with coordinated geometry.
 - Player: hide desktop sidebar, mobile bottom navigation, and mini player. Show
   an explicit back action and retain platform/system back behaviour.
 
@@ -108,6 +111,8 @@ or shadows locally. A future theme must provide all glass roles.
 ### Mobile navigation behaviour
 
 - Keep the existing five destinations and labels.
+- Only `/`, `/search`, `/discover`, `/playlists`, and `/more` are mobile primary
+  destinations. Other Shell routes default to secondary pages.
 - The floating tab bar respects the device safe area and stays inset from the
   viewport edges.
 - The mini player is an attached accessory immediately above the tab bar. It

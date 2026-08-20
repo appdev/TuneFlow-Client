@@ -7,13 +7,11 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 void main() {
   setUpAll(() async {
-    final bodyFont = FontLoader('NotoSansCJKsc')
-      ..addFont(rootBundle.load('assets/fonts/NotoSansCJKsc-Regular.otf'));
     final iconFont = FontLoader('packages/lucide_icons_flutter/Lucide')
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
       );
-    await Future.wait([bodyFont.load(), iconFont.load()]);
+    await iconFont.load();
   });
 
   for (final mode in [ThemeMode.light, ThemeMode.dark]) {

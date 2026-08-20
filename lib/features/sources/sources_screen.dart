@@ -12,8 +12,9 @@ import 'source_repository.dart';
 import 'sources_controller.dart';
 
 final class SourcesScreen extends StatefulWidget {
-  const SourcesScreen({super.key, required this.controller});
+  const SourcesScreen({super.key, required this.controller, this.onBack});
   final SourcesController controller;
+  final VoidCallback? onBack;
 
   @override
   State<SourcesScreen> createState() => _SourcesScreenState();
@@ -65,9 +66,10 @@ final class _SourcesScreenState extends State<SourcesScreen> {
           ),
           children: [
             if (mobile)
-              const AppMobilePageHeader(
+              AppMobilePageHeader(
                 title: '音源管理',
                 eyebrow: 'GET /api/v1/sources',
+                onBack: widget.onBack,
               )
             else ...[
               const Text('GET /api/v1/sources', style: AppTypography.metadata),

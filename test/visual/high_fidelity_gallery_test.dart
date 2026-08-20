@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:musicfree_service_client/api/models.dart';
-import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/app/app_shell.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
@@ -37,7 +36,6 @@ Widget shellHarness({
 }) {
   final api = fixtureApi();
   final connected = ConnectedService(
-    origin: ServiceOrigin.parse('http://service.local'),
     api: api,
     capabilities: const Capabilities(
       runtime: 'service',
@@ -88,12 +86,6 @@ void main() {
       enablePerformanceMonitor: false,
       warmUpImpellerPipeline: false,
     );
-    final chineseFontLoader = FontLoader('NotoSansCJKsc')
-      ..addFont(rootBundle.load('assets/fonts/NotoSansCJKsc-Regular.otf'));
-    final displayFontLoader = FontLoader('NotoSerifSC')
-      ..addFont(
-        rootBundle.load('assets/fonts/NotoSerifSC-VariableFont_wght.ttf'),
-      );
     final dataFontLoader = FontLoader('IBMPlexMono')
       ..addFont(rootBundle.load('assets/fonts/IBMPlexMono-Medium.ttf'));
     final iconLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
@@ -103,8 +95,6 @@ void main() {
     final materialIconLoader = FontLoader('MaterialIcons')
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait([
-      chineseFontLoader.load(),
-      displayFontLoader.load(),
       dataFontLoader.load(),
       iconLoader.load(),
       materialIconLoader.load(),
@@ -128,7 +118,6 @@ void main() {
             onSearch: () {},
             onPlaylists: () {},
             onDownloads: () {},
-            onSettings: () {},
             player: player,
             now: () => DateTime(2026, 1, 1, 20),
           ),

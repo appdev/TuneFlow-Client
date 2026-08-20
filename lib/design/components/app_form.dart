@@ -16,8 +16,10 @@ final class AppTextField extends StatelessWidget {
     this.onChanged,
     this.onSubmitted,
     this.keyboardType,
+    this.textInputAction,
     this.leading,
     this.trailing,
+    this.padding,
     this.enabled = true,
     this.surface = AppFieldSurface.standard,
     this.groupId,
@@ -30,8 +32,10 @@ final class AppTextField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
   final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
   final Widget? leading;
   final Widget? trailing;
+  final EdgeInsetsGeometry? padding;
   final bool enabled;
   final AppFieldSurface surface;
   final Object? groupId;
@@ -46,8 +50,10 @@ final class AppTextField extends StatelessWidget {
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       keyboardType: keyboardType,
+      textInputAction: textInputAction,
       leading: leading,
       trailing: trailing,
+      padding: padding,
       enabled: enabled,
       groupId: groupId,
     );

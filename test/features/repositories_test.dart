@@ -8,10 +8,12 @@ import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_exception.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
+import 'package:musicfree_service_client/features/connection/network_type_monitor.dart';
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/player/playback_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
 import 'package:musicfree_service_client/features/search/search_repository.dart';
+import 'package:musicfree_service_client/features/settings/service_settings_repository.dart';
 
 ServiceApi apiWith(
   Future<http.Response> Function(http.Request request) handler,
@@ -24,6 +26,39 @@ http.Response data(Object? value, [int status = 200]) =>
     http.Response(jsonEncode({'data': value}), status);
 
 void main() {
+  test('Service access origins round trip through shared settings', () async {
+    final requests = <http.Request>[];
+    final repository = ServiceSettingsRepository(
+      apiWith((request) async {
+        requests.add(request);
+        return data({
+          'service.lanOrigin': 'http://192.168.1.20:3124',
+          'service.externalOrigin': 'https://music.example.com',
+        });
+      }),
+    );
+
+    expect(
+      await repository.getAccessOrigins(),
+      const ServiceAccessOrigins(
+        lanOrigin: 'http://192.168.1.20:3124',
+        externalOrigin: 'https://music.example.com',
+      ),
+    );
+    await repository.updateAccessOrigins(
+      const ServiceAccessOrigins(
+        lanOrigin: 'http://192.168.1.20:3124',
+        externalOrigin: 'https://music.example.com',
+      ),
+    );
+
+    expect(requests.map((request) => request.method), ['GET', 'PATCH']);
+    expect(jsonDecode(requests.last.body), {
+      'service.lanOrigin': 'http://192.168.1.20:3124',
+      'service.externalOrigin': 'https://music.example.com',
+    });
+  });
+
   test('connection checks health then v1 capabilities', () async {
     final paths = <String>[];
     final repository = ConnectionRepository(
@@ -44,6 +79,45 @@ void main() {
     expect(paths, ['/api/v1/health', '/api/v1/capabilities']);
     expect(connected.origin.uri.toString(), 'http://service.local');
   });
+
+  test(
+    'connected snapshots retain API identity across diagnostics updates',
+    () {
+      final api = apiWith((_) async => data(null));
+      final unreachable = ConnectionDiagnostics(
+        origin: 'http://service.local',
+        connected: false,
+        latency: null,
+        apiVersion: null,
+        networkRoute: NetworkRoute.lan,
+        checkedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      );
+      final original = ConnectedService(
+        api: api,
+        capabilities: const Capabilities(
+          runtime: 'service',
+          apiVersion: 'v1',
+          features: {},
+        ),
+        diagnostics: unreachable,
+      );
+      final reachable = ConnectionDiagnostics(
+        origin: 'https://external.example',
+        connected: true,
+        latency: const Duration(milliseconds: 12),
+        apiVersion: 'v1',
+        networkRoute: NetworkRoute.external,
+        checkedAt: DateTime.fromMillisecondsSinceEpoch(2),
+      );
+
+      api.switchOrigin(ServiceOrigin.parse('https://external.example'));
+      final copied = original.copyWith(diagnostics: reachable);
+
+      expect(identical(original.api, copied.api), isTrue);
+      expect(copied.origin.uri.toString(), 'https://external.example');
+      expect(copied.diagnostics, same(reachable));
+    },
+  );
 
   test(
     'playlist listing explicitly requests the complete Service library',

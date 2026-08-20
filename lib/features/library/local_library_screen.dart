@@ -10,6 +10,7 @@ import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_playback_button.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
 import '../../design/components/track_actions.dart';
@@ -24,11 +25,13 @@ final class LocalLibraryScreen extends StatefulWidget {
     required this.controller,
     required this.playlists,
     required this.playTracks,
+    this.onBack,
   });
 
   final LocalLibraryController controller;
   final PlaylistRepository playlists;
   final PlayTracks playTracks;
+  final VoidCallback? onBack;
 
   @override
   State<LocalLibraryScreen> createState() => _LocalLibraryScreenState();
@@ -141,6 +144,16 @@ final class _LocalLibraryScreenState extends State<LocalLibraryScreen> {
             ? ListView(
                 key: const Key('local-library-mobile-scroll'),
                 children: [
+                  if (widget.onBack case final onBack?) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: AppMobileBackButton(onPressed: onBack),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                  ],
                   if (state.error != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),

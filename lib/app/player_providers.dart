@@ -14,19 +14,21 @@ import '../storage/app_settings_controller.dart';
 import 'app_providers.dart';
 
 final playerControllerProvider = Provider<PlayerController?>((ref) {
-  final connected = ref.watch(connectionProvider).value;
-  if (connected == null) return null;
+  final api = ref.watch(
+    connectionProvider.select((connection) => connection.value?.api),
+  );
+  if (api == null) return null;
   final quality =
       ref.read(appSettingsProvider).value?.quality.apiValue ?? '128k';
   final showTranslation =
       ref.read(appSettingsProvider).value?.showTranslation ?? true;
   final controller = PlayerController(
-    resolver: PlaybackRepository(connected.api),
+    resolver: PlaybackRepository(api),
     audio: ref.read(audioPortProvider),
     quality: quality,
     showTranslation: showTranslation,
     sessions: PlaybackHistoryRepository(
-      connected.api,
+      api,
       platform: currentPlaybackPlatform(),
     ),
   );
@@ -37,11 +39,13 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
 final currentTrackActionsProvider = Provider<CurrentTrackActionsController?>((
   ref,
 ) {
-  final connected = ref.watch(connectionProvider).value;
+  final api = ref.watch(
+    connectionProvider.select((connection) => connection.value?.api),
+  );
   final player = ref.watch(playerControllerProvider);
-  if (connected == null || player == null) return null;
-  final playlists = PlaylistRepository(connected.api);
-  final downloads = DownloadRepository(connected.api);
+  if (api == null || player == null) return null;
+  final playlists = PlaylistRepository(api);
+  final downloads = DownloadRepository(api);
   final controller = CurrentTrackActionsController(
     player: player,
     favorites: LovePlaylistFavorites(playlists),

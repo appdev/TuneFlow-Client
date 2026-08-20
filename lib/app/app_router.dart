@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +22,8 @@ import '../features/home/home_screen.dart';
 import '../features/library/library_repository.dart';
 import '../features/library/local_library_controller.dart';
 import '../features/library/local_library_screen.dart';
+import '../features/more/about_screen.dart';
+import '../features/more/app_update.dart';
 import '../features/more/more_screen.dart';
 import '../features/player/player_controller.dart';
 import '../features/player/current_track_actions_controller.dart';
@@ -36,6 +40,7 @@ import '../features/search/search_repository.dart';
 import '../features/search/search_controller.dart' as feature;
 import '../features/search/search_screen.dart';
 import '../features/settings/settings_controller.dart';
+import '../features/settings/connection_settings_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/sources/source_repository.dart';
 import '../features/sources/sources_controller.dart';
@@ -61,6 +66,9 @@ GoRouter buildAppRouter({
   required int Function(String id) readPlaylistDetailVersion,
   required Listenable refreshListenable,
   required Future<void> Function() disconnect,
+  required UpdateChecker updateChecker,
+  required AppPackageInfoLoader loadPackageInfo,
+  required ExternalUriOpener openExternalUri,
 }) {
   final connection = readConnection();
   final connected = connection.value;
@@ -72,12 +80,25 @@ GoRouter buildAppRouter({
   CurrentTrackActionsController requireCurrentTrackActions() =>
       readCurrentTrackActions()!;
 
+  VoidCallback secondaryBack(BuildContext context, String fallbackLocation) =>
+      () {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go(fallbackLocation);
+        }
+      };
+
   Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     await requirePlayer().playTracks(tracks, startIndex: startIndex);
   }
 
-  Widget onlinePlaylistRoute(GoRouterState state) {
+  Widget onlinePlaylistRoute(
+    BuildContext context,
+    GoRouterState state, {
+    required String fallbackLocation,
+  }) {
     final connected = requireConnected();
     final source = state.pathParameters['source']!;
     final playlistId = state.pathParameters['playlistId']!;
@@ -94,37 +115,43 @@ GoRouter buildAppRouter({
       ),
       player: requirePlayer(),
       downloads: DownloadRepository(connected.api),
+      onBack: secondaryBack(context, fallbackLocation),
     );
   }
 
-  Widget localLibraryRoute() {
+  Widget localLibraryRoute(BuildContext context) {
     final connected = requireConnected();
     return LocalLibraryScreen(
       key: ValueKey('local-library-${readLibraryVersion()}'),
       controller: LocalLibraryController(LibraryRepository(connected.api)),
       playlists: PlaylistRepository(connected.api),
       playTracks: playTracks,
+      onBack: secondaryBack(context, '/playlists'),
     );
   }
 
-  Widget downloadsRoute() => DownloadsScreen(
+  Widget downloadsRoute(BuildContext context) => DownloadsScreen(
     key: ValueKey('downloads-${readDownloadVersion()}'),
     controller: DownloadsController(DownloadRepository(requireConnected().api)),
+    onBack: secondaryBack(context, '/more'),
   );
 
-  Widget sourcesRoute() => SourcesScreen(
+  Widget sourcesRoute(BuildContext context) => SourcesScreen(
     key: sourceRouteKey(readSourceVersion()),
     controller: SourcesController(SourceRepository(requireConnected().api)),
+    onBack: secondaryBack(context, '/more'),
   );
 
   bool isMobileLayout(BuildContext context) =>
       classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
 
-  void openDownloads(BuildContext context) =>
-      context.goNamed(isMobileLayout(context) ? 'more-downloads' : 'downloads');
-
-  void openSettings(BuildContext context) =>
-      context.goNamed(isMobileLayout(context) ? 'more-settings' : 'settings');
+  void openDownloads(BuildContext context) {
+    if (isMobileLayout(context)) {
+      unawaited(context.pushNamed('more-downloads'));
+      return;
+    }
+    context.goNamed('downloads');
+  }
 
   Widget playerRoute(BuildContext context) {
     final connected = requireConnected();
@@ -194,9 +221,8 @@ GoRouter buildAppRouter({
           }
 
           return AppShell(
-            key: ObjectKey(connected),
             connected: connected,
-            onDisconnect: disconnect,
+            onConnectionSettings: () => context.goNamed('settings-connection'),
             player: requirePlayer(),
             currentTrackActions: requireCurrentTrackActions(),
             location: state.uri.path,
@@ -237,7 +263,6 @@ GoRouter buildAppRouter({
                       onSearch: () => context.goNamed('search'),
                       onPlaylists: () => context.goNamed('playlists'),
                       onDownloads: () => openDownloads(context),
-                      onSettings: () => openSettings(context),
                       player: requirePlayer(),
                     ),
                   );
@@ -260,7 +285,6 @@ GoRouter buildAppRouter({
                     playlists: PlaylistRepository(connected.api),
                     downloads: DownloadRepository(connected.api),
                     player: requirePlayer(),
-                    onSettings: () => openSettings(context),
                     onOpenCollection: (collection) {
                       if (collection.kind == CatalogSearchKind.playlist) {
                         context.pushNamed(
@@ -294,7 +318,11 @@ GoRouter buildAppRouter({
                   GoRoute(
                     path: 'playlist/:source/:playlistId',
                     name: 'search-online-playlist',
-                    builder: (context, state) => onlinePlaylistRoute(state),
+                    builder: (context, state) => onlinePlaylistRoute(
+                      context,
+                      state,
+                      fallbackLocation: '/search',
+                    ),
                   ),
                   GoRoute(
                     path: 'album/:source/:albumId',
@@ -326,6 +354,7 @@ GoRouter buildAppRouter({
                         player: requirePlayer(),
                         playlists: PlaylistRepository(connected.api),
                         downloads: DownloadRepository(connected.api),
+                        onBack: secondaryBack(context, '/search'),
                       );
                     },
                   ),
@@ -355,7 +384,11 @@ GoRouter buildAppRouter({
                   GoRoute(
                     path: 'playlist/:source/:playlistId',
                     name: 'discover-online-playlist',
-                    builder: (context, state) => onlinePlaylistRoute(state),
+                    builder: (context, state) => onlinePlaylistRoute(
+                      context,
+                      state,
+                      fallbackLocation: '/discover',
+                    ),
                   ),
                 ],
               ),
@@ -403,6 +436,7 @@ GoRouter buildAppRouter({
                         onDeleted: () => context.canPop()
                             ? context.pop()
                             : context.goNamed('playlists'),
+                        onBack: secondaryBack(context, '/playlists'),
                       );
                     },
                   ),
@@ -411,7 +445,7 @@ GoRouter buildAppRouter({
               GoRoute(
                 path: '/library',
                 name: 'local-library',
-                builder: (context, state) => localLibraryRoute(),
+                builder: (context, state) => localLibraryRoute(context),
               ),
             ],
           ),
@@ -427,6 +461,9 @@ GoRouter buildAppRouter({
                     onSources: () => context.pushNamed('more-sources'),
                     onSettings: () => context.pushNamed('more-settings'),
                     onDownloads: () => context.pushNamed('more-downloads'),
+                    onAbout: () => context.pushNamed('more-about'),
+                    updateChecker: updateChecker,
+                    openExternalUri: openExternalUri,
                     onDisconnect: disconnect,
                   );
                 },
@@ -434,18 +471,41 @@ GoRouter buildAppRouter({
                   GoRoute(
                     path: 'downloads',
                     name: 'more-downloads',
-                    builder: (context, state) => downloadsRoute(),
+                    builder: (context, state) => downloadsRoute(context),
                   ),
                   GoRoute(
                     path: 'settings',
                     name: 'more-settings',
-                    builder: (context, state) =>
-                        SettingsScreen(controller: readSettings()!),
+                    builder: (context, state) => SettingsScreen(
+                      controller: readSettings()!,
+                      onBack: secondaryBack(context, '/more'),
+                      onConnectionSettings: () =>
+                          context.pushNamed('more-connection-settings'),
+                    ),
+                    routes: [
+                      GoRoute(
+                        path: 'connection',
+                        name: 'more-connection-settings',
+                        builder: (context, state) => ConnectionSettingsScreen(
+                          controller: readSettings()!,
+                          onBack: secondaryBack(context, '/more/settings'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'about',
+                    name: 'more-about',
+                    builder: (context, state) => AboutScreen(
+                      loadPackageInfo: loadPackageInfo,
+                      openExternalUri: openExternalUri,
+                      onBack: secondaryBack(context, '/more'),
+                    ),
                   ),
                   GoRoute(
                     path: 'sources',
                     name: 'more-sources',
-                    builder: (context, state) => sourcesRoute(),
+                    builder: (context, state) => sourcesRoute(context),
                   ),
                 ],
               ),
@@ -470,12 +530,17 @@ GoRouter buildAppRouter({
                     extra: playlist,
                   ),
                   playTracks: playTracks,
+                  onBack: secondaryBack(context, '/discover'),
                 ),
                 routes: [
                   GoRoute(
                     path: ':source/:playlistId',
                     name: 'online-playlist',
-                    builder: (context, state) => onlinePlaylistRoute(state),
+                    builder: (context, state) => onlinePlaylistRoute(
+                      context,
+                      state,
+                      fallbackLocation: '/discover',
+                    ),
                   ),
                 ],
               ),
@@ -492,6 +557,7 @@ GoRouter buildAppRouter({
                   onSearch: () => context.goNamed('search'),
                   playTracks: playTracks,
                   playlists: PlaylistRepository(requireConnected().api),
+                  onBack: secondaryBack(context, '/discover'),
                 ),
               ),
             ],
@@ -501,7 +567,7 @@ GoRouter buildAppRouter({
               GoRoute(
                 path: '/downloads',
                 name: 'downloads',
-                builder: (context, state) => downloadsRoute(),
+                builder: (context, state) => downloadsRoute(context),
               ),
             ],
           ),
@@ -510,8 +576,22 @@ GoRouter buildAppRouter({
               GoRoute(
                 path: '/settings',
                 name: 'settings',
-                builder: (context, state) =>
-                    SettingsScreen(controller: readSettings()!),
+                builder: (context, state) => SettingsScreen(
+                  controller: readSettings()!,
+                  onBack: secondaryBack(context, '/more'),
+                  onConnectionSettings: () =>
+                      context.pushNamed('settings-connection'),
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'connection',
+                    name: 'settings-connection',
+                    builder: (context, state) => ConnectionSettingsScreen(
+                      controller: readSettings()!,
+                      onBack: secondaryBack(context, '/settings'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -520,7 +600,7 @@ GoRouter buildAppRouter({
               GoRoute(
                 path: '/sources',
                 name: 'sources',
-                builder: (context, state) => sourcesRoute(),
+                builder: (context, state) => sourcesRoute(context),
               ),
             ],
           ),

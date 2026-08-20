@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:toastr_flutter/toastr.dart';
 
 final class AppNotice extends StatelessWidget {
   const AppNotice({
@@ -49,20 +50,49 @@ final class AppNotice extends StatelessWidget {
   }
 }
 
-Object? showAppMessage(
+String showAppMessage(
   BuildContext context, {
   required String title,
   String? message,
   bool destructive = false,
 }) {
-  final toast = destructive
-      ? ShadToast.destructive(
-          title: Text(title),
-          description: message == null ? null : Text(message),
-        )
-      : ShadToast(
-          title: Text(title),
-          description: message == null ? null : Text(message),
-        );
-  return ShadSonner.of(context).show(toast);
+  final hasMessage = message?.isNotEmpty ?? false;
+  final toastMessage = hasMessage ? message! : title;
+  final toastTitle = hasMessage ? title : null;
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final options = ToastrOptions(
+    duration: const Duration(seconds: 3),
+    position: ToastrPosition.topCenter,
+    showProgressBar: false,
+    showCloseButton: false,
+    theme: isDark ? ToastrTheme.dark : ToastrTheme.light,
+    content: _AppToastContent(message: toastMessage, isDark: isDark),
+  );
+
+  return Toastr.blank(toastMessage, title: toastTitle, options: options);
+}
+
+final class _AppToastContent extends StatelessWidget {
+  const _AppToastContent({required this.message, required this.isDark});
+
+  final String message;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = isDark
+        ? const Color(0xFFF5F5F4)
+        : const Color(0xFF363636);
+    return Text(
+      message,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+        height: 1.3,
+        color: textColor,
+        decoration: TextDecoration.none,
+      ),
+    );
+  }
 }

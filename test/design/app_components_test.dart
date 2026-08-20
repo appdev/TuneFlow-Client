@@ -22,13 +22,15 @@ import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:musicfree_service_client/l10n/app_localizations.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:toastr_flutter/toastr.dart';
 
 import '../support/fake_app_image_cache.dart';
 import '../support/test_image_cache_manager.dart';
 
 void main() {
-  test('typography uses the bundled Chinese UI font', () {
-    expect(AppTypography.fontFamily, 'NotoSansCJKsc');
+  test('body typography leaves Chinese glyph selection to the platform', () {
+    expect(AppTypography.title.fontFamily, isNull);
+    expect(AppTypography.body.fontFamily, isNull);
   });
 
   Track track(String id) => Track.fromJson({
@@ -356,6 +358,44 @@ void main() {
     expect(value, 'http://service');
   });
 
+  testWidgets('AppTextField forwards custom input padding', (tester) async {
+    const padding = EdgeInsets.symmetric(horizontal: 4, vertical: 4);
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: const Scaffold(
+          body: AppTextField(placeholder: '搜索音乐', padding: padding),
+        ),
+      ),
+    );
+
+    expect(tester.widget<ShadInput>(find.byType(ShadInput)).padding, padding);
+  });
+
+  testWidgets('AppTextField exposes its configured submit action', (
+    tester,
+  ) async {
+    var submitted = '';
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: AppTextField(
+            placeholder: '搜索音乐',
+            textInputAction: TextInputAction.search,
+            onSubmitted: (value) => submitted = value,
+          ),
+        ),
+      ),
+    );
+
+    final input = tester.widget<EditableText>(find.byType(EditableText));
+    expect(input.textInputAction, TextInputAction.search);
+    await tester.enterText(find.byType(EditableText), 'Jay');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    expect(submitted, 'Jay');
+  });
+
   testWidgets('AppNotice exposes destructive errors persistently', (
     tester,
   ) async {
@@ -426,13 +466,13 @@ void main() {
     expect(await result, isTrue);
   });
 
-  testWidgets('showAppMessage displays transient Sonner feedback', (
-    tester,
-  ) async {
+  testWidgets('showAppMessage displays icon-free feedback', (tester) async {
+    addTearDown(Toastr.clearAll);
     await tester.pumpWidget(
       ShadApp(
         theme: buildLightTheme(),
-        builder: (context, child) => ShadAppBuilder(child: child!),
+        builder: (context, child) =>
+            Toastr.builder(context, ShadAppBuilder(child: child!)),
         home: Builder(
           builder: (context) => AppButton(
             onPressed: () =>
@@ -445,17 +485,43 @@ void main() {
 
     await tester.tap(find.text('触发'));
     await tester.pump();
-    expect(find.text('已保存'), findsOneWidget);
+    expect(find.text('已保存'), findsNothing);
     expect(find.text('设置已更新'), findsOneWidget);
+    final toast = tester.widget<ToastrWidget>(find.byType(ToastrWidget));
+    expect(toast.config.type, ToastrType.blank);
+    expect(toast.config.title, '已保存');
+    expect(toast.config.message, '设置已更新');
+    expect(toast.config.position, ToastrPosition.topCenter);
+    expect(toast.config.duration, const Duration(seconds: 3));
+    expect(toast.config.showProgressBar, isFalse);
+    expect(toast.config.showCloseButton, isFalse);
+    expect(tester.widget<Text>(find.text('设置已更新')).textAlign, TextAlign.center);
+    expect(
+      find.descendant(
+        of: find.byType(ToastrWidget),
+        matching: find.byType(Text),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ToastrWidget),
+        matching: find.byType(CustomPaint),
+      ),
+      findsNothing,
+    );
+    Toastr.clearAll();
   });
 
   testWidgets('showAppMessage can display a title-only confirmation', (
     tester,
   ) async {
+    addTearDown(Toastr.clearAll);
     await tester.pumpWidget(
       ShadApp(
         theme: buildLightTheme(),
-        builder: (context, child) => ShadAppBuilder(child: child!),
+        builder: (context, child) =>
+            Toastr.builder(context, ShadAppBuilder(child: child!)),
         home: Builder(
           builder: (context) => AppButton(
             onPressed: () => showAppMessage(context, title: '已加入下载队列'),
@@ -470,11 +536,78 @@ void main() {
     expect(find.text('已加入下载队列'), findsOneWidget);
     expect(find.text('完成'), findsNothing);
     expect(find.text('已交给 Service 下载'), findsNothing);
+    final toast = tester.widget<ToastrWidget>(find.byType(ToastrWidget));
+    expect(toast.config.type, ToastrType.blank);
+    expect(toast.config.title, isNull);
+    expect(toast.config.message, '已加入下载队列');
+    expect(
+      tester.widget<Text>(find.text('已加入下载队列')).textAlign,
+      TextAlign.center,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ToastrWidget),
+        matching: find.byType(Text),
+      ),
+      findsOneWidget,
+    );
+    Toastr.clearAll();
   });
 
-  testWidgets('showAppMessage is upper-middle on desktop and mobile', (
+  testWidgets('showAppMessage keeps icon-free feedback in dark mode', (
     tester,
   ) async {
+    addTearDown(Toastr.clearAll);
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildDarkTheme(),
+        builder: (context, child) =>
+            Toastr.builder(context, ShadAppBuilder(child: child!)),
+        home: Builder(
+          builder: (context) => AppButton(
+            onPressed: () => showAppMessage(
+              context,
+              title: '操作失败',
+              message: '请稍后重试',
+              destructive: true,
+            ),
+            child: const Text('触发错误'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('触发错误'));
+    await tester.pump();
+
+    expect(find.text('操作失败'), findsNothing);
+    final toast = tester.widget<ToastrWidget>(find.byType(ToastrWidget));
+    expect(toast.config.type, ToastrType.blank);
+    expect(toast.config.title, '操作失败');
+    expect(toast.config.message, '请稍后重试');
+    expect(toast.config.theme, ToastrTheme.dark);
+    expect(tester.widget<Text>(find.text('请稍后重试')).textAlign, TextAlign.center);
+    expect(
+      find.descendant(
+        of: find.byType(ToastrWidget),
+        matching: find.byType(Text),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ToastrWidget),
+        matching: find.byType(CustomPaint),
+      ),
+      findsNothing,
+    );
+    Toastr.clearAll();
+  });
+
+  testWidgets('showAppMessage is top-center on desktop and mobile', (
+    tester,
+  ) async {
+    addTearDown(Toastr.clearAll);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -485,7 +618,8 @@ void main() {
       await tester.pumpWidget(
         ShadApp(
           theme: buildLightTheme(),
-          builder: (context, child) => ShadAppBuilder(child: child!),
+          builder: (context, child) =>
+              Toastr.builder(context, ShadAppBuilder(child: child!)),
           home: Builder(
             builder: (context) => AppButton(
               onPressed: () => showAppMessage(context, title: toastTitle),
@@ -498,14 +632,13 @@ void main() {
       await tester.tap(find.text('触发定位'));
       await tester.pump();
 
-      final toast = find.ancestor(
-        of: find.text(toastTitle),
-        matching: find.byType(ShadToast),
-      );
+      final toast = find.byType(ToastrWidget);
       final toastCenter = tester.getCenter(toast);
       expect(toastCenter.dx, closeTo(size.width / 2, 1));
-      expect(toastCenter.dy, greaterThan(size.height * .25));
-      expect(toastCenter.dy, lessThan(size.height * .40));
+      expect(toastCenter.dy, lessThan(size.height * .25));
+
+      Toastr.clearAll();
+      await tester.pump();
     }
   });
 

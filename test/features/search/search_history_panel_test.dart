@@ -49,9 +49,7 @@ void main() {
     expect(cleared, 1);
   });
 
-  testWidgets('mobile history panel is inline without a desktop shadow', (
-    tester,
-  ) async {
+  testWidgets('mobile history panel uses a floating surface', (tester) async {
     await tester.pumpWidget(
       harness(
         SizedBox(
@@ -71,6 +69,7 @@ void main() {
       find.byKey(const Key('search-history-panel')),
     );
     final decoration = panel.decoration! as BoxDecoration;
-    expect(decoration.boxShadow, isNull);
+    expect(decoration.border, isNotNull);
+    expect(decoration.boxShadow, isNotEmpty);
   });
 }

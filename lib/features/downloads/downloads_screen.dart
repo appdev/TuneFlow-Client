@@ -24,8 +24,9 @@ import 'downloads_controller.dart';
 enum _DownloadAction { start, pause, resume, delete }
 
 final class DownloadsScreen extends StatefulWidget {
-  const DownloadsScreen({super.key, required this.controller});
+  const DownloadsScreen({super.key, required this.controller, this.onBack});
   final DownloadsController controller;
+  final VoidCallback? onBack;
 
   @override
   State<DownloadsScreen> createState() => _DownloadsScreenState();
@@ -173,6 +174,7 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
                       AppMobilePageHeader(
                         title: '下载',
                         eyebrow: '离线曲库',
+                        onBack: widget.onBack,
                         actions: [
                           IconButton(
                             key: const Key('clear-download-history'),

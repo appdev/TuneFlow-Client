@@ -68,7 +68,6 @@ void main() {
           onSearch: () {},
           onPlaylists: () {},
           onDownloads: () {},
-          onSettings: () {},
           now: () => DateTime(2026, 1, 1, 20),
         ),
       ),
@@ -76,7 +75,7 @@ void main() {
 
     expect(find.byKey(const Key('home-search')), findsOneWidget);
     expect(find.byKey(const Key('home-downloads')), findsOneWidget);
-    expect(find.byKey(const Key('home-settings')), findsOneWidget);
+    expect(find.byKey(const Key('home-settings')), findsNothing);
     expect(find.text('我的歌单'), findsOneWidget);
     expect(find.textContaining('晚上好'), findsOneWidget);
     final playlistMetric = tester.widget<Text>(find.text('2 个歌单'));
@@ -141,7 +140,6 @@ void main() {
           onSearch: () {},
           onPlaylists: () {},
           onDownloads: () {},
-          onSettings: () {},
         ),
       ),
     );
@@ -205,7 +203,6 @@ void main() {
             onSearch: () {},
             onPlaylists: () {},
             onDownloads: () {},
-            onSettings: () {},
           ),
         ),
       );
@@ -273,7 +270,6 @@ void main() {
           onSearch: () {},
           onPlaylists: () {},
           onDownloads: () {},
-          onSettings: () {},
         ),
       ),
     );
@@ -282,6 +278,7 @@ void main() {
     expect(find.byKey(const Key('home-mobile-masthead')), findsOneWidget);
     expect(find.byKey(const Key('brand-logo')), findsOneWidget);
     expect(find.text('TuneFlow'), findsOneWidget);
+    expect(find.byTooltip('设置'), findsNothing);
     expect(find.byType(AppGlassSurface), findsWidgets);
     expect(find.text('继续听点熟悉的。'), findsOneWidget);
     expect(find.byKey(const Key('home-feature-card')), findsOneWidget);
@@ -370,7 +367,6 @@ void main() {
           onSearch: () {},
           onPlaylists: () {},
           onDownloads: () {},
-          onSettings: () {},
         ),
       ),
     );

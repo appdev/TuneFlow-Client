@@ -9,6 +9,7 @@ import '../../design/app_breakpoints.dart';
 import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
 import '../../design/design_tokens.dart';
@@ -29,12 +30,14 @@ final class AlbumDetailScreen extends StatefulWidget {
     required this.player,
     required this.playlists,
     required this.downloads,
+    this.onBack,
   });
 
   final AlbumDetailController controller;
   final PlayerController player;
   final PlaylistRepository playlists;
   final DownloadRepository downloads;
+  final VoidCallback? onBack;
 
   @override
   State<AlbumDetailScreen> createState() => _AlbumDetailScreenState();
@@ -265,6 +268,13 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       final contents = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (mobile && widget.onBack != null) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: AppMobileBackButton(onPressed: widget.onBack!),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+          ],
           _AlbumHero(album: album, mobile: mobile, onPlayAll: _playAll),
           if (state.unsupported) ...[
             const SizedBox(height: 14),

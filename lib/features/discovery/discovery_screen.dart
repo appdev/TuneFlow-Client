@@ -37,6 +37,7 @@ final class DiscoveryScreen extends StatefulWidget {
     this.playTracks,
     this.playlists,
     this.embedded = false,
+    this.onBack,
   });
 
   final SearchRepository repository;
@@ -46,6 +47,7 @@ final class DiscoveryScreen extends StatefulWidget {
   final PlayTracks? playTracks;
   final PlaylistRepository? playlists;
   final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<DiscoveryScreen> createState() => _DiscoveryScreenState();
@@ -184,7 +186,11 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
             ),
             children: [
               if (!widget.embedded) ...[
-                _PageHeader(charts: charts, mobile: mobile),
+                _PageHeader(
+                  charts: charts,
+                  mobile: mobile,
+                  onBack: widget.onBack,
+                ),
                 const SizedBox(height: 18),
               ],
               _ProviderChips(
@@ -210,15 +216,17 @@ final class _DiscoveryScreenState extends State<DiscoveryScreen> {
 }
 
 final class _PageHeader extends StatelessWidget {
-  const _PageHeader({required this.charts, required this.mobile});
+  const _PageHeader({required this.charts, required this.mobile, this.onBack});
   final bool charts;
   final bool mobile;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) => mobile
       ? AppMobilePageHeader(
           title: charts ? '排行榜' : '歌单广场',
           eyebrow: charts ? '每天更新' : '动态平台 · Service API',
+          onBack: onBack,
         )
       : Column(
           crossAxisAlignment: CrossAxisAlignment.start,

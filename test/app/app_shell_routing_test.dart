@@ -8,10 +8,18 @@ void main() {
     expect(navigationSelectionForLocation('/library'), 'playlists');
     expect(navigationSelectionForLocation('/square/wy/list-1'), 'square');
     expect(navigationSelectionForLocation('/settings'), 'settings');
+    expect(navigationSelectionForLocation('/settings/connection'), 'settings');
   });
 
   test('secondary mobile routes remain grouped under more', () {
-    for (final location in ['/downloads', '/settings', '/sources', '/more']) {
+    for (final location in [
+      '/downloads',
+      '/settings',
+      '/settings/connection',
+      '/more/settings/connection',
+      '/sources',
+      '/more',
+    ]) {
       expect(
         navigationSelectionForLocation(location, mobile: true),
         'more',
@@ -28,6 +36,38 @@ void main() {
       navigationSelectionForLocation('/library', mobile: true),
       'playlists',
     );
+  });
+
+  test('mobile primary navigation appears only on exact primary paths', () {
+    for (final location in const [
+      '/',
+      '/search',
+      '/discover',
+      '/playlists',
+      '/more',
+    ]) {
+      expect(showsMobilePrimaryNavigation(location), isTrue, reason: location);
+    }
+
+    for (final location in const [
+      '/search/playlist/kw/list-1',
+      '/search/album/kw/album-1',
+      '/discover/playlist/kw/list-1',
+      '/playlists/love',
+      '/library',
+      '/more/downloads',
+      '/more/settings',
+      '/more/sources',
+      '/more/about',
+      '/square',
+      '/charts',
+      '/downloads',
+      '/settings',
+      '/sources',
+      '/future-secondary',
+    ]) {
+      expect(showsMobilePrimaryNavigation(location), isFalse, reason: location);
+    }
   });
 
   test('source route identity changes with source invalidation version', () {

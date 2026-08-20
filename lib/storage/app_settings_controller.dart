@@ -24,4 +24,26 @@ final class AppSettingsController extends AsyncNotifier<AppSettings> {
       current.copyWith(origin: origin, clearOrigin: origin == null),
     );
   }
+
+  Future<void> setServiceEndpoints({
+    required String? bootstrapOrigin,
+    required String? lastConnectedOrigin,
+    required String? lanOrigin,
+    required String? externalOrigin,
+  }) async {
+    final current =
+        state.value ?? await ref.read(appPreferencesProvider).read();
+    await saveSettings(
+      current.copyWith(
+        origin: bootstrapOrigin,
+        clearOrigin: bootstrapOrigin == null,
+        lastConnectedOrigin: lastConnectedOrigin,
+        clearLastConnectedOrigin: lastConnectedOrigin == null,
+        lanOrigin: lanOrigin,
+        clearLanOrigin: lanOrigin == null,
+        externalOrigin: externalOrigin,
+        clearExternalOrigin: externalOrigin == null,
+      ),
+    );
+  }
 }

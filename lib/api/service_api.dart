@@ -6,13 +6,19 @@ import 'service_exception.dart';
 import 'service_origin.dart';
 
 final class ServiceApi {
-  ServiceApi(this.origin, {http.Client? client})
-    : _client = client ?? http.Client(),
+  ServiceApi(ServiceOrigin origin, {http.Client? client})
+    : _origin = origin,
+      _client = client ?? http.Client(),
       _ownsClient = client == null;
 
-  final ServiceOrigin origin;
+  ServiceOrigin _origin;
+  ServiceOrigin get origin => _origin;
   final http.Client _client;
   final bool _ownsClient;
+
+  void switchOrigin(ServiceOrigin next) {
+    _origin = next;
+  }
 
   Future<Object?> request(
     String method,

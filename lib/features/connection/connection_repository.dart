@@ -2,18 +2,35 @@ import '../../api/models.dart';
 import '../../api/service_api.dart';
 import '../../api/service_exception.dart';
 import '../../api/service_origin.dart';
+import 'network_type_monitor.dart';
+import 'server_endpoint_probe.dart';
+
+enum EndpointRole { lan, external, bootstrap }
 
 typedef ServiceApiFactory = ServiceApi Function(ServiceOrigin origin);
 
 final class ConnectedService {
   const ConnectedService({
-    required this.origin,
     required this.api,
     required this.capabilities,
+    this.diagnostics,
   });
-  final ServiceOrigin origin;
   final ServiceApi api;
   final Capabilities capabilities;
+  final ConnectionDiagnostics? diagnostics;
+
+  ServiceOrigin get origin => api.origin;
+
+  ConnectedService copyWith({
+    Capabilities? capabilities,
+    ConnectionDiagnostics? diagnostics,
+  }) {
+    return ConnectedService(
+      api: api,
+      capabilities: capabilities ?? this.capabilities,
+      diagnostics: diagnostics ?? this.diagnostics,
+    );
+  }
 }
 
 final class ConnectionDiagnostics {
@@ -22,13 +39,17 @@ final class ConnectionDiagnostics {
     required this.connected,
     required this.latency,
     required this.apiVersion,
+    required this.networkRoute,
+    this.endpointRole = EndpointRole.bootstrap,
     required this.checkedAt,
   });
 
   final String origin;
   final bool connected;
-  final Duration latency;
-  final String apiVersion;
+  final Duration? latency;
+  final String? apiVersion;
+  final NetworkRoute networkRoute;
+  final EndpointRole endpointRole;
   final DateTime checkedAt;
 }
 
@@ -36,24 +57,27 @@ final class ConnectionRepository {
   ConnectionRepository([
     ServiceApiFactory? apiFactory,
     Duration? connectionTimeout,
+    ServerEndpointProbe? endpointProbe,
   ]) : _apiFactory = apiFactory ?? ((origin) => ServiceApi(origin)),
-       timeout = connectionTimeout ?? const Duration(seconds: 8);
+       timeout = connectionTimeout ?? const Duration(seconds: 3) {
+    _endpointProbe =
+        endpointProbe ??
+        ServerEndpointProbe(requestHealth: _requestHealth, timeout: timeout);
+  }
   final ServiceApiFactory _apiFactory;
+  late final ServerEndpointProbe _endpointProbe;
   final Duration timeout;
 
+  ServerEndpointProbe get endpointProbe => _endpointProbe;
+
   Future<ConnectedService> connect(String value) async {
-    final origin = ServiceOrigin.parse(value);
-    final api = _apiFactory(origin);
+    final health = await _endpointProbe.probe(value);
+    return connectProbed(health);
+  }
+
+  Future<ConnectedService> connectProbed(HealthSnapshot health) async {
+    final api = _apiFactory(health.origin);
     try {
-      final health = await api
-          .request('GET', '/api/v1/health')
-          .timeout(timeout, onTimeout: _timeout);
-      if (health is! Map || health['status'] != 'ok') {
-        throw const ServiceException(
-          'SERVICE_UNHEALTHY',
-          'The configured Service is not healthy.',
-        );
-      }
       final capabilities = Capabilities.fromJson(
         await api
             .request('GET', '/api/v1/capabilities')
@@ -65,30 +89,20 @@ final class ConnectionRepository {
           'This client requires Service API v1, received ${capabilities.apiVersion}.',
         );
       }
-      return ConnectedService(
-        origin: origin,
-        api: api,
-        capabilities: capabilities,
-      );
+      return ConnectedService(api: api, capabilities: capabilities);
     } on Object {
       api.close();
       rethrow;
     }
   }
 
-  Future<ConnectionDiagnostics> diagnostics(String value) async {
-    final stopwatch = Stopwatch()..start();
-    final connected = await connect(value);
-    stopwatch.stop();
-    final result = ConnectionDiagnostics(
-      origin: connected.origin.uri.toString(),
-      connected: true,
-      latency: stopwatch.elapsed,
-      apiVersion: connected.capabilities.apiVersion,
-      checkedAt: DateTime.now(),
-    );
-    connected.api.close();
-    return result;
+  Future<Object?> _requestHealth(ServiceOrigin origin) async {
+    final api = _apiFactory(origin);
+    try {
+      return await api.request('GET', '/api/v1/health');
+    } finally {
+      api.close();
+    }
   }
 
   Never _timeout() => throw const ServiceException(

@@ -7,6 +7,7 @@ import '../../design/app_breakpoints.dart';
 import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_playback_button.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_feedback.dart';
 import '../../design/components/app_form.dart';
 import '../../design/components/app_states.dart';
@@ -22,11 +23,13 @@ final class PlaylistDetailScreen extends StatefulWidget {
     required this.controller,
     required this.playTracks,
     this.onDeleted,
+    this.onBack,
   });
 
   final PlaylistDetailController controller;
   final PlayTracks playTracks;
   final VoidCallback? onDeleted;
+  final VoidCallback? onBack;
 
   @override
   State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
@@ -136,6 +139,16 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       key: const Key('playlist-detail-mobile-scroll'),
                       child: Column(
                         children: [
+                          if (widget.onBack case final onBack?) ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: AppMobileBackButton(onPressed: onBack),
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                          ],
                           if (state.error != null)
                             Padding(
                               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),

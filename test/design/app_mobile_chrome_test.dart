@@ -54,4 +54,33 @@ void main() {
     await tester.pump();
     expect(find.bySemanticsLabel('专辑，已选择'), findsOneWidget);
   });
+
+  testWidgets('mobile back control is accessible and invokes its callback', (
+    tester,
+  ) async {
+    var presses = 0;
+    await tester.pumpWidget(
+      harness(AppMobilePageHeader(title: '设置', onBack: () => presses++)),
+    );
+
+    final back = find.byKey(const Key('mobile-page-back'));
+    expect(back, findsOneWidget);
+    expect(find.bySemanticsLabel('返回'), findsOneWidget);
+    expect(tester.getSize(back).width, greaterThanOrEqualTo(44));
+    expect(tester.getSize(back).height, greaterThanOrEqualTo(44));
+
+    await tester.longPress(back);
+    await tester.pumpAndSettle();
+    expect(find.text('返回'), findsOneWidget);
+
+    await tester.tap(back);
+    expect(presses, 1);
+  });
+
+  testWidgets('primary mobile header omits back control by default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(const AppMobilePageHeader(title: '发现')));
+    expect(find.byKey(const Key('mobile-page-back')), findsNothing);
+  });
 }

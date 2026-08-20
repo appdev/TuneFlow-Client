@@ -26,10 +26,10 @@ final class SearchHistoryPanel extends StatelessWidget {
       key: const Key('search-history-panel'),
       padding: EdgeInsets.fromLTRB(12, mobile ? 10 : 12, 8, 8),
       decoration: BoxDecoration(
-        color: mobile ? Colors.transparent : tokens.surface,
-        border: mobile ? null : Border.all(color: tokens.border),
+        color: tokens.surface,
+        border: Border.all(color: tokens.border),
         borderRadius: BorderRadius.circular(AppRadii.compactCard),
-        boxShadow: mobile ? null : AppShadows.raised,
+        boxShadow: AppShadows.raised,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

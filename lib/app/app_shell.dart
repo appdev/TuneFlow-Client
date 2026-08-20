@@ -21,7 +21,8 @@ final class AppShell extends StatelessWidget {
   const AppShell({
     super.key,
     required this.connected,
-    required this.onDisconnect,
+    this.onConnectionSettings,
+    this.onDisconnect,
     required this.player,
     required this.child,
     this.currentTrackActions,
@@ -33,7 +34,11 @@ final class AppShell extends StatelessWidget {
   });
 
   final ConnectedService connected;
-  final VoidCallback onDisconnect;
+  final VoidCallback? onConnectionSettings;
+  @Deprecated(
+    'Use onConnectionSettings; disconnect is no longer a footer action.',
+  )
+  final VoidCallback? onDisconnect;
   final PlayerController player;
   final CurrentTrackActionsController? currentTrackActions;
   final String? location;
@@ -138,6 +143,7 @@ final class AppShell extends StatelessWidget {
                       selectedId: mobileSelectedId,
                       onSelected: navigate,
                       onOpenPlayer: openPlayer,
+                      showNavigation: showsMobilePrimaryNavigation(location),
                     )
                   : null,
             );
@@ -171,7 +177,7 @@ final class AppShell extends StatelessWidget {
                     connected: connected,
                     compact: compact,
                     onSources: () => navigate('sources'),
-                    onDisconnect: onDisconnect,
+                    onConnectionSettings: onConnectionSettings ?? () {},
                   ),
                 ),
                 Expanded(
@@ -221,6 +227,17 @@ final class AppShell extends StatelessWidget {
   }
 }
 
+const _mobilePrimaryLocations = <String>{
+  '/',
+  '/search',
+  '/discover',
+  '/playlists',
+  '/more',
+};
+
+bool showsMobilePrimaryNavigation(String location) =>
+    _mobilePrimaryLocations.contains(location);
+
 String navigationSelectionForLocation(String location, {bool mobile = false}) {
   if (location.startsWith('/search')) return 'search';
   if (location.startsWith('/playlists') || location.startsWith('/library')) {
@@ -240,13 +257,13 @@ String navigationSelectionForLocation(String location, {bool mobile = false}) {
 final class _ConnectionFooter extends StatelessWidget {
   const _ConnectionFooter({
     required this.connected,
-    required this.onDisconnect,
+    required this.onConnectionSettings,
     required this.onSources,
     required this.compact,
   });
 
   final ConnectedService connected;
-  final VoidCallback onDisconnect;
+  final VoidCallback onConnectionSettings;
   final VoidCallback onSources;
   final bool compact;
 
@@ -289,7 +306,7 @@ final class _ConnectionFooter extends StatelessWidget {
       ShadButton.outline(
         height: 44,
         padding: compact ? EdgeInsets.zero : null,
-        onPressed: onDisconnect,
+        onPressed: onConnectionSettings,
         child: compact
             ? const _StatusDot()
             : const SizedBox(

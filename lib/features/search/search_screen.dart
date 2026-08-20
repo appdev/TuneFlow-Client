@@ -36,7 +36,6 @@ final class SearchScreen extends StatefulWidget {
     required this.playlists,
     required this.downloads,
     required this.player,
-    this.onSettings,
     this.onOpenCollection,
     SearchHistoryRepository? history,
   }) : history = history ?? SearchHistoryRepository();
@@ -45,7 +44,6 @@ final class SearchScreen extends StatefulWidget {
   final PlaylistRepository playlists;
   final DownloadRepository downloads;
   final PlayerController player;
-  final VoidCallback? onSettings;
   final ValueChanged<CatalogCollection>? onOpenCollection;
   final SearchHistoryRepository history;
 
@@ -107,7 +105,9 @@ final class _SearchScreenState extends State<SearchScreen> {
 
   void _historyChanged() {
     if (!mounted) return;
-    if (query.text.isNotEmpty) historyDismissed = false;
+    if (query.text.isNotEmpty || searchFocus.hasFocus) {
+      historyDismissed = false;
+    }
     setState(() {});
   }
 
@@ -132,6 +132,27 @@ final class _SearchScreenState extends State<SearchScreen> {
     await search;
   }
 
+  Future<void> _clearSearch() async {
+    query.clear();
+    await _controller.search(
+      source: selectedSource,
+      query: '',
+      view: _controller.state.view,
+    );
+    if (!mounted) return;
+    searchFocus.requestFocus();
+    unawaited(
+      Future<void>.delayed(Duration.zero, () {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !searchFocus.hasFocus) return;
+          unawaited(
+            SystemChannels.textInput.invokeMethod<void>('TextInput.show'),
+          );
+        });
+      }),
+    );
+  }
+
   Future<void> _selectHistory(String keyword) async {
     setState(() {
       query.value = TextEditingValue(
@@ -154,28 +175,57 @@ final class _SearchScreenState extends State<SearchScreen> {
     if (mounted) setState(() => historyItems = items);
   }
 
+  Widget _mobileSearchBarWithHistory(SearchState state) => TapRegion(
+    groupId: searchTapGroup,
+    onTapOutside: (_) {
+      if (!showHistory) return;
+      searchFocus.unfocus();
+      setState(() => historyDismissed = true);
+    },
+    child: LayoutBuilder(
+      builder: (context, constraints) => ShadPortal(
+        visible: showHistory,
+        anchor: const ShadAnchorAuto(offset: Offset(0, 8)),
+        portalBuilder: (context) => SizedBox(
+          width: constraints.maxWidth,
+          child: TapRegion(
+            groupId: searchTapGroup,
+            child: SearchHistoryPanel(
+              items: historyItems,
+              mobile: true,
+              onSelected: (value) => unawaited(_selectHistory(value)),
+              onRemoved: (value) => unawaited(_removeHistory(value)),
+              onCleared: () => unawaited(_clearHistory()),
+            ),
+          ),
+        ),
+        child: _SearchBar(
+          mobile: true,
+          state: state,
+          controller: query,
+          focusNode: searchFocus,
+          tapRegionGroupId: searchTapGroup,
+          onSearch: _search,
+          onClear: _clearSearch,
+        ),
+      ),
+    ),
+  );
+
   Future<void> _play(Track track) async {
-    final tracks = [..._controller.state.tracks];
-    final index = tracks.indexWhere(
-      (item) => item.source == track.source && item.id == track.id,
-    );
-    var playable = track;
+    final playback = widget.player.play(track);
     final embedded = track.raw['pic'];
     if (embedded is! String || embedded.isEmpty) {
-      final picture = await _controller.loadPicture(track);
-      if (picture != null) {
-        playable = Track.fromJson({
-          ...track.toJson(),
-          'pic': picture.toString(),
-        });
-      }
+      unawaited(_loadPlaybackArtwork(track));
     }
-    if (index < 0) {
-      await widget.player.play(playable);
-      return;
+    await playback;
+  }
+
+  Future<void> _loadPlaybackArtwork(Track track) async {
+    final picture = await _controller.loadPicture(track);
+    if (picture != null) {
+      widget.player.updateTrackArtwork(track, picture);
     }
-    tracks[index] = playable;
-    await widget.player.playTracks(tracks, startIndex: index);
   }
 
   Future<void> _run(
@@ -308,11 +358,7 @@ final class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _selectMobileView(SearchView view, SearchState state) async {
-    final kind = switch (view) {
-      SearchView.albums => CatalogSearchKind.album,
-      SearchView.playlists => CatalogSearchKind.playlist,
-      SearchView.overview || SearchView.tracks => CatalogSearchKind.track,
-    };
+    final kind = _kindForView(view);
     var source = selectedSource;
     final currentSupports =
         kind == CatalogSearchKind.track ||
@@ -331,45 +377,59 @@ final class _SearchScreenState extends State<SearchScreen> {
       if (fallback == null) return;
       source = fallback;
       setState(() => selectedSource = source);
-      await _controller.search(source: source, query: query.text);
+      await _controller.search(source: source, query: query.text, view: view);
+      return;
     }
     await _controller.selectView(view);
   }
 
   Future<void> _chooseSource(SearchState state) async {
-    final optionWidth = MediaQuery.sizeOf(context).width - 112;
-    final selected = await AppBottomSheet.showContent<String>(
+    final kind = _kindForView(state.view);
+    final providers = state.providers
+        .where((provider) => provider.searchKinds.contains(kind))
+        .toList(growable: false);
+    final options = [
+      for (final provider in providers)
+        AppBottomSheetSelection<String>(
+          key: Key('search-source-option-${provider.id}'),
+          value: provider.id,
+          label: provider.name,
+        ),
+      if (kind == CatalogSearchKind.track)
+        const AppBottomSheetSelection<String>(
+          key: Key('search-source-option-all'),
+          value: SearchController.aggregateSource,
+          label: '全部来源',
+        ),
+    ];
+    if (options.isEmpty) return;
+    final currentSelection =
+        options.any((option) => option.value == selectedSource)
+        ? selectedSource
+        : options.first.value;
+    final selected = await AppBottomSheet.showSelection<String>(
       context,
       title: '音乐来源',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final provider in [
-            ...state.providers.map((item) => (item.id, item.name)),
-            (SearchController.aggregateSource, '全部来源'),
-          ])
-            AppButton(
-              key: Key('search-source-option-${provider.$1}'),
-              variant: ShadButtonVariant.ghost,
-              onPressed: () => Navigator.of(context).pop(provider.$1),
-              child: SizedBox(
-                width: optionWidth,
-                child: Row(
-                  children: [
-                    Expanded(child: Text(provider.$2)),
-                    if (provider.$1 == selectedSource)
-                      const Icon(LucideIcons.check, size: 18),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
+      message: kind == CatalogSearchKind.album && providers.length == 1
+          ? '当前仅${providers.single.name}支持专辑搜索'
+          : null,
+      options: options,
+      selectedValue: currentSelection,
     );
     if (!mounted || selected == null || selected == selectedSource) return;
     setState(() => selectedSource = selected);
-    await _search();
+    await _controller.search(
+      source: selected,
+      query: query.text,
+      view: state.view,
+    );
   }
+
+  CatalogSearchKind _kindForView(SearchView view) => switch (view) {
+    SearchView.albums => CatalogSearchKind.album,
+    SearchView.playlists => CatalogSearchKind.playlist,
+    SearchView.overview || SearchView.tracks => CatalogSearchKind.track,
+  };
 
   @override
   void dispose() {
@@ -407,164 +467,137 @@ final class _SearchScreenState extends State<SearchScreen> {
                   if (showHistory) setState(() => historyDismissed = true);
                 },
               },
-              child: TapRegion(
-                onTapOutside: (_) {
-                  if (showHistory) setState(() => historyDismissed = true);
-                },
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Builder(
-                      builder: (context) {
-                        final contents = Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (mobile) ...[
-                              _MobileSearchMasthead(
-                                onSettings: widget.onSettings,
-                              ),
-                              const SizedBox(height: 28),
-                              Text(
-                                '搜索',
-                                key: const Key('search-page-title'),
-                                style: AppTypography.mobilePageTitle,
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            _SearchBar(
-                              mobile: mobile,
-                              state: state,
-                              controller: query,
-                              focusNode: searchFocus,
-                              tapRegionGroupId: searchTapGroup,
-                              onSearch: _search,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Builder(
+                    builder: (context) {
+                      final contents = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (mobile) ...[
+                            const _MobileSearchMasthead(),
+                            const SizedBox(height: 28),
+                            Text(
+                              '搜索',
+                              key: const Key('search-page-title'),
+                              style: AppTypography.mobilePageTitle,
                             ),
-                            if (mobile && showHistory) ...[
-                              const SizedBox(height: 8),
-                              TapRegion(
-                                groupId: searchTapGroup,
-                                child: SearchHistoryPanel(
-                                  items: historyItems,
-                                  mobile: true,
-                                  onSelected: (value) =>
-                                      unawaited(_selectHistory(value)),
-                                  onRemoved: (value) =>
-                                      unawaited(_removeHistory(value)),
-                                  onCleared: () => unawaited(_clearHistory()),
-                                ),
-                              ),
-                            ],
-                            if (mobile) ...[
-                              const SizedBox(height: 20),
-                              _MobileSearchFilters(
-                                state: state,
-                                sourceLabel: _sourceLabel(
-                                  state,
-                                  selectedSource,
-                                ),
-                                onViewSelected: (view) =>
-                                    unawaited(_selectMobileView(view, state)),
-                                onSourcePressed: () =>
-                                    unawaited(_chooseSource(state)),
-                              ),
-                              if (!showHistory && state.query.isNotEmpty) ...[
-                                const SizedBox(height: 28),
-                                _MobileResultsHeading(state: state),
-                                const SizedBox(height: 8),
-                              ],
-                            ] else ...[
-                              const SizedBox(height: 18),
-                              _SourceTabs(
-                                state: state,
-                                selected: selectedSource,
-                                onSelected: (source) {
-                                  setState(() => selectedSource = source);
-                                  unawaited(_search());
-                                },
-                              ),
-                              _ViewTabs(
-                                controller: _controller,
-                                state: state,
-                                onSelected: (view) =>
-                                    unawaited(_controller.selectView(view)),
-                              ),
-                            ],
-                            if (!(mobile && showHistory))
-                              mobile
-                                  ? SearchMobileResults(
-                                      state: state,
-                                      scrollController: scroll,
-                                      embedded: true,
-                                      loadPicture: _controller.loadPicture,
-                                      onPlay: (track) =>
-                                          unawaited(_run(() => _play(track))),
-                                      onFavorite: (track) => unawaited(
-                                        _run(() => _choosePlaylist(track)),
-                                      ),
-                                      onMore: _more,
-                                      onViewAll: (view) => unawaited(
-                                        _controller.selectView(view),
-                                      ),
-                                      onRetry: (kind) => unawaited(
-                                        _controller.retrySection(kind),
-                                      ),
-                                      onOpenCollection:
-                                          widget.onOpenCollection ?? (_) {},
-                                    )
-                                  : Expanded(
-                                      child: SearchDesktopResults(
-                                        state: state,
-                                        scrollController: scroll,
-                                        loadPicture: _controller.loadPicture,
-                                        onPlay: (track) =>
-                                            unawaited(_run(() => _play(track))),
-                                        onFavorite: (track) => unawaited(
-                                          _run(() => _choosePlaylist(track)),
-                                        ),
-                                        actionsFor: _actionsFor,
-                                        onViewAll: (view) => unawaited(
-                                          _controller.selectView(view),
-                                        ),
-                                        onPage: (page) =>
-                                            unawaited(_page(page)),
-                                        onRetry: (kind) => unawaited(
-                                          _controller.retrySection(kind),
-                                        ),
-                                        onOpenCollection:
-                                            widget.onOpenCollection ?? (_) {},
-                                      ),
-                                    ),
+                            const SizedBox(height: 20),
                           ],
-                        );
-                        return mobile
-                            ? SingleChildScrollView(
-                                key: const Key('search-mobile-scroll'),
-                                controller: scroll,
-                                child: contents,
-                              )
-                            : contents;
-                      },
-                    ),
-                    if (!mobile && showHistory)
-                      Positioned(
-                        top: 48,
-                        left: 0,
-                        width: 610,
-                        child: TapRegion(
-                          groupId: searchTapGroup,
-                          child: SearchHistoryPanel(
-                            items: historyItems,
-                            mobile: false,
-                            onSelected: (value) =>
-                                unawaited(_selectHistory(value)),
-                            onRemoved: (value) =>
-                                unawaited(_removeHistory(value)),
-                            onCleared: () => unawaited(_clearHistory()),
-                          ),
+                          mobile
+                              ? _mobileSearchBarWithHistory(state)
+                              : _SearchBar(
+                                  mobile: false,
+                                  state: state,
+                                  controller: query,
+                                  focusNode: searchFocus,
+                                  tapRegionGroupId: searchTapGroup,
+                                  onSearch: _search,
+                                  onClear: _clearSearch,
+                                ),
+                          if (mobile) ...[
+                            const SizedBox(height: 20),
+                            _MobileSearchFilters(
+                              state: state,
+                              sourceLabel: _sourceLabel(state, selectedSource),
+                              onViewSelected: (view) =>
+                                  unawaited(_selectMobileView(view, state)),
+                              onSourcePressed: () =>
+                                  unawaited(_chooseSource(state)),
+                            ),
+                            if (state.query.isNotEmpty) ...[
+                              const SizedBox(height: 28),
+                              _MobileResultsHeading(state: state),
+                              const SizedBox(height: 8),
+                            ],
+                          ] else ...[
+                            const SizedBox(height: 18),
+                            _SourceTabs(
+                              state: state,
+                              selected: selectedSource,
+                              onSelected: (source) {
+                                setState(() => selectedSource = source);
+                                unawaited(_search());
+                              },
+                            ),
+                            _ViewTabs(
+                              controller: _controller,
+                              state: state,
+                              onSelected: (view) =>
+                                  unawaited(_controller.selectView(view)),
+                            ),
+                          ],
+                          mobile
+                              ? SearchMobileResults(
+                                  state: state,
+                                  scrollController: scroll,
+                                  embedded: true,
+                                  loadPicture: _controller.loadPicture,
+                                  onPlay: (track) =>
+                                      unawaited(_run(() => _play(track))),
+                                  onFavorite: (track) => unawaited(
+                                    _run(() => _choosePlaylist(track)),
+                                  ),
+                                  onMore: _more,
+                                  onViewAll: (view) =>
+                                      unawaited(_controller.selectView(view)),
+                                  onRetry: (kind) =>
+                                      unawaited(_controller.retrySection(kind)),
+                                  onOpenCollection:
+                                      widget.onOpenCollection ?? (_) {},
+                                )
+                              : Expanded(
+                                  child: SearchDesktopResults(
+                                    state: state,
+                                    scrollController: scroll,
+                                    loadPicture: _controller.loadPicture,
+                                    onPlay: (track) =>
+                                        unawaited(_run(() => _play(track))),
+                                    onFavorite: (track) => unawaited(
+                                      _run(() => _choosePlaylist(track)),
+                                    ),
+                                    actionsFor: _actionsFor,
+                                    onViewAll: (view) =>
+                                        unawaited(_controller.selectView(view)),
+                                    onPage: (page) => unawaited(_page(page)),
+                                    onRetry: (kind) => unawaited(
+                                      _controller.retrySection(kind),
+                                    ),
+                                    onOpenCollection:
+                                        widget.onOpenCollection ?? (_) {},
+                                  ),
+                                ),
+                        ],
+                      );
+                      return mobile
+                          ? SingleChildScrollView(
+                              key: const Key('search-mobile-scroll'),
+                              controller: scroll,
+                              child: contents,
+                            )
+                          : contents;
+                    },
+                  ),
+                  if (!mobile && showHistory)
+                    Positioned(
+                      top: 48,
+                      left: 0,
+                      width: 610,
+                      child: TapRegion(
+                        groupId: searchTapGroup,
+                        child: SearchHistoryPanel(
+                          items: historyItems,
+                          mobile: false,
+                          onSelected: (value) =>
+                              unawaited(_selectHistory(value)),
+                          onRemoved: (value) =>
+                              unawaited(_removeHistory(value)),
+                          onCleared: () => unawaited(_clearHistory()),
                         ),
                       ),
-                  ],
-                ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -582,6 +615,7 @@ final class _SearchBar extends StatelessWidget {
     required this.focusNode,
     required this.tapRegionGroupId,
     required this.onSearch,
+    required this.onClear,
   });
   final bool mobile;
   final SearchState state;
@@ -589,44 +623,90 @@ final class _SearchBar extends StatelessWidget {
   final FocusNode focusNode;
   final Object tapRegionGroupId;
   final Future<void> Function() onSearch;
+  final Future<void> Function() onClear;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: mobile ? 52 : 42,
-    child: Row(
-      children: [
-        Flexible(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: mobile ? double.infinity : 610,
-              minHeight: mobile ? 52 : 0,
-            ),
-            child: AppTextField(
-              key: const Key('search-field'),
-              controller: controller,
-              focusNode: focusNode,
-              groupId: tapRegionGroupId,
-              placeholder: '搜索音乐',
-              surface: mobile
-                  ? AppFieldSurface.glass
-                  : AppFieldSurface.standard,
-              leading: const Padding(
-                padding: EdgeInsets.only(left: 10),
-                child: Icon(LucideIcons.search, size: 18),
+  Widget build(BuildContext context) {
+    final fieldHeight = mobile ? 52.0 : 46.0;
+    return SizedBox(
+      height: fieldHeight,
+      child: Row(
+        children: [
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: mobile ? double.infinity : 610,
+                minHeight: fieldHeight,
               ),
-              trailing: mobile
-                  ? null
-                  : const Padding(
-                      padding: EdgeInsets.only(right: 10),
-                      child: Text('⌘ K', style: AppTypography.metadata),
-                    ),
-              onSubmitted: (_) => onSearch(),
+              child: Focus(
+                canRequestFocus: false,
+                skipTraversal: true,
+                onKeyEvent: (_, event) {
+                  final key = event.logicalKey;
+                  if (event is KeyDownEvent &&
+                      (key == LogicalKeyboardKey.enter ||
+                          key == LogicalKeyboardKey.numpadEnter)) {
+                    unawaited(onSearch());
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: AppTextField(
+                  key: const Key('search-field'),
+                  controller: controller,
+                  focusNode: focusNode,
+                  groupId: tapRegionGroupId,
+                  placeholder: '搜索音乐',
+                  textInputAction: TextInputAction.search,
+                  surface: mobile
+                      ? AppFieldSurface.glass
+                      : AppFieldSurface.standard,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: mobile ? 3 : 0,
+                  ),
+                  leading: const SizedBox(
+                    key: Key('search-field-leading'),
+                    width: 44,
+                    height: 44,
+                    child: Center(child: Icon(LucideIcons.search, size: 18)),
+                  ),
+                  trailing: controller.text.isNotEmpty
+                      ? Semantics(
+                          label: '清除搜索',
+                          button: true,
+                          child: IconButton(
+                            key: const Key('search-clear'),
+                            tooltip: '清除搜索',
+                            onPressed: () => unawaited(onClear()),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 44,
+                              height: 44,
+                            ),
+                            padding: EdgeInsets.zero,
+                            style: IconButton.styleFrom(
+                              minimumSize: const Size.square(44),
+                              maximumSize: const Size.square(44),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(LucideIcons.x, size: 18),
+                          ),
+                        )
+                      : mobile
+                      ? null
+                      : const Padding(
+                          padding: EdgeInsets.only(right: 10),
+                          child: Text('⌘ K', style: AppTypography.metadata),
+                        ),
+                  onSubmitted: (_) => onSearch(),
+                ),
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 String _sourceLabel(SearchState state, String source) {
@@ -639,9 +719,7 @@ String _sourceLabel(SearchState state, String source) {
 }
 
 final class _MobileSearchMasthead extends StatelessWidget {
-  const _MobileSearchMasthead({required this.onSettings});
-
-  final VoidCallback? onSettings;
+  const _MobileSearchMasthead();
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -666,17 +744,6 @@ final class _MobileSearchMasthead extends StatelessWidget {
           child: Text(
             'TuneFlow',
             style: AppTypography.section.copyWith(fontSize: 19),
-          ),
-        ),
-        AppGlassSurface(
-          role: AppGlassRole.control,
-          padding: EdgeInsets.zero,
-          child: IconButton(
-            key: const Key('search-settings'),
-            tooltip: '设置',
-            onPressed: onSettings,
-            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-            icon: const Icon(LucideIcons.settings, size: 20),
           ),
         ),
       ],

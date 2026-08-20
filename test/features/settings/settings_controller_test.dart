@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/storage/app_preferences.dart';
 import 'package:musicfree_service_client/features/settings/settings_controller.dart';
+import 'package:musicfree_service_client/features/settings/service_settings_repository.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
+import 'package:musicfree_service_client/features/connection/network_type_monitor.dart';
 import 'package:musicfree_service_client/storage/media_cache.dart';
 
 import '../../support/fake_media_cache.dart';
@@ -25,6 +27,99 @@ SettingsController controllerForServiceSettings({
 );
 
 void main() {
+  test(
+    'failed endpoint apply restores shared origins and stays connected',
+    () async {
+      const previous = ServiceAccessOrigins(
+        lanOrigin: 'http://old-lan.local',
+        externalOrigin: 'https://old-external.example',
+      );
+      final updates = <ServiceAccessOrigins>[];
+      final controller = SettingsController(
+        settings: const AppSettings(origin: 'https://bootstrap.example'),
+        save: (_) async {},
+        connect: (_) async {},
+        disconnect: () async {},
+        setPlayerQuality: (_) async {},
+        loadServiceAccessOrigins: () async => previous,
+        updateServiceAccessOrigins: (value) async {
+          updates.add(value);
+          return value;
+        },
+        applyServiceEndpoints:
+            ({
+              required bootstrapOrigin,
+              required lanOrigin,
+              required externalOrigin,
+            }) async {
+              throw StateError('probe failed');
+            },
+      );
+
+      await expectLater(
+        controller.saveConnectionSettings(
+          lanOrigin: 'http://new-lan.local/',
+          externalOrigin: 'https://new-external.example/',
+        ),
+        throwsStateError,
+      );
+
+      expect(updates, [
+        const ServiceAccessOrigins(
+          lanOrigin: 'http://new-lan.local',
+          externalOrigin: 'https://new-external.example',
+        ),
+        previous,
+      ]);
+      expect(controller.state.origin, 'https://bootstrap.example');
+      expect(controller.connectionSettingsError, isA<StateError>());
+    },
+  );
+
+  test('uncertain shared PATCH restores freshly loaded origins', () async {
+    const cached = ServiceAccessOrigins(
+      lanOrigin: 'http://cached-lan.local',
+      externalOrigin: 'https://cached-external.example',
+    );
+    const fresh = ServiceAccessOrigins(
+      lanOrigin: 'http://fresh-lan.local',
+      externalOrigin: 'https://fresh-external.example',
+    );
+    var current = cached;
+    final updates = <ServiceAccessOrigins>[];
+    final controller = SettingsController(
+      settings: const AppSettings(origin: 'https://bootstrap.example'),
+      save: (_) async {},
+      connect: (_) async {},
+      disconnect: () async {},
+      setPlayerQuality: (_) async {},
+      loadServiceAccessOrigins: () async => current,
+      updateServiceAccessOrigins: (value) async {
+        updates.add(value);
+        if (updates.length == 1) throw StateError('response lost');
+        return value;
+      },
+      applyServiceEndpoints:
+          ({
+            required bootstrapOrigin,
+            required lanOrigin,
+            required externalOrigin,
+          }) async {},
+    );
+    await controller.refreshServiceSettings();
+    current = fresh;
+
+    await expectLater(
+      controller.saveConnectionSettings(
+        lanOrigin: 'http://new-lan.local',
+        externalOrigin: 'https://new-external.example',
+      ),
+      throwsStateError,
+    );
+
+    expect(updates.last, fresh);
+  });
+
   test(
     'updates every approved preference and delegates connection intents',
     () async {
@@ -61,31 +156,28 @@ void main() {
     },
   );
 
-  test(
-    'settings retain connection diagnostics for the active origin',
-    () async {
-      final controller = SettingsController(
-        settings: const AppSettings(origin: 'http://service.local'),
-        save: (_) async {},
-        connect: (_) async {},
-        disconnect: () async {},
-        setPlayerQuality: (_) async {},
-        diagnostics: (origin) async => ConnectionDiagnostics(
-          origin: origin,
-          connected: true,
-          latency: const Duration(milliseconds: 12),
-          apiVersion: 'v1',
-          checkedAt: DateTime.fromMillisecondsSinceEpoch(1),
-        ),
-      );
+  test('syncs live connection diagnostics without probing', () {
+    final controller = SettingsController(
+      settings: const AppSettings(origin: 'http://service.local'),
+      save: (_) async {},
+      connect: (_) async {},
+      disconnect: () async {},
+      setPlayerQuality: (_) async {},
+    );
+    final diagnostics = ConnectionDiagnostics(
+      origin: 'http://192.168.1.20:3124',
+      connected: true,
+      latency: const Duration(milliseconds: 12),
+      apiVersion: 'v1',
+      networkRoute: NetworkRoute.lan,
+      endpointRole: EndpointRole.lan,
+      checkedAt: DateTime.fromMillisecondsSinceEpoch(1),
+    );
 
-      await controller.refreshDiagnostics();
+    controller.syncConnection(diagnostics);
 
-      expect(controller.connection?.latency, const Duration(milliseconds: 12));
-      expect(controller.connection?.apiVersion, 'v1');
-      expect(controller.diagnosticsError, isNull);
-    },
-  );
+    expect(controller.connection, same(diagnostics));
+  });
 
   test(
     'updates the local cache limit and persists the device setting',

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/features/connection/connection_repository.dart';
+import 'package:musicfree_service_client/features/connection/network_type_monitor.dart';
 import 'package:musicfree_service_client/features/settings/settings_controller.dart';
 import 'package:musicfree_service_client/features/settings/settings_screen.dart';
 import 'package:musicfree_service_client/storage/app_preferences.dart';
@@ -20,6 +22,71 @@ Widget harness(Widget child) => ShadApp.custom(
 );
 
 void main() {
+  testWidgets('shows a compact unreachable Service summary', (tester) async {
+    final controller = SettingsController(
+      settings: const AppSettings(origin: 'https://bootstrap.example'),
+      save: (_) async {},
+      connect: (_) async {},
+      disconnect: () async {},
+      setPlayerQuality: (_) async {},
+      initialDiagnostics: ConnectionDiagnostics(
+        origin: 'http://192.168.1.20:3124',
+        connected: false,
+        latency: null,
+        apiVersion: null,
+        networkRoute: NetworkRoute.lan,
+        endpointRole: EndpointRole.lan,
+        checkedAt: DateTime(2026, 8, 20, 3, 4, 5),
+      ),
+    );
+
+    await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂不可达'), findsOneWidget);
+    expect(find.text('http://192.168.1.20:3124'), findsNothing);
+    expect(find.text('延迟'), findsNothing);
+    expect(find.text('API'), findsNothing);
+    expect(find.text('最近检查'), findsNothing);
+    expect(find.text('重新连接'), findsNothing);
+    expect(find.textContaining('StateError'), findsNothing);
+    expect(find.textContaining('private network failure'), findsNothing);
+  });
+
+  testWidgets('shows the selected endpoint role without diagnostics', (
+    tester,
+  ) async {
+    final controller = SettingsController(
+      settings: const AppSettings(origin: 'https://bootstrap.example'),
+      save: (_) async {},
+      connect: (_) async {},
+      disconnect: () async {},
+      setPlayerQuality: (_) async {},
+      initialDiagnostics: ConnectionDiagnostics(
+        origin: 'https://music.example.com',
+        connected: true,
+        latency: const Duration(milliseconds: 18),
+        apiVersion: 'v1',
+        networkRoute: NetworkRoute.external,
+        endpointRole: EndpointRole.external,
+        checkedAt: DateTime(2026, 8, 20, 3, 4, 5),
+      ),
+    );
+
+    await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+    await tester.pump();
+
+    expect(find.text('外网连接'), findsOneWidget);
+    expect(find.text('https://music.example.com'), findsNothing);
+    expect(find.text('18 ms'), findsNothing);
+    expect(find.text('v1'), findsNothing);
+    final title = tester.widget<Text>(
+      find.byKey(const Key('settings-connection-title')),
+    );
+    expect(title.maxLines, 1);
+    expect(title.overflow, TextOverflow.ellipsis);
+  });
+
   testWidgets('shows only approved Service-client settings', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;
@@ -68,6 +135,52 @@ void main() {
       expect(saved.themeMode, ThemeMode.system);
     },
   );
+
+  testWidgets('mobile preferences use explicit dropdown selections', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var saved = const AppSettings(origin: 'http://service.local');
+    final controller = SettingsController(
+      settings: saved,
+      save: (value) async => saved = value,
+      connect: (_) async {},
+      disconnect: () async {},
+      setPlayerQuality: (_) async {},
+    );
+
+    await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(ShadSelect<ThemeMode>));
+    await tester.pumpAndSettle();
+    expect(find.text('跟随系统'), findsWidgets);
+    expect(find.text('浅色'), findsOneWidget);
+    expect(find.text('深色'), findsOneWidget);
+    await tester.tap(find.text('浅色'));
+    await tester.pumpAndSettle();
+    expect(saved.themeMode, ThemeMode.light);
+
+    await tester.tap(find.byType(ShadSelect<AppLanguage>));
+    await tester.pumpAndSettle();
+    expect(find.text('简体中文'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget);
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(saved.language, AppLanguage.en);
+
+    await tester.tap(find.byType(ShadSelect<PlaybackQuality>));
+    await tester.pumpAndSettle();
+    expect(find.text('128k'), findsWidgets);
+    expect(find.text('320k'), findsOneWidget);
+    expect(find.text('无损'), findsOneWidget);
+    await tester.tap(find.text('无损'));
+    await tester.pumpAndSettle();
+    expect(saved.quality, PlaybackQuality.lossless);
+  });
 
   testWidgets('shows local-only cache usage, limit, and clear action', (
     tester,

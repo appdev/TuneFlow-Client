@@ -14,6 +14,9 @@ void main() {
     final settings = await SharedAppPreferences().read();
 
     expect(settings.origin, isNull);
+    expect(settings.lastConnectedOrigin, isNull);
+    expect(settings.lanOrigin, isNull);
+    expect(settings.externalOrigin, isNull);
     expect(settings.themeMode, ThemeMode.system);
     expect(settings.language, AppLanguage.system);
     expect(settings.quality, PlaybackQuality.low128k);
@@ -27,6 +30,9 @@ void main() {
     final preferences = SharedAppPreferences();
     const expected = AppSettings(
       origin: 'http://service.local',
+      lastConnectedOrigin: 'http://192.168.1.20:3124',
+      lanOrigin: 'http://192.168.1.20:3124',
+      externalOrigin: 'https://music.example.com',
       themeMode: ThemeMode.dark,
       language: AppLanguage.zh,
       quality: PlaybackQuality.high320k,
@@ -39,6 +45,20 @@ void main() {
     await preferences.write(expected);
 
     expect(await preferences.read(), expected);
+  });
+
+  test('legacy origin seeds the last connected origin', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.withData({
+          'service_origin': 'http://legacy.local',
+        });
+
+    final settings = await SharedAppPreferences().read();
+
+    expect(settings.origin, 'http://legacy.local');
+    expect(settings.lastConnectedOrigin, 'http://legacy.local');
+    expect(settings.lanOrigin, isNull);
+    expect(settings.externalOrigin, isNull);
   });
 
   test('round trips every supported local cache limit', () async {
@@ -61,10 +81,13 @@ void main() {
     expect(settings.cacheLimitBytes, defaultMediaCacheLimitBytes);
   });
 
-  test('clearOrigin preserves every non-origin preference', () async {
+  test('clearOrigin clears every endpoint and preserves UI preferences', () async {
     final preferences = SharedAppPreferences();
     const expected = AppSettings(
       origin: 'http://service.local',
+      lastConnectedOrigin: 'http://192.168.1.20:3124',
+      lanOrigin: 'http://192.168.1.20:3124',
+      externalOrigin: 'https://music.example.com',
       themeMode: ThemeMode.light,
       language: AppLanguage.en,
       quality: PlaybackQuality.lossless,
@@ -76,7 +99,15 @@ void main() {
 
     await preferences.clearOrigin();
 
-    expect(await preferences.read(), expected.copyWith(clearOrigin: true));
+    expect(
+      await preferences.read(),
+      expected.copyWith(
+        clearOrigin: true,
+        clearLastConnectedOrigin: true,
+        clearLanOrigin: true,
+        clearExternalOrigin: true,
+      ),
+    );
   });
 
   test('playback quality maps to Service API values', () {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../app_glass_policy.dart';
 import '../app_theme_definition.dart';
@@ -10,17 +11,23 @@ final class AppMobilePageHeader extends StatelessWidget {
     required this.title,
     this.eyebrow,
     this.actions = const [],
+    this.onBack,
     super.key,
   });
 
   final String title;
   final String? eyebrow;
   final List<Widget> actions;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
+      if (onBack case final callback?) ...[
+        AppMobileBackButton(onPressed: callback),
+        const SizedBox(width: AppSpacing.xs),
+      ],
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,6 +54,28 @@ final class AppMobilePageHeader extends StatelessWidget {
         ),
       ],
     ],
+  );
+}
+
+final class AppMobileBackButton extends StatelessWidget {
+  const AppMobileBackButton({required this.onPressed, super.key});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: '返回',
+    excludeSemantics: true,
+    child: Tooltip(
+      message: '返回',
+      child: IconButton(
+        key: const Key('mobile-page-back'),
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        onPressed: onPressed,
+        icon: Icon(LucideIcons.chevronLeft, size: 20),
+      ),
+    ),
   );
 }
 

@@ -9,6 +9,7 @@ import '../../design/app_breakpoints.dart';
 import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_button.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/app_playback_button.dart';
 import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
@@ -28,11 +29,13 @@ final class OnlinePlaylistDetailScreen extends StatefulWidget {
     required this.controller,
     required this.player,
     required this.downloads,
+    this.onBack,
   });
 
   final OnlinePlaylistDetailController controller;
   final PlayerController player;
   final DownloadRepository downloads;
+  final VoidCallback? onBack;
 
   @override
   State<OnlinePlaylistDetailScreen> createState() =>
@@ -340,6 +343,13 @@ final class _OnlinePlaylistDetailScreenState
               final contents = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (mobile && widget.onBack != null) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: AppMobileBackButton(onPressed: widget.onBack!),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                  ],
                   _MetadataHero(
                     playlist: playlist,
                     mobile: mobile,

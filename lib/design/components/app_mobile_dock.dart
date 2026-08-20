@@ -12,6 +12,7 @@ final class AppMobileDock extends StatelessWidget {
     required this.selectedId,
     required this.onSelected,
     required this.onOpenPlayer,
+    this.showNavigation = true,
     super.key,
   });
 
@@ -20,37 +21,40 @@ final class AppMobileDock extends StatelessWidget {
   final String selectedId;
   final ValueChanged<String> onSelected;
   final VoidCallback onOpenPlayer;
+  final bool showNavigation;
 
   @override
-  Widget build(BuildContext context) => BackdropGroup(
-    child: SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      child: ListenableBuilder(
-        listenable: player,
-        builder: (context, _) {
-          final hasTrack = player.state.current != null;
-          return Column(
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: player,
+    builder: (context, _) {
+      final hasTrack = player.state.current != null;
+      if (!hasTrack && !showNavigation) return const SizedBox.shrink();
+      return BackdropGroup(
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Column(
             key: const Key('mobile-player-dock'),
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (hasTrack) ...[
+              if (hasTrack)
                 MiniPlayer(
                   controller: player,
                   onOpen: onOpenPlayer,
                   variant: MiniPlayerVariant.mobile,
                 ),
+              if (hasTrack && showNavigation)
                 const SizedBox(height: AppSpacing.xs),
-              ],
-              AppMobileNavigation(
-                destinations: destinations,
-                selectedId: selectedId,
-                onSelected: onSelected,
-              ),
+              if (showNavigation)
+                AppMobileNavigation(
+                  destinations: destinations,
+                  selectedId: selectedId,
+                  onSelected: onSelected,
+                ),
             ],
-          );
-        },
-      ),
-    ),
+          ),
+        ),
+      );
+    },
   );
 }

@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:musicfree_service_client/api/models.dart';
-import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/app/app_shell.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
@@ -14,6 +13,7 @@ import 'package:musicfree_service_client/features/discovery/discovery_screen.dar
 import 'package:musicfree_service_client/features/downloads/download_repository.dart';
 import 'package:musicfree_service_client/features/downloads/downloads_screen.dart';
 import 'package:musicfree_service_client/features/home/home_screen.dart';
+import 'package:musicfree_service_client/features/more/app_update.dart';
 import 'package:musicfree_service_client/features/more/more_screen.dart';
 import 'package:musicfree_service_client/features/player/player_controller.dart';
 import 'package:musicfree_service_client/features/player/artwork_palette.dart';
@@ -53,7 +53,6 @@ Widget _shellHarness({
 }) {
   final api = fixtureApi();
   final connected = ConnectedService(
-    origin: ServiceOrigin.parse('http://service.local'),
     api: api,
     capabilities: const Capabilities(
       runtime: 'service',
@@ -171,12 +170,6 @@ void main() {
       enablePerformanceMonitor: false,
       warmUpImpellerPipeline: false,
     );
-    final chineseFontLoader = FontLoader('NotoSansCJKsc')
-      ..addFont(rootBundle.load('assets/fonts/NotoSansCJKsc-Regular.otf'));
-    final displayFontLoader = FontLoader('NotoSerifSC')
-      ..addFont(
-        rootBundle.load('assets/fonts/NotoSerifSC-VariableFont_wght.ttf'),
-      );
     final dataFontLoader = FontLoader('IBMPlexMono')
       ..addFont(rootBundle.load('assets/fonts/IBMPlexMono-Medium.ttf'));
     final iconLoader = FontLoader('packages/lucide_icons_flutter/Lucide')
@@ -186,8 +179,6 @@ void main() {
     final materialIconLoader = FontLoader('MaterialIcons')
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait([
-      chineseFontLoader.load(),
-      displayFontLoader.load(),
       dataFontLoader.load(),
       iconLoader.load(),
       materialIconLoader.load(),
@@ -289,7 +280,6 @@ Future<void> _capturePlatformFrame(
         onSearch: () {},
         onPlaylists: () {},
         onDownloads: () {},
-        onSettings: () {},
         player: player,
         now: () => DateTime(2026, 1, 1, 20),
       ),
@@ -457,7 +447,6 @@ Future<Widget> _surface(String page, PlayerController player) async {
       onSearch: () {},
       onPlaylists: () {},
       onDownloads: () {},
-      onSettings: () {},
       player: player,
       now: () => DateTime(2026, 1, 1, 20),
     ),
@@ -507,10 +496,22 @@ Future<Widget> _surface(String page, PlayerController player) async {
       onSources: () {},
       onSettings: () {},
       onDownloads: () {},
+      onAbout: () {},
+      updateChecker: _GalleryUpdateChecker(),
+      openExternalUri: (_) async => true,
       onDisconnect: () async {},
     ),
     _ => const _StatesShowcase(),
   };
+}
+
+final class _GalleryUpdateChecker implements UpdateChecker {
+  @override
+  Future<UpdateCheckResult> check() async => UpToDate(
+    local: AppVersion.parse('1.0.4+5'),
+    latest: AppVersion.parse('1.0.4'),
+    releaseUri: Uri.parse('https://github.com/appdev/TuneFlow-Client/releases'),
+  );
 }
 
 final class _StatesShowcase extends StatelessWidget {

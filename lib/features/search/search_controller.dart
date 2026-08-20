@@ -57,13 +57,18 @@ final class SearchController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> search({required String source, required String query}) async {
+  Future<void> search({
+    required String source,
+    required String query,
+    SearchView? view,
+  }) async {
     final normalizedSource = source.trim().isEmpty ? 'kw' : source.trim();
     final normalizedQuery = _normalizeQuery(query);
     final generation = ++_generation;
     _pendingPage = null;
-    final effectiveView = _viewSupported(normalizedSource, state.view)
-        ? state.view
+    final requestedView = view ?? state.view;
+    final effectiveView = _viewSupported(normalizedSource, requestedView)
+        ? requestedView
         : SearchView.tracks;
     if (normalizedQuery.isEmpty) {
       state = SearchState(

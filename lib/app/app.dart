@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:toastr_flutter/toastr.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../design/app_glass_policy.dart';
 import '../design/app_theme.dart';
@@ -12,7 +16,11 @@ import '../design/app_theme_definition.dart';
 import '../design/app_theme_scope.dart';
 import '../design/components/app_feedback.dart';
 import '../features/connection/connection_controller.dart';
+import '../features/connection/network_type_monitor.dart';
 import '../features/connection/connection_repository.dart';
+import '../features/more/about_screen.dart';
+import '../features/more/app_update.dart';
+import '../features/more/github_update_checker.dart';
 import '../features/player/service_audio_handler.dart';
 import '../platform/macos_menu_bar.dart';
 import '../l10n/app_localizations.dart';
@@ -27,22 +35,61 @@ import 'app_router.dart';
 import 'player_providers.dart';
 import 'runtime_providers.dart';
 
+final updateCheckerProvider = Provider<UpdateChecker>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return GitHubUpdateChecker(
+    client: client,
+    loadPackageInfo: PackageInfo.fromPlatform,
+  );
+});
+
+final appPackageInfoLoaderProvider = Provider<AppPackageInfoLoader>(
+  (_) =>
+      () => PackageInfo.fromPlatform(),
+);
+
+final externalUriOpenerProvider = Provider<ExternalUriOpener>(
+  (_) =>
+      (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
+);
+
+final _appRouterReadsProvider = Provider((ref) {
+  return (
+    connection: () => ref.read(connectionProvider),
+    player: () => ref.read(playerControllerProvider),
+    currentTrackActions: () => ref.read(currentTrackActionsProvider),
+    keepAwake: () => ref.read(appSettingsProvider).value?.keepAwake ?? false,
+    settings: () => ref.read(settingsControllerProvider),
+  );
+});
+
+final _retiredAppRoutersProvider = Provider<_RetiredAppRouters>((ref) {
+  final retired = _RetiredAppRouters();
+  ref.onDispose(retired.dispose);
+  return retired;
+});
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _RouterRefresh();
-  ref.watch(
-    connectionProvider.select((connection) => connection.asData?.value),
-  );
-  ref.listen(connectionProvider, (previous, next) => refresh.trigger());
-  ref.watch(currentTrackActionsProvider);
+  final retired = ref.read(_retiredAppRoutersProvider);
   final invalidation = ref.read(eventInvalidationProvider);
   invalidation.addListener(refresh.trigger);
+  ref.listen(
+    connectionProvider.select(
+      (connection) =>
+          (hasError: connection.hasError, api: connection.value?.api),
+    ),
+    (previous, next) => refresh.trigger(),
+  );
+  ref.watch(currentTrackActionsProvider);
+  final reads = ref.read(_appRouterReadsProvider);
   final router = buildAppRouter(
-    readConnection: () => ref.read(connectionProvider),
-    readPlayer: () => ref.read(playerControllerProvider),
-    readCurrentTrackActions: () => ref.read(currentTrackActionsProvider),
-    readKeepAwake: () =>
-        ref.read(appSettingsProvider).value?.keepAwake ?? false,
-    readSettings: () => ref.read(settingsControllerProvider),
+    readConnection: reads.connection,
+    readPlayer: reads.player,
+    readCurrentTrackActions: reads.currentTrackActions,
+    readKeepAwake: reads.keepAwake,
+    readSettings: reads.settings,
     readSourceVersion: () => invalidation.sourcesVersion,
     readPlaylistVersion: () => invalidation.playlistsVersion,
     readDownloadVersion: () => invalidation.downloadsVersion,
@@ -50,17 +97,35 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     readPlaylistDetailVersion: invalidation.playlistDetailVersion,
     refreshListenable: refresh,
     disconnect: ref.read(connectionProvider.notifier).disconnect,
+    updateChecker: ref.read(updateCheckerProvider),
+    loadPackageInfo: ref.read(appPackageInfoLoaderProvider),
+    openExternalUri: ref.read(externalUriOpenerProvider),
   );
   ref.onDispose(() {
-    router.dispose();
     invalidation.removeListener(refresh.trigger);
-    refresh.dispose();
+    retired.add(router, refresh);
   });
   return router;
 });
 
 final class _RouterRefresh extends ChangeNotifier {
   void trigger() => notifyListeners();
+}
+
+final class _RetiredAppRouters {
+  final List<(GoRouter, _RouterRefresh)> _entries = [];
+
+  void add(GoRouter router, _RouterRefresh refresh) {
+    _entries.add((router, refresh));
+  }
+
+  void dispose() {
+    for (final (router, refresh) in _entries) {
+      router.dispose();
+      refresh.dispose();
+    }
+    _entries.clear();
+  }
 }
 
 final class MusicFreeServiceApp extends StatefulWidget {
@@ -72,6 +137,7 @@ final class MusicFreeServiceApp extends StatefulWidget {
     this.mediaCache,
     this.imageCache,
     this.macOSMenuBar,
+    this.networkTypeMonitor,
   }) : connectionRepository = connectionRepository ?? ConnectionRepository(),
        preferences = preferences ?? SharedAppPreferences(),
        audio = audio ?? SilentAudioPort();
@@ -82,6 +148,7 @@ final class MusicFreeServiceApp extends StatefulWidget {
   final MediaCache? mediaCache;
   final AppImageCache? imageCache;
   final MacOSMenuBarPort? macOSMenuBar;
+  final NetworkTypeMonitor? networkTypeMonitor;
 
   @override
   State<MusicFreeServiceApp> createState() => _MusicFreeServiceAppState();
@@ -109,6 +176,8 @@ final class _MusicFreeServiceAppState extends State<MusicFreeServiceApp> {
         appImageCacheProvider.overrideWithValue(cache),
       if (widget.macOSMenuBar case final menuBar?)
         macOSMenuBarPortProvider.overrideWithValue(menuBar),
+      if (widget.networkTypeMonitor case final monitor?)
+        networkTypeMonitorProvider.overrideWithValue(monitor),
     ],
     child: const _AppView(),
   );
@@ -131,6 +200,7 @@ final class _AppView extends ConsumerWidget {
       AppLanguage.zh => const Locale('zh'),
       AppLanguage.en => const Locale('en'),
     };
+    final router = ref.watch(appRouterProvider);
     final app = ShadApp.custom(
       theme: buildLightTheme(themeDefinition),
       darkTheme: buildDarkTheme(themeDefinition),
@@ -140,7 +210,7 @@ final class _AppView extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         theme: buildAppMaterialTheme(Theme.of(context)),
         locale: locale,
-        routerConfig: ref.watch(appRouterProvider),
+        routerConfig: router,
         localizationsDelegates: const [
           AppLocalizations.delegate,
           GlobalShadLocalizations.delegate,
@@ -149,11 +219,14 @@ final class _AppView extends ConsumerWidget {
           GlobalWidgetsLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        builder: (context, child) => AppThemeScope(
-          definition: themeDefinition,
-          child: AppGlassPolicyHost(
-            reduceTransparency: settings?.reduceTransparency ?? false,
-            child: ShadAppBuilder(child: _AppMessageHost(child: child!)),
+        builder: (context, child) => Toastr.builder(
+          context,
+          AppThemeScope(
+            definition: themeDefinition,
+            child: AppGlassPolicyHost(
+              reduceTransparency: settings?.reduceTransparency ?? false,
+              child: ShadAppBuilder(child: _AppMessageHost(child: child!)),
+            ),
           ),
         ),
       ),

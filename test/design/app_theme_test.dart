@@ -59,9 +59,13 @@ void main() {
   });
 
   test('typography assigns display, body, and data roles', () {
-    expect(AppTypography.pageTitle.fontFamily, AppTypography.displayFontFamily);
-    expect(AppTypography.body.fontFamily, AppTypography.bodyFontFamily);
-    expect(AppTypography.counter.fontFamily, AppTypography.dataFontFamily);
+    expect(AppTypography.displayFontFamily, 'serif');
+    expect(AppTypography.hero.fontFamily, 'serif');
+    expect(AppTypography.pageTitle.fontFamily, 'serif');
+    expect(AppTypography.mobilePageTitle.fontFamily, 'serif');
+    expect(AppTypography.section.fontFamily, 'serif');
+    expect(AppTypography.body.fontFamily, isNull);
+    expect(AppTypography.counter.fontFamily, 'IBMPlexMono');
     expect(AppTypography.pageTitle.fontStyle, FontStyle.normal);
     expect(AppTypography.mobilePageTitle.fontSize, 24);
   });

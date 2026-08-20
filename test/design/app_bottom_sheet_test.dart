@@ -159,6 +159,110 @@ void main() {
     expect(find.byKey(const Key('app-action-sheet-actions')), findsNothing);
   });
 
+  testWidgets(
+    'showSelection returns a typed value from a scrollable mobile sheet',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      String? result;
+      await tester.pumpWidget(
+        harness(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                result = await AppBottomSheet.showSelection<String>(
+                  context,
+                  title: '音乐来源',
+                  message: '选择当前分类支持的来源',
+                  selectedValue: 'kw',
+                  options: const [
+                    AppBottomSheetSelection(
+                      key: Key('source-kw'),
+                      value: 'kw',
+                      label: '酷我音乐',
+                    ),
+                    AppBottomSheetSelection(value: 'kg', label: '酷狗音乐'),
+                    AppBottomSheetSelection(value: 'tx', label: 'QQ音乐'),
+                    AppBottomSheetSelection(value: 'wy', label: '网易音乐'),
+                    AppBottomSheetSelection(value: 'mg', label: '咪咕音乐'),
+                    AppBottomSheetSelection(value: 'all', label: '全部来源'),
+                    AppBottomSheetSelection(value: 'one', label: '备用来源一'),
+                    AppBottomSheetSelection(
+                      key: Key('source-last'),
+                      value: 'last',
+                      label: '备用来源二',
+                    ),
+                  ],
+                );
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('打开'));
+      await pumpRoute(tester);
+
+      expect(find.byKey(const Key('app-action-sheet-actions')), findsOneWidget);
+      expect(
+        find.byKey(const Key('app-action-sheet-cancel-group')),
+        findsOneWidget,
+      );
+      final selected = tester.widget<Semantics>(
+        find
+            .ancestor(
+              of: find.byKey(const Key('source-kw')),
+              matching: find.byType(Semantics),
+            )
+            .first,
+      );
+      expect(selected.properties.selected, isTrue);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('source-last')),
+        160,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('source-last')));
+      await pumpRoute(tester);
+
+      expect(result, 'last');
+      expect(find.byKey(const Key('app-action-sheet-actions')), findsNothing);
+    },
+  );
+
+  testWidgets('showSelection uses the shared desktop dialog', (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    late BuildContext context;
+    await tester.pumpWidget(
+      harness(
+        Builder(
+          builder: (value) {
+            context = value;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    AppBottomSheet.showSelection<String>(
+      context,
+      title: '音乐来源',
+      selectedValue: 'kw',
+      options: const [AppBottomSheetSelection(value: 'kw', label: '酷我音乐')],
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('app-adaptive-dialog')), findsOneWidget);
+    expect(find.byType(ShadSheet), findsNothing);
+  });
+
   testWidgets('showContent owns the sheet chrome around caller content', (
     tester,
   ) async {

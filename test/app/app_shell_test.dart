@@ -9,20 +9,44 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
+import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/app/app.dart';
 import 'package:musicfree_service_client/app/player_providers.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
+import 'package:musicfree_service_client/design/components/app_feedback.dart';
 import 'package:musicfree_service_client/design/components/app_mobile_dock.dart';
 import 'package:musicfree_service_client/storage/app_preferences.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
 import 'package:musicfree_service_client/features/connection/connection_controller.dart';
+import 'package:musicfree_service_client/features/connection/server_endpoint_probe.dart';
+import 'package:musicfree_service_client/features/connection/network_type_monitor.dart';
 import 'package:musicfree_service_client/features/player/artwork_palette.dart';
 import 'package:musicfree_service_client/platform/macos_menu_bar.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+import 'package:toastr_flutter/toastr.dart';
 
 import '../support/memory_app_preferences.dart';
 
 void main() {
+  testWidgets('application root hosts toastr feedback', (tester) async {
+    addTearDown(Toastr.clearAll);
+    await tester.pumpWidget(
+      MusicFreeServiceApp(
+        preferences: MemoryAppPreferences(const AppSettings()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final context = tester.element(find.byKey(const Key('connection-route')));
+    showAppMessage(context, title: '集成成功', message: '根 Overlay 可用');
+    await tester.pump();
+
+    final toast = tester.widget<ToastrWidget>(find.byType(ToastrWidget));
+    expect(toast.config.title, '集成成功');
+    expect(toast.config.message, '根 Overlay 可用');
+    Toastr.clearAll();
+  });
+
   testWidgets('activates an injected macOS menu bar port safely', (
     tester,
   ) async {
@@ -127,13 +151,26 @@ void main() {
   testWidgets('failed persisted connection leaves the loading route', (
     tester,
   ) async {
+    ServiceApi factory(ServiceOrigin origin) => ServiceApi(
+      origin,
+      client: MockClient(
+        (request) async =>
+            throw http.ClientException('connection refused', request.url),
+      ),
+    );
     final repository = ConnectionRepository(
-      (origin) => ServiceApi(
-        origin,
-        client: MockClient(
-          (request) async =>
-              throw http.ClientException('connection refused', request.url),
-        ),
+      factory,
+      null,
+      ServerEndpointProbe(
+        requestHealth: (origin) async {
+          final api = factory(origin);
+          try {
+            return await api.request('GET', '/api/v1/health');
+          } finally {
+            api.close();
+          }
+        },
+        delay: (_) async {},
       ),
     );
 
@@ -143,6 +180,9 @@ void main() {
         preferences: MemoryAppPreferences(
           const AppSettings(origin: 'http://offline.local'),
         ),
+        networkTypeMonitor: const _StaticNetworkMonitor({
+          NetworkTransport.other,
+        }),
       ),
     );
     final container = ProviderScope.containerOf(
@@ -283,6 +323,22 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byKey(const Key('main-shell'))),
     );
+    requests.clear();
+    container.read(connectionProvider.notifier).handleNetworkChange({
+      NetworkTransport.none,
+    });
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    expect(
+      requests.where(
+        (request) =>
+            request.endsWith('/api/v1/playlists') ||
+            request.endsWith('/api/v1/downloads') ||
+            request.endsWith('/api/v1/library/tracks'),
+      ),
+      isEmpty,
+      reason: 'connection diagnostics must not refresh music data',
+    );
     await container.read(playerControllerProvider)!.playTracks([
       Track.fromJson({'id': 'desktop-inset', 'name': '遮挡测试', 'source': 'kw'}),
     ]);
@@ -363,6 +419,15 @@ void main() {
     expect(find.byKey(const Key('settings-route')), findsOneWidget);
     expect(find.textContaining('插件'), findsNothing);
     expect(find.textContaining('文件夹'), findsNothing);
+
+    final apiBefore = container.read(connectionProvider).requireValue!.api;
+    await tester.tap(find.text('Service 已连接'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('connection-settings-screen')), findsOneWidget);
+    expect(
+      container.read(connectionProvider).requireValue!.api,
+      same(apiBefore),
+    );
 
     debugDefaultTargetPlatformOverride = null;
   });
@@ -714,24 +779,45 @@ void main() {
     homeDownloads!.onTap!();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('downloads-route')), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel('首页'));
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    expect(find.byKey(const Key('mobile-page-back')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-page-back')));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('更多'));
+    expect(find.byKey(const Key('home-route')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('mobile-destination-more')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('more-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('downloads-route')), findsNothing);
+    await tester.tap(find.byKey(const Key('more-about')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('about-screen')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    expect(tester.getSize(find.byType(AppMobileDock)).height, 0);
+    await tester.tap(find.byKey(const Key('mobile-page-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('more-mobile-layout')), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('搜索'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('search-settings')));
+    expect(find.byKey(const Key('search-settings')), findsNothing);
+    await tester.tap(find.bySemanticsLabel('更多'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('more-settings')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('settings-route')), findsOneWidget);
-    await tester.tap(find.bySemanticsLabel('首页'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('更多'));
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    await tester.tap(find.byKey(const Key('mobile-page-back')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('more-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('settings-route')), findsNothing);
+    tester.element(find.byKey(const Key('main-shell'))).go('/settings');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    await tester.tap(find.byKey(const Key('mobile-page-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('more-mobile-layout')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('首页'));
     await tester.pumpAndSettle();
 
@@ -742,6 +828,13 @@ void main() {
       Track.fromJson({'id': 'mobile-back', 'name': '返回测试', 'source': 'kw'}),
     ]);
     await tester.pump();
+    tester.element(find.byKey(const Key('main-shell'))).push('/more/about');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    expect(find.byKey(const Key('mobile-mini-player')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-page-back')));
+    await tester.pumpAndSettle();
     final mobilePageRect = tester.getRect(find.byKey(const Key('home-route')));
     final mobileDockRect = tester.getRect(
       find.byKey(const Key('mobile-player-dock')),
@@ -906,6 +999,8 @@ void main() {
           Track.fromJson({'id': 'song-1', 'name': '返回后仍在', 'source': 'kw'}),
         );
     await tester.pump();
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    expect(find.byKey(const Key('mobile-page-back')), findsOneWidget);
     tester.widget<AppMobileDock>(find.byType(AppMobileDock)).onOpenPlayer();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('player-route')), findsOneWidget);
@@ -921,6 +1016,8 @@ void main() {
     expect(find.byKey(const Key('player-route')), findsNothing);
     expect(find.text('返回后仍在'), findsOneWidget);
     expect(detailRequests, 1);
+    expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
+    expect(find.byKey(const Key('mobile-page-back')), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
 
@@ -1031,4 +1128,16 @@ final class _RecordingMenuBarPort implements MacOSMenuBarPort {
   @override
   Future<void> updateState(MacOSMenuBarSnapshot state) async =>
       states.add(state);
+}
+
+final class _StaticNetworkMonitor implements NetworkTypeMonitor {
+  const _StaticNetworkMonitor(this.transports);
+
+  final Set<NetworkTransport> transports;
+
+  @override
+  Stream<Set<NetworkTransport>> get changes => const Stream.empty();
+
+  @override
+  Future<Set<NetworkTransport>> current() async => transports;
 }

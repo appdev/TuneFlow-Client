@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -104,6 +105,63 @@ void main() {
     expect(find.byTooltip('前进'), findsNothing);
     expect(tester.getTopLeft(find.byKey(const Key('search-field'))).dx, 30);
   });
+
+  testWidgets(
+    'desktop search swaps shortcut hint for an accessible clear action',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': {'list': <Object?>[], 'total': 0},
+            }),
+            200,
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        harness(
+          SearchScreen(
+            controller: feature.SearchController(SearchRepository(api)),
+            playlists: PlaylistRepository(api),
+            downloads: DownloadRepository(api),
+            player: testPlayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final field = find.byKey(const Key('search-field'));
+      expect(tester.getSize(field).height, 46);
+      expect(find.text('⌘ K'), findsOneWidget);
+      expect(find.byKey(const Key('search-clear')), findsNothing);
+
+      await tester.enterText(field, 'Jay');
+      await tester.pump();
+      final clear = find.byKey(const Key('search-clear'));
+      expect(clear, findsOneWidget);
+      expect(tester.getSize(clear), const Size.square(44));
+      expect(find.text('⌘ K'), findsNothing);
+
+      await tester.tap(clear);
+      await tester.pumpAndSettle();
+      expect(find.text('⌘ K'), findsOneWidget);
+      expect(find.byKey(const Key('search-clear')), findsNothing);
+      expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText))
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+    },
+  );
 
   testWidgets('desktop artwork is clipped to a rounded square', (tester) async {
     const artworkSize = 38.0;
@@ -567,6 +625,96 @@ void main() {
     expect(searches.last, ('kw', '晚风'));
   });
 
+  testWidgets('mobile search history survives a held selection press', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.resetStatic();
+    SharedPreferences.setMockInitialValues({
+      SearchHistoryRepository.storageKey: ['晚风', '挪威的森林'],
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {'list': <Object?>[], 'total': 0},
+          }),
+          200,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      harness(
+        SearchScreen(
+          controller: feature.SearchController(SearchRepository(api)),
+          playlists: PlaylistRepository(api),
+          downloads: DownloadRepository(api),
+          player: testPlayer(),
+          history: SearchHistoryRepository(
+            loadPreferences: () async => preferences,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final filtersBefore = tester.getTopLeft(
+      find.byKey(const Key('search-mobile-filters')),
+    );
+    await tester.tap(find.byKey(const Key('search-field')));
+    await tester.pumpAndSettle();
+
+    final fieldRect = tester.getRect(find.byKey(const Key('search-field')));
+    final historyRect = tester.getRect(
+      find.byKey(const Key('search-history-panel')),
+    );
+    expect(historyRect.left, fieldRect.left);
+    expect(historyRect.top, greaterThanOrEqualTo(fieldRect.bottom));
+    expect(historyRect.width, fieldRect.width);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('search-mobile-filters'))),
+      filtersBefore,
+    );
+
+    await tester.tap(find.byKey(const Key('search-mobile-masthead')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('search-history-panel')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('search-field')));
+    await tester.pumpAndSettle();
+    final historyItem = find.byKey(const Key('search-history-item-0'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(historyItem));
+    await mouse.down(tester.getCenter(historyItem));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    await mouse.up();
+    await mouse.removePointer();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('search-history-panel')), findsNothing);
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      '晚风',
+    );
+
+    final headingBefore = tester.getTopLeft(
+      find.byKey(const Key('search-results-heading')),
+    );
+    await tester.tap(find.byKey(const Key('search-field')));
+    await tester.enterText(find.byKey(const Key('search-field')), '');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('search-history-panel')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('search-results-heading'))),
+      headingBefore,
+    );
+  });
+
   testWidgets('switching provider tabs replaces results with that source', (
     tester,
   ) async {
@@ -667,7 +815,7 @@ void main() {
     expect(searchedSources, ['kw', 'kg', 'tx', 'wy', 'mg']);
   });
 
-  testWidgets('playing a search result preserves the result queue', (
+  testWidgets('playing a search result queues only the selected track', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 720);
@@ -745,13 +893,13 @@ void main() {
 
     expect(find.byKey(const Key('search-track-kw-one')), findsOneWidget);
     expect(player.state.current?.id, 'one');
-    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.queue.map((track) => track.id), ['one']);
     expect(player.state.currentIndex, 0);
     expect(
       player.state.current?.raw['pic'],
       'http://service.local/api/v1/playback/resources/'
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
-          'picture',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+      'picture',
     );
     expect(find.byKey(const Key('search-wide-layout')), findsOneWidget);
 
@@ -762,11 +910,11 @@ void main() {
         .singleWhere((action) => action.id == TrackActionId.playNow)
         .invoke();
 
-    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
-    expect(player.state.currentIndex, 1);
+    expect(player.state.queue.map((track) => track.id), ['two']);
+    expect(player.state.currentIndex, 0);
   });
 
-  testWidgets('search playback uses the list visible when playback starts', (
+  testWidgets('search playback responds before artwork finishes', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -844,20 +992,37 @@ void main() {
 
     await tester.tap(find.byKey(const Key('search-track-kw-one')));
     await tester.pump();
+
+    expect(player.state.current?.id, 'one');
+    expect(player.state.queue.map((track) => track.id), ['one']);
+    expect(player.state.currentIndex, 0);
+    expect(player.state.current?.raw['pic'], isNull);
+
     await controller.search(source: 'kw', query: 'next');
     await tester.pump();
     pictureResponse.complete(
       http.Response(
         jsonEncode({
-          'data': {'url': 'https://example.test/one.jpg'},
+          'data': {
+            'url':
+                '/api/v1/playback/resources/'
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+                'picture',
+          },
         }),
         200,
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(player.state.queue.map((track) => track.id), ['one', 'two']);
+    expect(player.state.queue.map((track) => track.id), ['one']);
     expect(player.state.currentIndex, 0);
+    expect(
+      player.state.current?.raw['pic'],
+      'http://service.local/api/v1/playback/resources/'
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
+      'picture',
+    );
   });
 
   testWidgets('mobile search renders touch rows without a desktop table', (
@@ -888,6 +1053,8 @@ void main() {
     expect(find.byKey(const Key('search-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('search-mobile-scroll')), findsOneWidget);
     expect(find.byKey(const Key('search-field')), findsOneWidget);
+    expect(find.byKey(const Key('search-settings')), findsNothing);
+    expect(find.byTooltip('设置'), findsNothing);
     expect(
       find.descendant(
         of: find.byKey(const Key('search-field')),
@@ -897,6 +1064,99 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'mobile search centers content and clears query with focus retained',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'data': {
+                'list': [
+                  {'id': 'wind', 'name': '晚风', 'singer': '伍佰', 'source': 'kw'},
+                ],
+                'total': 1,
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        ),
+      );
+      final controller = feature.SearchController(SearchRepository(api));
+
+      await tester.pumpWidget(
+        harness(
+          SearchScreen(
+            controller: controller,
+            playlists: PlaylistRepository(api),
+            downloads: DownloadRepository(api),
+            player: testPlayer(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final field = find.byKey(const Key('search-field'));
+      final leading = find.byKey(const Key('search-field-leading'));
+      expect(tester.getSize(field).height, 52);
+      expect(
+        tester.getCenter(leading).dy,
+        closeTo(tester.getCenter(field).dy, .01),
+      );
+      expect(
+        tester.getCenter(find.text('搜索音乐')).dy,
+        closeTo(tester.getCenter(field).dy, .01),
+      );
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).textInputAction,
+        TextInputAction.search,
+      );
+      expect(find.byKey(const Key('search-clear')), findsNothing);
+
+      await tester.enterText(field, '伍佰');
+      expect(
+        tester.getCenter(find.byType(EditableText)).dy,
+        closeTo(tester.getCenter(field).dy, .01),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(controller.state.query, '伍佰');
+      expect(find.byKey(const Key('search-results-heading')), findsOneWidget);
+
+      final clear = find.byKey(const Key('search-clear'));
+      expect(clear, findsOneWidget);
+      expect(find.byTooltip('清除搜索'), findsOneWidget);
+      expect(find.bySemanticsLabel('清除搜索'), findsOneWidget);
+      expect(tester.getSize(clear), const Size.square(44));
+      await tester.tap(clear);
+      tester.testTextInput.hide();
+      expect(tester.testTextInput.isVisible, isFalse);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+        '',
+      );
+      expect(controller.state.query, '');
+      expect(find.byKey(const Key('search-results-heading')), findsNothing);
+      expect(find.byKey(const Key('search-clear')), findsNothing);
+      expect(
+        tester
+            .widget<EditableText>(find.byType(EditableText))
+            .focusNode
+            .hasFocus,
+        isTrue,
+      );
+      expect(tester.testTextInput.isVisible, isTrue);
+    },
+  );
 
   testWidgets('mobile search follows the approved workbench hierarchy', (
     tester,
@@ -1040,12 +1300,12 @@ void main() {
                   {
                     'id': 'kw',
                     'name': '酷我音乐',
-                    'searchKinds': ['track'],
+                    'searchKinds': ['track', 'playlist'],
                   },
                   {
                     'id': 'tx',
                     'name': 'QQ音乐',
-                    'searchKinds': ['track'],
+                    'searchKinds': ['track', 'playlist'],
                   },
                 ],
               },
@@ -1065,11 +1325,12 @@ void main() {
         );
       }),
     );
+    final controller = feature.SearchController(SearchRepository(api));
 
     await tester.pumpWidget(
       harness(
         SearchScreen(
-          controller: feature.SearchController(SearchRepository(api)),
+          controller: controller,
           playlists: PlaylistRepository(api),
           downloads: DownloadRepository(api),
           player: testPlayer(),
@@ -1078,10 +1339,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('search-field')), 'Jay');
+    await tester.tap(find.byKey(const Key('search-mobile-filter-playlists')));
+    await tester.pumpAndSettle();
+    searchedSources.clear();
     await tester.tap(find.byKey(const Key('search-source-control')));
     await tester.pumpAndSettle();
 
-    final sheet = find.byType(ShadSheet);
+    final sheet = find.byKey(const Key('app-action-sheet-actions'));
     expect(sheet, findsOneWidget);
     expect(
       find.descendant(of: sheet, matching: find.text('酷我音乐')),
@@ -1093,14 +1357,16 @@ void main() {
     );
     expect(
       find.descendant(of: sheet, matching: find.text('全部来源')),
-      findsOneWidget,
+      findsNothing,
     );
 
     await tester.tap(find.byKey(const Key('search-source-option-tx')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(ShadSheet), findsNothing);
+    expect(sheet, findsNothing);
     expect(searchedSources, ['tx']);
+    expect(controller.state.source, 'tx');
+    expect(controller.state.view, feature.SearchView.playlists);
   });
 
   testWidgets(
@@ -1192,8 +1458,33 @@ void main() {
       await tester.tap(find.byKey(const Key('search-mobile-filter-albums')));
       await tester.pumpAndSettle();
 
-      expect(searches, contains(('/api/v1/catalog/albums/search', 'wy')));
+      expect(searches, [('/api/v1/catalog/albums/search', 'wy')]);
       expect(find.text('叶惠美'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('search-source-control')));
+      await tester.pumpAndSettle();
+
+      final sheet = find.byKey(const Key('app-action-sheet-actions'));
+      expect(sheet, findsOneWidget);
+      expect(
+        find.descendant(of: sheet, matching: find.text('当前仅网易音乐支持专辑搜索')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sheet, matching: find.text('网易音乐')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sheet, matching: find.text('酷我音乐')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: sheet, matching: find.text('全部来源')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('search-source-option-wy')));
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byKey(const Key('search-collection-wy-jay-album')));
       expect(openedCollection?.id, 'jay-album');
     },

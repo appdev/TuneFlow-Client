@@ -1611,6 +1611,45 @@ void main() {
     expect(find.text('Line').hitTestable(), findsNothing);
   });
 
+  testWidgets('mobile record rotates while ready audio is playing', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.playTracks([
+      Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
+    ]);
+    controller.state = controller.state.copyWith(
+      playing: true,
+      processing: PlayerProcessing.ready,
+      playbackPending: true,
+    );
+
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    final turn = find.byKey(const Key('player-mobile-vinyl-turn'));
+    double turns() => tester.widget<RotationTransition>(turn).turns.value;
+    final initial = turns();
+
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(turns(), greaterThan(initial));
+  });
+
   testWidgets('mobile empty lyrics appear only after swiping to lyrics', (
     tester,
   ) async {

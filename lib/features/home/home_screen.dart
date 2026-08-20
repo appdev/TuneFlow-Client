@@ -22,7 +22,6 @@ final class HomeScreen extends StatefulWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
-    required this.onSettings,
     this.player,
     this.now = DateTime.now,
   });
@@ -31,7 +30,6 @@ final class HomeScreen extends StatefulWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
-  final VoidCallback onSettings;
   final PlayerController? player;
   final DateTime Function() now;
 
@@ -72,7 +70,6 @@ final class _HomeScreenState extends State<HomeScreen> {
                   onSearch: widget.onSearch,
                   onPlaylists: widget.onPlaylists,
                   onDownloads: widget.onDownloads,
-                  onSettings: widget.onSettings,
                   player: widget.player,
                   now: widget.now,
                 )
@@ -83,7 +80,6 @@ final class _HomeScreenState extends State<HomeScreen> {
                   onSearch: widget.onSearch,
                   onPlaylists: widget.onPlaylists,
                   onDownloads: widget.onDownloads,
-                  onSettings: widget.onSettings,
                   player: widget.player,
                   showQueue: false,
                   now: widget.now,
@@ -102,7 +98,6 @@ final class _WideHome extends StatelessWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
-    required this.onSettings,
     required this.player,
     required this.showQueue,
     required this.now,
@@ -113,7 +108,6 @@ final class _WideHome extends StatelessWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
-  final VoidCallback onSettings;
   final PlayerController? player;
   final bool showQueue;
   final DateTime Function() now;
@@ -131,7 +125,6 @@ final class _WideHome extends StatelessWidget {
           onSearch: onSearch,
           onPlaylists: onPlaylists,
           onDownloads: onDownloads,
-          onSettings: onSettings,
           player: player,
           now: now,
         ),
@@ -216,7 +209,6 @@ final class _WideHero extends StatelessWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
-    required this.onSettings,
     required this.player,
     required this.now,
   });
@@ -226,7 +218,6 @@ final class _WideHero extends StatelessWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
-  final VoidCallback onSettings;
   final PlayerController? player;
   final DateTime Function() now;
 
@@ -300,10 +291,6 @@ final class _WideHero extends StatelessWidget {
                             key: const Key('home-downloads'),
                             onPressed: onDownloads,
                           ),
-                          _HiddenShortcut(
-                            key: const Key('home-settings'),
-                            onPressed: onSettings,
-                          ),
                         ],
                       ),
                     ],
@@ -346,7 +333,6 @@ final class _MobileHome extends StatelessWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
-    required this.onSettings,
     required this.player,
     required this.now,
   });
@@ -356,7 +342,6 @@ final class _MobileHome extends StatelessWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
-  final VoidCallback onSettings;
   final PlayerController? player;
   final DateTime Function() now;
 
@@ -369,7 +354,7 @@ final class _MobileHome extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _MobileHomeMasthead(onSettings: onSettings),
+          const _MobileHomeMasthead(),
           const SizedBox(height: 28),
           Text(
             _mobileTimestamp(now()),
@@ -430,9 +415,7 @@ final class _MobileHome extends StatelessWidget {
 }
 
 final class _MobileHomeMasthead extends StatelessWidget {
-  const _MobileHomeMasthead({required this.onSettings});
-
-  final VoidCallback onSettings;
+  const _MobileHomeMasthead();
 
   @override
   Widget build(BuildContext context) => Row(
@@ -455,16 +438,6 @@ final class _MobileHomeMasthead extends StatelessWidget {
         child: Text(
           'TuneFlow',
           style: AppTypography.section.copyWith(fontSize: 19),
-        ),
-      ),
-      AppGlassSurface(
-        role: AppGlassRole.control,
-        padding: EdgeInsets.zero,
-        child: IconButton(
-          tooltip: '设置',
-          onPressed: onSettings,
-          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-          icon: const Icon(LucideIcons.settings, size: 20),
         ),
       ),
     ],

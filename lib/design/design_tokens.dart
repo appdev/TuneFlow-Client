@@ -143,10 +143,8 @@ abstract final class AppShadows {
 }
 
 abstract final class AppTypography {
-  static const String displayFontFamily = 'NotoSerifSC';
-  static const String bodyFontFamily = 'NotoSansCJKsc';
+  static const String displayFontFamily = 'serif';
   static const String dataFontFamily = 'IBMPlexMono';
-  static const String fontFamily = bodyFontFamily;
   static const hero = TextStyle(
     fontFamily: displayFontFamily,
     fontSize: 34,
@@ -181,18 +179,12 @@ abstract final class AppTypography {
     letterSpacing: -0.2,
   );
   static const title = TextStyle(
-    fontFamily: fontFamily,
     fontSize: 16,
     height: 1.3,
     fontWeight: FontWeight.w600,
   );
-  static const body = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 15,
-    height: 1.45,
-  );
+  static const body = TextStyle(fontSize: 15, height: 1.45);
   static const metadata = TextStyle(
-    fontFamily: fontFamily,
     fontSize: 12,
     height: 1.35,
     fontWeight: FontWeight.w500,

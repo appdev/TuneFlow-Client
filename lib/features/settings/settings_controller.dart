@@ -5,10 +5,20 @@ import '../../storage/app_image_cache.dart';
 import '../../storage/app_preferences.dart';
 import '../../storage/media_cache.dart';
 import '../connection/connection_repository.dart';
+import 'service_settings_repository.dart';
 
 typedef SaveSettings = Future<void> Function(AppSettings settings);
 typedef LoadAutoDownloadOnPlay = Future<bool> Function();
 typedef UpdateAutoDownloadOnPlay = Future<bool> Function(bool value);
+typedef LoadServiceAccessOrigins = Future<ServiceAccessOrigins> Function();
+typedef UpdateServiceAccessOrigins =
+    Future<ServiceAccessOrigins> Function(ServiceAccessOrigins value);
+typedef ApplyServiceEndpoints =
+    Future<void> Function({
+      required String bootstrapOrigin,
+      required String lanOrigin,
+      required String externalOrigin,
+    });
 
 final class SettingsController extends ChangeNotifier {
   SettingsController({
@@ -17,21 +27,27 @@ final class SettingsController extends ChangeNotifier {
     required Future<void> Function(String origin) connect,
     required Future<void> Function() disconnect,
     required Future<void> Function(String quality) setPlayerQuality,
-    Future<ConnectionDiagnostics> Function(String origin)? diagnostics,
     MediaCache? mediaCache,
     AppImageCache? imageCache,
     LoadAutoDownloadOnPlay? loadAutoDownloadOnPlay,
     UpdateAutoDownloadOnPlay? updateAutoDownloadOnPlay,
+    LoadServiceAccessOrigins? loadServiceAccessOrigins,
+    UpdateServiceAccessOrigins? updateServiceAccessOrigins,
+    ApplyServiceEndpoints? applyServiceEndpoints,
+    ConnectionDiagnostics? initialDiagnostics,
   }) : state = settings,
        _save = save,
        _connect = connect,
        _disconnect = disconnect,
        _setPlayerQuality = setPlayerQuality,
-       _diagnostics = diagnostics,
        _mediaCache = mediaCache,
        _imageCache = imageCache,
        _loadAutoDownloadOnPlay = loadAutoDownloadOnPlay,
-       _updateAutoDownloadOnPlay = updateAutoDownloadOnPlay {
+       _updateAutoDownloadOnPlay = updateAutoDownloadOnPlay,
+       _loadServiceAccessOrigins = loadServiceAccessOrigins,
+       _updateServiceAccessOrigins = updateServiceAccessOrigins,
+       _applyServiceEndpoints = applyServiceEndpoints,
+       connection = initialDiagnostics {
     cacheUsage =
         mediaCache?.usage.value ??
         MediaCacheUsage(audioBytes: 0, limitBytes: settings.cacheLimitBytes);
@@ -44,15 +60,15 @@ final class SettingsController extends ChangeNotifier {
   final Future<void> Function(String origin) _connect;
   final Future<void> Function() _disconnect;
   final Future<void> Function(String quality) _setPlayerQuality;
-  final Future<ConnectionDiagnostics> Function(String origin)? _diagnostics;
   final MediaCache? _mediaCache;
   final AppImageCache? _imageCache;
   final LoadAutoDownloadOnPlay? _loadAutoDownloadOnPlay;
   final UpdateAutoDownloadOnPlay? _updateAutoDownloadOnPlay;
+  final LoadServiceAccessOrigins? _loadServiceAccessOrigins;
+  final UpdateServiceAccessOrigins? _updateServiceAccessOrigins;
+  final ApplyServiceEndpoints? _applyServiceEndpoints;
   AppSettings state;
   ConnectionDiagnostics? connection;
-  bool diagnosticsLoading = false;
-  Object? diagnosticsError;
   late MediaCacheUsage cacheUsage;
   late int imageCacheBytes;
   bool cacheBusy = false;
@@ -60,6 +76,9 @@ final class SettingsController extends ChangeNotifier {
   bool? autoDownloadOnPlay;
   bool serviceSettingsBusy = false;
   Object? serviceSettingsError;
+  ServiceAccessOrigins? serviceAccessOrigins;
+  bool connectionSettingsBusy = false;
+  Object? connectionSettingsError;
   bool _disposed = false;
 
   bool get serviceSettingsAvailable =>
@@ -68,18 +87,83 @@ final class SettingsController extends ChangeNotifier {
 
   Future<void> refreshServiceSettings() async {
     final load = _loadAutoDownloadOnPlay;
-    if (load == null || serviceSettingsBusy) return;
+    final loadOrigins = _loadServiceAccessOrigins;
+    if ((load == null && loadOrigins == null) || serviceSettingsBusy) return;
     serviceSettingsBusy = true;
     serviceSettingsError = null;
     autoDownloadOnPlay = null;
     _notifyIfActive();
     try {
-      final value = await load();
-      if (!_disposed) autoDownloadOnPlay = value;
+      final values = await Future.wait<Object?>([
+        if (load != null) load(),
+        if (loadOrigins != null) loadOrigins(),
+      ]);
+      if (!_disposed) {
+        for (final value in values) {
+          if (value is bool) autoDownloadOnPlay = value;
+          if (value is ServiceAccessOrigins) serviceAccessOrigins = value;
+        }
+      }
     } on Object catch (error) {
       if (!_disposed) serviceSettingsError = error;
     } finally {
       serviceSettingsBusy = false;
+      _notifyIfActive();
+    }
+  }
+
+  Future<void> saveConnectionSettings({
+    required String lanOrigin,
+    required String externalOrigin,
+  }) async {
+    if (connectionSettingsBusy) return;
+    final load = _loadServiceAccessOrigins;
+    final update = _updateServiceAccessOrigins;
+    final apply = _applyServiceEndpoints;
+    if (load == null || update == null || apply == null) {
+      throw StateError('Service connection settings are unavailable.');
+    }
+    final bootstrapOrigin = state.origin;
+    if (bootstrapOrigin == null || bootstrapOrigin.trim().isEmpty) {
+      throw StateError('The initial Service address is unavailable.');
+    }
+    final normalizedBootstrap = ServiceOrigin.parse(
+      bootstrapOrigin,
+    ).uri.toString();
+    String normalizeOptional(String value) => value.trim().isEmpty
+        ? ''
+        : ServiceOrigin.parse(value.trim()).uri.toString();
+    final proposed = ServiceAccessOrigins(
+      lanOrigin: normalizeOptional(lanOrigin),
+      externalOrigin: normalizeOptional(externalOrigin),
+    );
+    connectionSettingsBusy = true;
+    connectionSettingsError = null;
+    _notifyIfActive();
+    late ServiceAccessOrigins previous;
+    var writeAttempted = false;
+    try {
+      previous = await load();
+      writeAttempted = true;
+      final confirmed = await update(proposed);
+      await apply(
+        bootstrapOrigin: normalizedBootstrap,
+        lanOrigin: confirmed.lanOrigin,
+        externalOrigin: confirmed.externalOrigin,
+      );
+      serviceAccessOrigins = confirmed;
+    } on Object catch (error) {
+      if (writeAttempted) {
+        try {
+          await update(previous);
+        } on Object {
+          // Preserve the original failure; the next settings refresh reconciles.
+        }
+      }
+      connectionSettingsError = error;
+      rethrow;
+    } finally {
+      connectionSettingsBusy = false;
       _notifyIfActive();
     }
   }
@@ -143,6 +227,12 @@ final class SettingsController extends ChangeNotifier {
     if (settings == state) return;
     state = settings;
     notifyListeners();
+  }
+
+  void syncConnection(ConnectionDiagnostics? value) {
+    if (identical(connection, value)) return;
+    connection = value;
+    _notifyIfActive();
   }
 
   Future<void> setCacheLimit(int bytes) async {
@@ -256,24 +346,6 @@ final class SettingsController extends ChangeNotifier {
     await _connect(origin);
     state = state.copyWith(origin: origin);
     notifyListeners();
-    await refreshDiagnostics();
-  }
-
-  Future<void> refreshDiagnostics() async {
-    final origin = state.origin;
-    final probe = _diagnostics;
-    if (origin == null || probe == null) return;
-    diagnosticsLoading = true;
-    diagnosticsError = null;
-    notifyListeners();
-    try {
-      connection = await probe(origin);
-    } on Object catch (error) {
-      diagnosticsError = error;
-    } finally {
-      diagnosticsLoading = false;
-      notifyListeners();
-    }
   }
 
   Future<void> disconnect() => _disconnect();

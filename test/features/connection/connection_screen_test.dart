@@ -10,6 +10,7 @@ import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/app/app.dart';
 import 'package:musicfree_service_client/design/components/app_button.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
+import 'package:musicfree_service_client/features/connection/server_endpoint_probe.dart';
 import 'package:musicfree_service_client/storage/app_preferences.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -33,12 +34,27 @@ final class _DelayedAppPreferences implements AppPreferences {
   }
 }
 
+ConnectionRepository _testRepository(ServiceApiFactory factory) {
+  final probe = ServerEndpointProbe(
+    requestHealth: (origin) async {
+      final api = factory(origin);
+      try {
+        return await api.request('GET', '/api/v1/health');
+      } finally {
+        api.close();
+      }
+    },
+    delay: (_) async {},
+  );
+  return ConnectionRepository(factory, null, probe);
+}
+
 void main() {
   testWidgets(
     'shows the saved origin in a dedicated cold-start connecting view',
     (tester) async {
       final pendingHealth = Completer<http.Response>();
-      final repository = ConnectionRepository(
+      final repository = _testRepository(
         (origin) => ServiceApi(
           origin,
           client: MockClient((request) => pendingHealth.future),
@@ -66,7 +82,14 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byKey(const Key('service-origin-field')), findsNothing);
 
-      pendingHealth.completeError(http.ClientException('test cleanup'));
+      pendingHealth.complete(
+        http.Response(
+          jsonEncode({
+            'data': {'status': 'unhealthy'},
+          }),
+          200,
+        ),
+      );
       await tester.pumpAndSettle();
     },
   );
@@ -74,7 +97,7 @@ void main() {
   testWidgets('prefills the saved origin after cold-start connection fails', (
     tester,
   ) async {
-    final repository = ConnectionRepository(
+    final repository = _testRepository(
       (origin) => ServiceApi(
         origin,
         client: MockClient(
@@ -118,7 +141,7 @@ void main() {
     tester,
   ) async {
     final pendingHealth = Completer<http.Response>();
-    final repository = ConnectionRepository(
+    final repository = _testRepository(
       (origin) => ServiceApi(
         origin,
         client: MockClient((request) => pendingHealth.future),
@@ -146,7 +169,14 @@ void main() {
       isTrue,
     );
 
-    pendingHealth.completeError(http.ClientException('test cleanup'));
+    pendingHealth.complete(
+      http.Response(
+        jsonEncode({
+          'data': {'status': 'unhealthy'},
+        }),
+        200,
+      ),
+    );
     await tester.pumpAndSettle();
   });
 
@@ -154,7 +184,7 @@ void main() {
     tester,
   ) async {
     final preferences = _DelayedAppPreferences();
-    final repository = ConnectionRepository(
+    final repository = _testRepository(
       (origin) => ServiceApi(
         origin,
         client: MockClient(
@@ -245,7 +275,7 @@ void main() {
   testWidgets('keeps the entered origin visible for an unsupported API', (
     tester,
   ) async {
-    final repository = ConnectionRepository(
+    final repository = _testRepository(
       (origin) => ServiceApi(
         origin,
         client: MockClient(
