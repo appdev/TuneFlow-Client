@@ -12,6 +12,7 @@ Widget harness({
   required Widget child,
   bool highContrast = false,
   bool disableAnimations = false,
+  bool accessibleNavigation = false,
   bool reduceTransparency = false,
   bool performanceDegraded = false,
 }) {
@@ -22,6 +23,7 @@ Widget harness({
       data: MediaQueryData(
         highContrast: highContrast,
         disableAnimations: disableAnimations,
+        accessibleNavigation: accessibleNavigation,
       ),
       child: AppThemeScope(
         definition: definition,
@@ -251,6 +253,25 @@ void main() {
     );
 
     expect(policy.reduceMotion, isTrue);
+  });
+
+  testWidgets('accessible navigation does not imply reduced motion', (
+    tester,
+  ) async {
+    late AppGlassPolicy policy;
+    await tester.pumpWidget(
+      harness(
+        accessibleNavigation: true,
+        child: Builder(
+          builder: (context) {
+            policy = AppGlassPolicyScope.policyOf(context);
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    expect(policy.reduceMotion, isFalse);
   });
 
   test('performance policy degrades after sustained slow frames', () {

@@ -66,9 +66,12 @@ final class ArtworkPaletteExtractor implements ArtworkPaletteDecoding {
     }
     final buckets = <int, _ColorBucket>{};
     var highestSaturation = 0.0;
+    var opaqueSamples = 0;
+    var chromaMass = 0.0;
     for (var offset = 0; offset + 3 < width * height * 4; offset += 4) {
       final alpha = rgba[offset + 3];
       if (alpha < 128) continue;
+      opaqueSamples++;
       final color = Color.fromARGB(
         alpha,
         rgba[offset],
@@ -77,21 +80,29 @@ final class ArtworkPaletteExtractor implements ArtworkPaletteDecoding {
       );
       final hsv = HSVColor.fromColor(color);
       highestSaturation = math.max(highestSaturation, hsv.saturation);
+      final chromaWeight = math.pow(hsv.saturation, 1.35).toDouble();
+      if (hsv.saturation < .04) continue;
+      chromaMass += chromaWeight;
       final luminance = color.computeLuminance();
       final hueBucket = (hsv.hue / 15).floor().clamp(0, 23);
       final lightBucket = (luminance * 4).floor().clamp(0, 3);
       final key = hueBucket * 4 + lightBucket;
-      final chromaWeight = .25 + hsv.saturation * .75;
       final middleLightWeight =
           1 - ((luminance - .5).abs() * 1.2).clamp(0.0, .72);
-      final weight = chromaWeight * middleLightWeight;
+      final valueWeight = .48 + hsv.value * .52;
+      final weight = chromaWeight * middleLightWeight * valueWeight;
       buckets.putIfAbsent(key, _ColorBucket.new).add(color, hsv, weight);
     }
-    if (buckets.isEmpty || highestSaturation < .055) {
+    final chromaCoverage = opaqueSamples == 0
+        ? 0.0
+        : chromaMass / opaqueSamples;
+    if (buckets.isEmpty || highestSaturation < .055 || chromaCoverage < .018) {
       return fallbackArtworkPalette(fallbackSeed, brightness: brightness);
     }
     final candidates = buckets.values.toList()
-      ..sort((first, second) => second.weight.compareTo(first.weight));
+      ..sort(
+        (first, second) => second.dominantScore.compareTo(first.dominantScore),
+      );
     final dominant = candidates.first;
     final companion = _companionFor(dominant, candidates);
     final accent = candidates.reduce(
@@ -117,8 +128,8 @@ final class ArtworkPaletteExtractor implements ArtworkPaletteDecoding {
     var bestScore = 0.0;
     for (final candidate in candidates.skip(1)) {
       final separation = _hueDistance(dominant.hue, candidate.hue) / 180;
-      final score = candidate.weight * (.3 + separation * .7);
-      if (separation >= .12 && score > bestScore) {
+      final score = candidate.accentScore * (.22 + separation * .78);
+      if (separation >= .10 && score > bestScore) {
         best = candidate;
         bestScore = score;
       }
@@ -139,9 +150,9 @@ final class ArtworkPaletteExtractor implements ArtworkPaletteDecoding {
     final dark = brightness == Brightness.dark;
     return hsv
         .withSaturation(
-          hsv.saturation.clamp(dark ? .12 : .08, dark ? .38 : .30),
+          hsv.saturation.clamp(dark ? .12 : .14, dark ? .38 : .38),
         )
-        .withValue(hsv.value.clamp(dark ? .10 : .86, dark ? .22 : .96))
+        .withValue(hsv.value.clamp(dark ? .10 : .90, dark ? .22 : .97))
         .toColor();
   }
 
@@ -153,8 +164,8 @@ final class ArtworkPaletteExtractor implements ArtworkPaletteDecoding {
       );
     }
     return hsv
-        .withSaturation(hsv.saturation.clamp(.48, .82))
-        .withValue(hsv.value.clamp(.52, .88))
+        .withSaturation(hsv.saturation.clamp(.56, .86))
+        .withValue(hsv.value.clamp(.68, .92))
         .toColor();
   }
 }
@@ -206,5 +217,8 @@ final class _ColorBucket {
   double get hue => _hue / weight;
   double get saturation => _saturation / weight;
   double get value => _value / weight;
-  double get accentScore => weight * (.3 + saturation * .7);
+  double get dominantScore =>
+      weight * (.42 + saturation * .58) * (.72 + value * .28);
+  double get accentScore =>
+      weight * (.18 + saturation * .82) * (.48 + value * .52);
 }

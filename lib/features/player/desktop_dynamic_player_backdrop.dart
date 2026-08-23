@@ -30,36 +30,43 @@ final class DesktopDynamicPlayerBackdrop extends StatelessWidget {
           curve: Curves.easeOutCubic,
           builder: (context, colors, _) => SizedBox.expand(
             key: ValueKey(transitionKey),
-            child: DecoratedBox(
-              key: const Key('player-desktop-backdrop-gradient-base'),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color.alphaBlend(
-                      colors.backgroundBase.withValues(alpha: .88),
-                      neutral,
-                    ),
-                    Color.alphaBlend(
-                      colors.backgroundCompanion.withValues(alpha: .72),
-                      neutral,
-                    ),
-                  ],
-                ),
-              ),
-              child: DecoratedBox(
-                key: const Key('player-desktop-backdrop-gradient-companion'),
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(.72, -.82),
-                    radius: 1.12,
-                    colors: [
-                      colors.backgroundCompanion.withValues(alpha: .38),
-                      colors.backgroundBase.withValues(alpha: 0),
-                    ],
+            child: RepaintBoundary(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(
+                    key: const Key('player-desktop-backdrop-canvas'),
+                    color: neutral,
                   ),
-                ),
+                  _diffuseLayer(
+                    key: const Key('player-desktop-backdrop-diffuse-base'),
+                    center: const Alignment(.54, -.92),
+                    radius: 1.28,
+                    color: colors.backgroundBase,
+                    opacity: .72,
+                  ),
+                  _diffuseLayer(
+                    key: const Key('player-desktop-backdrop-diffuse-companion'),
+                    center: const Alignment(-.88, .96),
+                    radius: 1.34,
+                    color: colors.backgroundCompanion,
+                    opacity: .62,
+                  ),
+                  _diffuseLayer(
+                    key: const Key('player-desktop-backdrop-diffuse-accent'),
+                    center: const Alignment(1.08, .84),
+                    radius: 1.12,
+                    color: colors.vinylAccent,
+                    opacity: .14,
+                  ),
+                  _diffuseLayer(
+                    key: const Key('player-desktop-backdrop-reading-wash'),
+                    center: const Alignment(-.16, -.10),
+                    radius: .96,
+                    color: neutral,
+                    opacity: .52,
+                  ),
+                ],
               ),
             ),
           ),
@@ -75,3 +82,25 @@ final class _ArtworkPaletteTween extends Tween<ArtworkPalette> {
   @override
   ArtworkPalette lerp(double t) => ArtworkPalette.lerp(begin ?? end!, end!, t);
 }
+
+DecoratedBox _diffuseLayer({
+  required Key key,
+  required Alignment center,
+  required double radius,
+  required Color color,
+  required double opacity,
+}) => DecoratedBox(
+  key: key,
+  decoration: BoxDecoration(
+    gradient: RadialGradient(
+      center: center,
+      radius: radius,
+      colors: [
+        color.withValues(alpha: opacity),
+        color.withValues(alpha: opacity * .42),
+        color.withValues(alpha: 0),
+      ],
+      stops: const [0, .48, 1],
+    ),
+  ),
+);

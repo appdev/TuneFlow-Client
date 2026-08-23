@@ -79,7 +79,7 @@ final class AppGlassPolicyScope extends InheritedWidget {
         media.highContrast;
     return AppGlassPolicy(
       blurEnabled: !blurDisabled,
-      reduceMotion: media.disableAnimations || media.accessibleNavigation,
+      reduceMotion: media.disableAnimations,
     );
   }
 

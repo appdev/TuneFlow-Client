@@ -297,19 +297,13 @@ GoRouter buildAppRouter({
                         );
                         return;
                       }
-                      final provider = controller.state.providers
-                          .where((item) => item.id == collection.source)
-                          .firstOrNull;
                       context.pushNamed(
                         'album-detail',
                         pathParameters: {
                           'source': collection.source,
                           'albumId': collection.id,
                         },
-                        extra: AlbumDetailRouteArgs(
-                          album: collection,
-                          supported: provider?.albumDetail == true,
-                        ),
+                        extra: collection,
                       );
                     },
                   );
@@ -331,25 +325,16 @@ GoRouter buildAppRouter({
                       final connected = requireConnected();
                       final source = state.pathParameters['source']!;
                       final albumId = state.pathParameters['albumId']!;
-                      final args = state.extra is AlbumDetailRouteArgs
-                          ? state.extra! as AlbumDetailRouteArgs
-                          : AlbumDetailRouteArgs(
-                              album: CatalogCollection(
-                                id: albumId,
-                                kind: CatalogSearchKind.album,
-                                name: albumId,
-                                source: source,
-                              ),
-                              supported: false,
-                            );
+                      final initialAlbum = state.extra is CatalogCollection
+                          ? state.extra! as CatalogCollection
+                          : null;
                       return AlbumDetailScreen(
                         key: ValueKey('album-$source-$albumId'),
                         controller: AlbumDetailController(
                           catalog: SearchRepository(connected.api),
                           source: source,
                           albumId: albumId,
-                          supported: args.supported,
-                          initialAlbum: args.album,
+                          initialAlbum: initialAlbum,
                         ),
                         player: requirePlayer(),
                         playlists: PlaylistRepository(connected.api),

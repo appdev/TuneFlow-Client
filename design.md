@@ -323,8 +323,37 @@ control. Choosing favourite never starts row playback.
   player backdrop remains the normal theme canvas and veil; never enlarge or
   blur placeholder graphics.
 - Desktop: artwork and metadata left, lyrics right, controls anchored below.
+  Its theme canvas carries oversized, fixed-position radial diffusion fields
+  tinted by the extracted artwork palette, keeping the central reading area
+  calm while colour gathers near the viewport edges.
+  The orbit vinyl keeps sharp, fully opaque, borderless center artwork at about
+  60% of its diameter. Only the surrounding resin participates in translucent
+  compositing. Its colored PVC is derived from the artwork palette
+  and uses a continuous grayscale resin texture tinted by the extracted artwork
+  accent, plus a restrained translucent groove-highlight texture. The texture
+  spans the full disc so pigment does not terminate inside the resin annulus,
+  and a bounded final material opacity keeps the disc translucent. No outer stroke, center
+  label band, complete circular highlight, or separate halo may outline the
+  record. An asymmetric Ambilight extends several artwork-derived colors
+  softly behind the vinyl without forming a readable ring and remains fixed as
+  the record rotates. A separate fixed optical glaze is clipped to the resin
+  annulus, never covers or recolors the center artwork, and creates relative
+  light movement as the pressing passes beneath it. Both fixed light layers
+  fall back to pre-blended geometry when the glass policy disables blur. Light mode uses
+  darker, more saturated fields with a higher peak alpha so the spill remains
+  perceptible on a pale canvas; dark mode keeps a restrained peak.
+  The circular source textures retain their native soft alpha at the crop so the
+  edge stays clean; texture contrast, fixed underlight, and broad directional
+  specular fields provide the physical translucent-PVC character without
+  scattered dots.
 - Mobile: cover / lyrics / queue remain swipeable views; lyrics are the primary
-  reading surface. Navigation chrome remains hidden until exit.
+  reading surface. Navigation chrome remains hidden until exit. The centered
+  mobile vinyl reuses the desktop translucent resin material, artwork-derived
+  palette, continuous circular texture masks, fixed optical glaze, underlight,
+  and Ambilight. Its sharp, fully opaque center artwork remains about 60% of the
+  record diameter. Mobile keeps its existing responsive size and rotates only
+  on the artwork page while playback is active and ready; pause preserves the
+  current angle, resume continues from it, and reduced motion disables it.
 
 ## Interaction and motion
 

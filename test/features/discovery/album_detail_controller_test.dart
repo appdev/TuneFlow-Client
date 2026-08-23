@@ -57,7 +57,6 @@ void main() {
       catalog: repository,
       source: 'wy',
       albumId: 'album-1',
-      supported: true,
       initialAlbum: album('Seed album'),
     );
 
@@ -70,7 +69,7 @@ void main() {
     expect(controller.state.hasMore, isFalse);
   });
 
-  test('unsupported albums preserve seed metadata without a request', () async {
+  test('album details request the service without seed metadata', () async {
     var requests = 0;
     final controller = AlbumDetailController(
       catalog: SearchRepository(
@@ -78,21 +77,26 @@ void main() {
           ServiceOrigin.parse('http://service.local'),
           client: MockClient((_) async {
             requests++;
-            return data(null);
+            return data({
+              'source': 'wy',
+              'page': 1,
+              'limit': 30,
+              'total': 0,
+              'hasMore': false,
+              'album': album('Loaded album').toJson(),
+              'tracks': <Object?>[],
+            });
           }),
         ),
       ),
       source: 'wy',
       albumId: 'album-1',
-      supported: false,
-      initialAlbum: album('Seed album'),
     );
 
     await controller.load();
 
-    expect(requests, 0);
-    expect(controller.state.unsupported, isTrue);
-    expect(controller.state.album?.name, 'Seed album');
+    expect(requests, 1);
+    expect(controller.state.album?.name, 'Loaded album');
   });
 
   test(
@@ -108,7 +112,6 @@ void main() {
         ),
         source: 'wy',
         albumId: 'album-1',
-        supported: true,
         initialAlbum: album('Seed album'),
       );
 

@@ -119,6 +119,36 @@ abstract final class AppBottomSheet {
     );
   }
 
+  static Future<T?> showMobileActionList<T>(
+    BuildContext context, {
+    required String title,
+    String? message,
+    required List<AppBottomSheetAction<T>> actions,
+    String cancelLabel = '取消',
+  }) {
+    if (actions.isEmpty) {
+      throw ArgumentError.value(
+        actions.length,
+        'actions.length',
+        'A mobile action list requires at least one choice.',
+      );
+    }
+    final tokens = AppTokens.of(context);
+    return showCupertinoModalPopup<T>(
+      context: context,
+      barrierColor: tokens.overlay,
+      barrierDismissible: true,
+      semanticsDismissible: true,
+      builder: (context) => _ActionSheet<T>(
+        title: title,
+        message: message,
+        actions: actions,
+        cancelLabel: cancelLabel,
+        scrollable: true,
+      ),
+    );
+  }
+
   static Future<T?> showContent<T>(
     BuildContext context, {
     required String title,

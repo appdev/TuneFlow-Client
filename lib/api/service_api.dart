@@ -1,19 +1,29 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'service_exception.dart';
 import 'service_origin.dart';
 
+typedef ServiceHttpLog = void Function(String message);
+
+void _defaultServiceHttpLog(String message) {
+  developer.log(message, name: 'TuneFlow.HTTP');
+}
+
 final class ServiceApi {
-  ServiceApi(ServiceOrigin origin, {http.Client? client})
+  ServiceApi(ServiceOrigin origin, {http.Client? client, ServiceHttpLog? log})
     : _origin = origin,
       _client = client ?? http.Client(),
+      _log = log ?? _defaultServiceHttpLog,
       _ownsClient = client == null;
 
   ServiceOrigin _origin;
   ServiceOrigin get origin => _origin;
   final http.Client _client;
+  final ServiceHttpLog _log;
   final bool _ownsClient;
 
   void switchOrigin(ServiceOrigin next) {
@@ -26,20 +36,43 @@ final class ServiceApi {
     Object? body,
     Map<String, String>? headers,
   }) async {
-    final request = http.Request(method, origin.resolve(path))
+    final uri = origin.resolve(path);
+    final stopwatch = kDebugMode ? (Stopwatch()..start()) : null;
+
+    final request = http.Request(method, uri)
       ..followRedirects = false
       ..headers.addAll({'accept': 'application/json', ...?headers});
     if (body != null) {
       request.headers['content-type'] = 'application/json; charset=utf-8';
       request.body = jsonEncode(body);
     }
+    if (kDebugMode) {
+      _log('[HTTP] --> $method $uri');
+      if (request.body.isNotEmpty) {
+        _log('[HTTP] Request: ${request.body}');
+      }
+    }
 
     late http.StreamedResponse streamed;
+    late String responseBody;
     try {
       streamed = await _client.send(request);
-    } on ServiceException {
+      responseBody = await streamed.stream.bytesToString();
+    } on ServiceException catch (error) {
+      if (kDebugMode) {
+        _log(
+          '[HTTP] xx> $method $uri '
+          'error=$error duration=${stopwatch!.elapsedMilliseconds}ms',
+        );
+      }
       rethrow;
     } on Object catch (error) {
+      if (kDebugMode) {
+        _log(
+          '[HTTP] xx> $method $uri '
+          'error=$error duration=${stopwatch!.elapsedMilliseconds}ms',
+        );
+      }
       throw ServiceException(
         'NETWORK_ERROR',
         'Unable to reach the Service.',
@@ -47,7 +80,16 @@ final class ServiceApi {
       );
     }
 
-    final responseBody = await streamed.stream.bytesToString();
+    if (kDebugMode) {
+      _log(
+        '[HTTP] <-- $method $uri '
+        'status=${streamed.statusCode} '
+        'duration=${stopwatch!.elapsedMilliseconds}ms',
+      );
+      _log(
+        '[HTTP] Response: ${responseBody.isEmpty ? '<empty>' : responseBody}',
+      );
+    }
     if (streamed.statusCode >= 300 && streamed.statusCode < 400) {
       throw ServiceException(
         'REDIRECT_REJECTED',

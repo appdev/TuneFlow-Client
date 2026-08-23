@@ -5,13 +5,6 @@ import '../search/search_repository.dart';
 
 const _unchanged = Object();
 
-final class AlbumDetailRouteArgs {
-  const AlbumDetailRouteArgs({required this.album, required this.supported});
-
-  final CatalogCollection album;
-  final bool supported;
-}
-
 final class AlbumDetailState {
   const AlbumDetailState({
     this.album,
@@ -21,7 +14,6 @@ final class AlbumDetailState {
     this.failedPage,
     this.error,
     this.stale = false,
-    this.unsupported = false,
   });
 
   final CatalogCollection? album;
@@ -31,7 +23,6 @@ final class AlbumDetailState {
   final int? failedPage;
   final Object? error;
   final bool stale;
-  final bool unsupported;
 
   bool get hasMore {
     if (pages.isEmpty) return false;
@@ -47,7 +38,6 @@ final class AlbumDetailState {
     Object? failedPage = _unchanged,
     Object? error = _unchanged,
     bool? stale,
-    bool? unsupported,
   }) => AlbumDetailState(
     album: identical(album, _unchanged)
         ? this.album
@@ -62,7 +52,6 @@ final class AlbumDetailState {
         : failedPage as int?,
     error: identical(error, _unchanged) ? this.error : error,
     stale: stale ?? this.stale,
-    unsupported: unsupported ?? this.unsupported,
   );
 }
 
@@ -71,20 +60,17 @@ final class AlbumDetailController extends ChangeNotifier {
     required this.catalog,
     required this.source,
     required this.albumId,
-    required this.supported,
     this.initialAlbum,
-  }) : state = AlbumDetailState(album: initialAlbum, unsupported: !supported);
+  }) : state = AlbumDetailState(album: initialAlbum);
 
   final SearchRepository catalog;
   final String source;
   final String albumId;
-  final bool supported;
   final CatalogCollection? initialAlbum;
   AlbumDetailState state;
   var _generation = 0;
 
   Future<void> load() async {
-    if (!supported) return;
     final generation = ++_generation;
     state = AlbumDetailState(album: initialAlbum, loadingPage: 1);
     notifyListeners();
@@ -92,7 +78,7 @@ final class AlbumDetailController extends ChangeNotifier {
   }
 
   Future<void> loadPage(int page) async {
-    if (!supported || page < 1 || state.loadingPage != null) return;
+    if (page < 1 || state.loadingPage != null) return;
     await _loadPage(page, ++_generation);
   }
 
@@ -168,7 +154,6 @@ final class AlbumDetailController extends ChangeNotifier {
   }
 
   Future<void> loadAllPages() async {
-    if (!supported) return;
     if (state.pages.isEmpty) await load();
     while (state.hasMore && state.failedPage == null) {
       final nextPage = state.pages.keys.reduce((a, b) => a > b ? a : b) + 1;

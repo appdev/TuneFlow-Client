@@ -160,6 +160,61 @@ void main() {
   });
 
   testWidgets(
+    'showMobileActionList returns a typed value from the shared scrollable ActionSheet',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      String? result;
+      await tester.pumpWidget(
+        harness(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                result = await AppBottomSheet.showMobileActionList<String>(
+                  context,
+                  title: '墜',
+                  message: '曲甲 · 无损',
+                  actions: const [
+                    AppBottomSheetAction(value: 'play', label: '立即播放'),
+                    AppBottomSheetAction(value: 'next', label: '下一首播放'),
+                    AppBottomSheetAction(value: 'queue', label: '添加到播放队列'),
+                    AppBottomSheetAction(value: 'lyrics', label: '查看歌词'),
+                    AppBottomSheetAction(value: 'playlist', label: '添加到歌单'),
+                    AppBottomSheetAction(
+                      key: Key('download-choice'),
+                      value: 'download',
+                      label: '下载',
+                    ),
+                  ],
+                );
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('打开'));
+      await pumpRoute(tester);
+
+      expect(find.byKey(const Key('app-action-sheet-actions')), findsOneWidget);
+      expect(
+        find.byKey(const Key('app-action-sheet-cancel-group')),
+        findsOneWidget,
+      );
+      expect(find.text('墜'), findsOneWidget);
+      expect(find.text('曲甲 · 无损'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('download-choice')));
+      await pumpRoute(tester);
+
+      expect(result, 'download');
+      expect(find.byKey(const Key('app-action-sheet-actions')), findsNothing);
+    },
+  );
+
+  testWidgets(
     'showSelection returns a typed value from a scrollable mobile sheet',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);

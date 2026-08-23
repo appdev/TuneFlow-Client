@@ -104,7 +104,7 @@ final class MobilePlayerControls extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           SizedBox(
             key: const Key('player-mobile-transport'),
-            height: 56,
+            height: 64,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -124,25 +124,28 @@ final class MobilePlayerControls extends StatelessWidget {
                       key: const Key('player-previous'),
                       label: '上一首',
                       icon: AppPlaybackIcons.previous,
+                      iconSize: 28,
                       enabled: state.canPrevious,
                       onPressed: onPrevious,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     _TransportButton(
                       key: const Key('player-play-pause'),
                       label: _playLabel,
                       icon: state.isPlaybackActive
                           ? AppPlaybackIcons.pause
                           : AppPlaybackIcons.play,
+                      iconSize: 36,
                       prominent: true,
                       loading: state.isPlaybackLoading,
                       onPressed: onPlayPause,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     _TransportButton(
                       key: const Key('player-next'),
                       label: '下一首',
                       icon: AppPlaybackIcons.next,
+                      iconSize: 28,
                       enabled: state.canNext,
                       onPressed: onNext,
                     ),
@@ -191,6 +194,7 @@ final class _TransportButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.iconSize = 20,
     this.enabled = true,
     this.prominent = false,
     this.loading = false,
@@ -199,6 +203,7 @@ final class _TransportButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
+  final double iconSize;
   final bool enabled;
   final bool prominent;
   final bool loading;
@@ -214,7 +219,7 @@ final class _TransportButton extends StatelessWidget {
               customBorder: const CircleBorder(),
               onTap: enabled && !loading ? onPressed : null,
               child: SizedBox.square(
-                dimension: 56,
+                dimension: 64,
                 child: Center(
                   child: loading
                       ? SizedBox.square(
@@ -226,7 +231,7 @@ final class _TransportButton extends StatelessWidget {
                         )
                       : Icon(
                           icon,
-                          size: 23,
+                          size: iconSize,
                           color: tokens.playbackActionForeground,
                         ),
                 ),
@@ -239,7 +244,7 @@ final class _TransportButton extends StatelessWidget {
             padding: EdgeInsets.zero,
             enabled: enabled,
             onPressed: enabled ? onPressed : null,
-            child: Icon(icon, size: 20),
+            child: Icon(icon, size: iconSize),
           );
     return Tooltip(
       message: label,

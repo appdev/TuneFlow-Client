@@ -67,7 +67,6 @@ final class SearchState {
     SearchView.playlists => playlistSection,
   };
 
-  List<Track> get overviewTracks => trackSection.items.take(10).toList();
   List<CatalogCollection> get overviewAlbums =>
       albumSection.items.take(6).toList();
   List<CatalogCollection> get overviewPlaylists =>

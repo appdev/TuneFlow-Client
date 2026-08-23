@@ -61,6 +61,53 @@ void main() {
     );
   });
 
+  test('supported vivid colors stay lively beside dark and neutral pixels', () {
+    final pixels = rgbaPixels([
+      ...List.filled(18, const Color(0xFFB9BEC4)),
+      ...List.filled(12, const Color(0xFF173E72)),
+      ...List.filled(8, const Color(0xFF24A9E8)),
+      ...List.filled(4, const Color(0xFFC51F48)),
+    ]);
+
+    final palette = extractor.extractRgba(
+      pixels,
+      width: 42,
+      height: 1,
+      fallbackSeed: 'blue-portrait',
+      brightness: Brightness.light,
+    );
+    final vinyl = HSVColor.fromColor(palette.vinylAccent);
+    final background = HSVColor.fromColor(palette.backgroundBase);
+    final companion = HSVColor.fromColor(palette.backgroundCompanion);
+
+    expect(vinyl.hue, inInclusiveRange(190, 225));
+    expect(vinyl.saturation, greaterThanOrEqualTo(.56));
+    expect(vinyl.value, greaterThanOrEqualTo(.68));
+    expect(background.saturation, greaterThanOrEqualTo(.14));
+    expect(background.value, greaterThanOrEqualTo(.90));
+    expect(_hueDistance(background.hue, companion.hue), greaterThan(45));
+  });
+
+  test('isolated colorful noise does not tint neutral artwork', () {
+    final pixels = rgbaPixels([
+      ...List.filled(63, const Color(0xFFBFC1C3)),
+      const Color(0xFFFF2048),
+    ]);
+
+    final palette = extractor.extractRgba(
+      pixels,
+      width: 8,
+      height: 8,
+      fallbackSeed: 'neutral-noise',
+      brightness: Brightness.light,
+    );
+
+    expect(
+      palette,
+      fallbackArtworkPalette('neutral-noise', brightness: Brightness.light),
+    );
+  });
+
   test('neutral and transparent inputs use stable seeded fallback', () {
     final neutral = extractor.extractRgba(
       rgbaPixels(const [Color(0xFF222222), Color(0xFFECECEC)]),
@@ -127,3 +174,8 @@ Uint8List rgbaPixels(List<Color> colors) => Uint8List.fromList([
     (color.a * 255).round(),
   ],
 ]);
+
+double _hueDistance(double first, double second) {
+  final direct = (first - second).abs();
+  return direct < 180 ? direct : 360 - direct;
+}

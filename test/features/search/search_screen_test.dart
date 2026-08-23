@@ -342,6 +342,163 @@ void main() {
     expect(find.text('4:08'), findsNothing);
   });
 
+  for (final source in const [('tx', 'QQ音乐'), ('kw', '酷我音乐')]) {
+    testWidgets(
+      'desktop overview shows the complete first page for ${source.$2}',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 720);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final scroll = ScrollController();
+        addTearDown(scroll.dispose);
+        final tracks = List.generate(
+          feature.SearchController.pageSize,
+          (index) => Track.fromJson({
+            'id': 'track-${index + 1}',
+            'name': '西海情歌 ${index + 1}',
+            'singer': '歌手 ${index + 1}',
+            'source': source.$1,
+          }),
+        );
+
+        await tester.pumpWidget(
+          harness(
+            SizedBox(
+              width: 1200,
+              height: 600,
+              child: SearchDesktopResults(
+                state: feature.SearchState(
+                  query: '西海情歌',
+                  source: source.$1,
+                  view: feature.SearchView.overview,
+                  trackSection: feature.SearchSection(
+                    items: tracks,
+                    page: 1,
+                    total: tracks.length,
+                    phase: feature.SearchPhase.results,
+                  ),
+                ),
+                scrollController: scroll,
+                loadPicture: (_) async => null,
+                onPlay: (_) {},
+                onFavorite: (_) {},
+                actionsFor: (_) => const [],
+                onViewAll: (_) {},
+                onPage: (_) {},
+                onRetry: (_) {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(Key('search-track-${source.$1}-track-1')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            Key(
+              'search-track-${source.$1}-track-${feature.SearchController.pageSize}',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(find.byTooltip('下一页'), findsNothing);
+      },
+    );
+  }
+
+  testWidgets('desktop search appends the next page near the scroll end', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final requestedPages = <int>[];
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.method == 'GET') {
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'sources': [
+                  {
+                    'id': 'kw',
+                    'name': '酷我音乐',
+                    'searchKinds': ['track'],
+                  },
+                ],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        final page = body['page']! as int;
+        requestedPages.add(page);
+        final count = page == 1 ? feature.SearchController.pageSize : 2;
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'list': List.generate(
+                count,
+                (index) => {
+                  'id': 'page-$page-track-${index + 1}',
+                  'name': '西海情歌 ${index + 1}',
+                  'source': 'kw',
+                },
+              ),
+              'total': 32,
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    final controller = feature.SearchController(SearchRepository(api));
+
+    await tester.pumpWidget(
+      harness(
+        SearchScreen(
+          controller: controller,
+          playlists: PlaylistRepository(api),
+          downloads: DownloadRepository(api),
+          player: testPlayer(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('search-field')), '西海情歌');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(requestedPages, [1]);
+    final resultsList = tester.widget<ListView>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ListView &&
+            widget.key == const Key('search-view-overview'),
+      ),
+    );
+    expect(resultsList.controller!.position.maxScrollExtent, greaterThan(0));
+    resultsList.controller!.jumpTo(
+      resultsList.controller!.position.maxScrollExtent,
+    );
+    await tester.pumpAndSettle();
+
+    expect(requestedPages, [1, 2]);
+    expect(
+      find.byKey(const Key('search-track-kw-page-2-track-2')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('mobile rows omit artwork and duration with compact metadata', (
     tester,
   ) async {

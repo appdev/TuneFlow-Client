@@ -51,8 +51,7 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_loadMore);
-    if (widget.controller.state.pages.isEmpty &&
-        !widget.controller.state.unsupported) {
+    if (widget.controller.state.pages.isEmpty) {
       unawaited(widget.controller.load());
     }
   }
@@ -276,69 +275,60 @@ final class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             const SizedBox(height: AppSpacing.xs),
           ],
           _AlbumHero(album: album, mobile: mobile, onPlayAll: _playAll),
-          if (state.unsupported) ...[
+          if (state.error != null) ...[
             const SizedBox(height: 14),
-            const AppNotice.error(
-              title: '当前音源不支持专辑详情',
-              message: '仍可查看搜索结果中的专辑信息，请返回选择其他内容。',
-            ),
-          ] else ...[
-            if (state.error != null) ...[
-              const SizedBox(height: 14),
-              AppNotice.error(
-                title: state.stale ? '部分歌曲加载失败' : '专辑加载失败',
-                message: appErrorMessage(
-                  state.error!,
-                  fallback: '专辑歌曲暂时无法加载，请稍后重试。',
-                ),
+            AppNotice.error(
+              title: state.stale ? '部分歌曲加载失败' : '专辑加载失败',
+              message: appErrorMessage(
+                state.error!,
+                fallback: '专辑歌曲暂时无法加载，请稍后重试。',
               ),
-            ],
-            const SizedBox(height: 16),
-            if (state.tracks.isEmpty && state.loadingPage == null)
-              const AppEmptyState(message: '该专辑暂无歌曲')
-            else if (mobile)
-              CatalogTrackList(
-                embedded: true,
+            ),
+          ],
+          const SizedBox(height: 16),
+          if (state.tracks.isEmpty && state.loadingPage == null)
+            const AppEmptyState(message: '该专辑暂无歌曲')
+          else if (mobile)
+            CatalogTrackList(
+              embedded: true,
+              tracks: state.tracks,
+              page: 1,
+              pageSize: state.tracks.isEmpty ? 1 : state.tracks.length,
+              total: album.total?.toInt(),
+              providers: const [],
+              aggregate: false,
+              mobile: true,
+              loadPicture: _loadPicture,
+              onPlay: (track) => unawaited(_play(track)),
+              onFavorite: (track) => unawaited(_choosePlaylist(track)),
+              actionsFor: _actionsFor,
+              onMore: _more,
+              loadingMore: state.loadingPage != null && state.pages.isNotEmpty,
+              loadMoreError: state.failedPage == null ? null : state.error,
+              onRetry: () => unawaited(widget.controller.retryFailedPage()),
+            )
+          else
+            Expanded(
+              child: CatalogTrackList(
                 tracks: state.tracks,
                 page: 1,
                 pageSize: state.tracks.isEmpty ? 1 : state.tracks.length,
                 total: album.total?.toInt(),
                 providers: const [],
                 aggregate: false,
-                mobile: true,
+                mobile: false,
                 loadPicture: _loadPicture,
                 onPlay: (track) => unawaited(_play(track)),
                 onFavorite: (track) => unawaited(_choosePlaylist(track)),
                 actionsFor: _actionsFor,
                 onMore: _more,
+                scrollController: _scrollController,
                 loadingMore:
                     state.loadingPage != null && state.pages.isNotEmpty,
                 loadMoreError: state.failedPage == null ? null : state.error,
                 onRetry: () => unawaited(widget.controller.retryFailedPage()),
-              )
-            else
-              Expanded(
-                child: CatalogTrackList(
-                  tracks: state.tracks,
-                  page: 1,
-                  pageSize: state.tracks.isEmpty ? 1 : state.tracks.length,
-                  total: album.total?.toInt(),
-                  providers: const [],
-                  aggregate: false,
-                  mobile: false,
-                  loadPicture: _loadPicture,
-                  onPlay: (track) => unawaited(_play(track)),
-                  onFavorite: (track) => unawaited(_choosePlaylist(track)),
-                  actionsFor: _actionsFor,
-                  onMore: _more,
-                  scrollController: _scrollController,
-                  loadingMore:
-                      state.loadingPage != null && state.pages.isNotEmpty,
-                  loadMoreError: state.failedPage == null ? null : state.error,
-                  onRetry: () => unawaited(widget.controller.retryFailedPage()),
-                ),
               ),
-          ],
+            ),
         ],
       );
       return ColoredBox(

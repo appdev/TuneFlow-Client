@@ -26,20 +26,29 @@ Widget harness({bool reduceMotion = false}) => ShadApp(
 );
 
 void main() {
-  testWidgets('desktop backdrop draws two decorative palette gradients', (
+  testWidgets('desktop backdrop draws a soft multi-point diffuse field', (
     tester,
   ) async {
     await tester.pumpWidget(harness());
 
     expect(find.byKey(const Key('player-desktop-backdrop')), findsOneWidget);
     expect(
-      find.byKey(const Key('player-desktop-backdrop-gradient-base')),
+      find.byKey(const Key('player-desktop-backdrop-canvas')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('player-desktop-backdrop-gradient-companion')),
-      findsOneWidget,
-    );
+    for (final key in const [
+      Key('player-desktop-backdrop-diffuse-base'),
+      Key('player-desktop-backdrop-diffuse-companion'),
+      Key('player-desktop-backdrop-diffuse-accent'),
+      Key('player-desktop-backdrop-reading-wash'),
+    ]) {
+      final box = tester.widget<DecoratedBox>(find.byKey(key));
+      final decoration = box.decoration as BoxDecoration;
+      final gradient = decoration.gradient as RadialGradient;
+      expect(gradient.stops, const [0, .48, 1]);
+      expect(gradient.colors.last.a, 0);
+    }
+    expect(find.byType(ImageFiltered), findsNothing);
     expect(find.bySemanticsLabel('track'), findsNothing);
     expect(
       tester

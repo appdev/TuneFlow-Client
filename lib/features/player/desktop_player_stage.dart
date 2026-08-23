@@ -57,11 +57,11 @@ final class DesktopPlayerStage extends StatelessWidget {
             builder: (context, constraints) {
               final wide = recordSizingWidth >= 1100;
               final recordDiameter = math.min(
-                constraints.maxHeight * 1.12,
+                constraints.maxHeight * 1.6,
                 recordSizingWidth * (wide ? .66 : .72),
               );
               final rightOverflow =
-                  recordDiameter * (wide ? .26 : .38) +
+                  recordDiameter * (wide ? .42 : .45) +
                   horizontalInset -
                   legacyHorizontalInset;
               final recordLeft =
@@ -77,7 +77,7 @@ final class DesktopPlayerStage extends StatelessWidget {
                 children: [
                   Positioned(
                     right: -rightOverflow,
-                    top: -recordDiameter * .32,
+                    top: -recordDiameter * .40,
                     width: recordDiameter,
                     height: recordDiameter,
                     child: DesktopOrbitVinyl(

@@ -8,7 +8,6 @@ import '../../api/models.dart';
 import '../../design/components/app_bottom_sheet.dart';
 import 'search_track_metadata.dart';
 import 'track_action.dart';
-import 'track_action_sheet.dart';
 
 bool get usesMobileTrackActions =>
     defaultTargetPlatform == TargetPlatform.android ||
@@ -19,11 +18,28 @@ Future<void> showMobileTrackActions(
   required Track track,
   required SearchTrackMetadata metadata,
   required List<TrackAction> actions,
-}) => AppBottomSheet.showContent<void>(
-  context,
-  title: track.title.isEmpty ? track.id : track.title,
-  child: TrackActionSheet(track: track, metadata: metadata, actions: actions),
-);
+}) async {
+  final message = [
+    track.artist.trim(),
+    metadata.qualityLabel?.trim() ?? '',
+  ].where((value) => value.isNotEmpty).join(' · ');
+  final selected = await AppBottomSheet.showMobileActionList<TrackActionId>(
+    context,
+    title: track.title.isEmpty ? track.id : track.title,
+    message: message.isEmpty ? null : message,
+    actions: [
+      for (final action in actions)
+        AppBottomSheetAction<TrackActionId>(
+          key: Key('track-action-${action.id.name}'),
+          value: action.id,
+          label: action.disabledReason ?? action.label,
+          enabled: action.enabled,
+        ),
+    ],
+  );
+  if (selected == null) return;
+  await actions.firstWhere((action) => action.id == selected).invoke();
+}
 
 final class DesktopTrackActionsButton extends StatefulWidget {
   const DesktopTrackActionsButton({

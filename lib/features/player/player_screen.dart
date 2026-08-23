@@ -338,7 +338,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
                 classifyLayout(MediaQuery.sizeOf(context)) ==
                 AppLayoutClass.mobile;
             final brightness = Theme.of(context).brightness;
-            if (!mobile) _selectPalette(artworkSource, brightness);
+            _selectPalette(artworkSource, brightness);
             final palette =
                 _paletteController?.palette ??
                 fallbackArtworkPalette(
@@ -351,6 +351,7 @@ final class _PlayerScreenState extends State<PlayerScreen> {
                     key: const Key('player-mobile-layout'),
                     controller: widget.controller,
                     artworkSource: artworkSource,
+                    palette: palette,
                     pages: pages,
                     onQueue: _queue,
                     onMore: () => unawaited(_more(track)),
@@ -502,6 +503,7 @@ final class _MobilePlayer extends StatefulWidget {
     super.key,
     required this.controller,
     required this.artworkSource,
+    required this.palette,
     required this.pages,
     required this.onQueue,
     required this.onMore,
@@ -513,6 +515,7 @@ final class _MobilePlayer extends StatefulWidget {
 
   final PlayerController controller;
   final AppArtworkSource artworkSource;
+  final ArtworkPalette palette;
   final PageController pages;
   final VoidCallback onQueue;
   final VoidCallback onMore;
@@ -620,6 +623,7 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
                 _MobileNowPlaying(
                   track: track,
                   artworkSource: artworkSource,
+                  palette: widget.palette,
                   rotating:
                       state.view == PlayerView.artwork &&
                       state.playing &&
@@ -694,10 +698,12 @@ final class _MobileNowPlaying extends StatelessWidget {
   const _MobileNowPlaying({
     required this.track,
     required this.artworkSource,
+    required this.palette,
     required this.rotating,
   });
   final Track track;
   final AppArtworkSource artworkSource;
+  final ArtworkPalette palette;
   final bool rotating;
 
   @override
@@ -718,6 +724,7 @@ final class _MobileNowPlaying extends StatelessWidget {
                   dimension: recordSize,
                   child: MobileVinylRecord(
                     source: artworkSource,
+                    palette: palette,
                     seed: '${track.source}:${track.id}',
                     semanticLabel: '${track.title}封面',
                     rotating: rotating,

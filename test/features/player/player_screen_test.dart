@@ -18,6 +18,7 @@ import 'package:musicfree_service_client/features/downloads/user_download_coordi
 import 'package:musicfree_service_client/features/player/artwork_palette.dart';
 import 'package:musicfree_service_client/features/player/artwork_palette_controller.dart';
 import 'package:musicfree_service_client/features/player/current_track_actions_controller.dart';
+import 'package:musicfree_service_client/features/player/desktop_orbit_vinyl.dart';
 import 'package:musicfree_service_client/features/player/mini_player.dart';
 import 'package:musicfree_service_client/features/player/lyrics_view.dart';
 import 'package:musicfree_service_client/features/player/mobile_player_controls.dart';
@@ -785,6 +786,43 @@ void main() {
     expect(find.byKey(const Key('player-previous')), findsOneWidget);
     expect(find.byKey(const Key('player-play-pause')), findsOneWidget);
     expect(find.byKey(const Key('player-next')), findsOneWidget);
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('player-previous')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .size,
+      28,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('player-play-pause')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .size,
+      36,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('player-next')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .size,
+      28,
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('player-play-pause'))),
+      const Size.square(64),
+    );
     expect(find.byKey(const Key('player-wide-layout')), findsOneWidget);
     expect(find.byKey(const Key('player-desktop-stage')), findsOneWidget);
     expect(
@@ -827,7 +865,7 @@ void main() {
   });
 
   testWidgets(
-    'desktop player crops textured vinyl at the top right of the lyrics',
+    'desktop player crops mottled vinyl at the top right of the lyrics',
     (tester) async {
       tester.view.physicalSize = const Size(1440, 960);
       tester.view.devicePixelRatio = 1;
@@ -877,14 +915,27 @@ void main() {
       expect(metadata, findsOneWidget);
       expect(find.text('晚风'), findsOneWidget);
       expect(tester.getSize(orbit).width, greaterThan(800));
-      expect(tester.getRect(orbit).top, lessThan(0));
-      expect(tester.getRect(orbit).right, greaterThan(1440));
+      expect(
+        tester.getRect(orbit).top,
+        lessThan(-tester.getSize(orbit).width * .30),
+      );
+      expect(
+        tester.getRect(orbit).right,
+        greaterThan(1440 + tester.getSize(orbit).width * .33),
+      );
       expect(
         tester.getRect(orbit).left,
         greaterThan(tester.getRect(title).right),
       );
       expect(tester.getRect(artwork).center.dy, greaterThan(0));
-      expect(tester.getRect(spindle).center, tester.getRect(artwork).center);
+      expect(
+        tester.getRect(spindle).center.dx,
+        closeTo(tester.getRect(artwork).center.dx, .01),
+      );
+      expect(
+        tester.getRect(spindle).center.dy,
+        closeTo(tester.getRect(artwork).center.dy, .01),
+      );
       expect(tester.getTopLeft(title).dx, closeTo(144, .1));
       expect(
         tester.getTopLeft(firstLyric).dx,
@@ -1101,8 +1152,14 @@ void main() {
     expect(orbit, findsOneWidget);
     expect(tester.getTopLeft(title).dx, closeTo(102.4, .1));
     expect(tester.getSize(orbit).width, greaterThan(600));
-    expect(tester.getRect(orbit).top, lessThan(0));
-    expect(tester.getRect(orbit).right, greaterThan(1024));
+    expect(
+      tester.getRect(orbit).top,
+      lessThan(-tester.getSize(orbit).width * .30),
+    );
+    expect(
+      tester.getRect(orbit).right,
+      greaterThan(1024 + tester.getSize(orbit).width * .35),
+    );
     expect(
       tester.getRect(orbit).left,
       greaterThan(tester.getRect(title).right),
@@ -1487,6 +1544,14 @@ void main() {
       resolver: FakeResolver(),
       audio: FakeAudio(),
     );
+    var paletteLoads = 0;
+    final paletteController = ArtworkPaletteController(
+      loadBytes: (_) async {
+        paletteLoads += 1;
+        return null;
+      },
+    );
+    addTearDown(paletteController.dispose);
     await controller.playTracks([
       Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
     ]);
@@ -1503,15 +1568,21 @@ void main() {
             lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
             wakeLock: FakeWakeLock(),
             keepAwake: false,
+            paletteController: paletteController,
           ),
         ),
       ),
     );
+    await tester.pump();
 
     expect(find.byKey(const Key('player-mobile-layout')), findsOneWidget);
     expect(find.byKey(const Key('player-backdrop')), findsOneWidget);
     expect(find.byKey(const Key('player-backdrop-neutral')), findsOneWidget);
-    expect(find.byType(ImageFiltered), findsNothing);
+    expect(find.byType(ImageFiltered), findsOneWidget);
+    expect(
+      find.byKey(const Key('player-desktop-vinyl-ambilight-blur')),
+      findsOneWidget,
+    );
     expect(find.byType(AppGlassSurface), findsAtLeastNWidgets(2));
     expect(find.byKey(const Key('player-mobile-topbar')), findsOneWidget);
     expect(find.byKey(const Key('player-mobile-progress')), findsOneWidget);
@@ -1559,6 +1630,17 @@ void main() {
     expect(find.text('One'), findsWidgets);
     expect(find.byKey(const Key('player-mobile-vinyl')), findsOneWidget);
     expect(find.byKey(const Key('player-mobile-artwork')), findsNothing);
+    expect(paletteLoads, 1);
+    final material = tester.widget<CustomPaint>(
+      find.byKey(const Key('player-desktop-vinyl-material')),
+    );
+    expect(
+      (material.painter! as PressedVinylPainter).baseColor,
+      fallbackArtworkPalette(
+        'kw:one',
+        brightness: Brightness.light,
+      ).vinylAccent,
+    );
     expect(find.text('Line').hitTestable(), findsNothing);
     await tester.drag(find.byType(PageView), const Offset(-320, 0));
     await pumpFiniteAnimations(tester);
@@ -1742,11 +1824,47 @@ void main() {
     final queueRect = tester.getRect(
       find.byKey(const Key('player-mobile-queue')),
     );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('player-previous')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .size,
+      28,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('player-play-pause')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .size,
+      36,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(
+              of: find.byKey(const Key('player-next')),
+              matching: find.byType(Icon),
+            ),
+          )
+          .size,
+      28,
+    );
     final transportRect = tester.getRect(
       find.byKey(const Key('player-mobile-transport')),
     );
     expect(modeRect.right, lessThanOrEqualTo(previousRect.left));
     expect(nextRect.right, lessThanOrEqualTo(queueRect.left));
+    expect(playRect.size, const Size.square(64));
+    expect(playRect.height, greaterThan(previousRect.height));
+    expect(playRect.height, greaterThan(nextRect.height));
     expect(playRect.center.dx, closeTo(transportRect.center.dx, 0.01));
     expect(tester.takeException(), isNull);
   });

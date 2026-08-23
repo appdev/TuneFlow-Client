@@ -112,9 +112,26 @@ final class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _loadMore() {
-    if (mobileLayout && scroll.position.extentAfter < 240) {
+    if (!scroll.hasClients || scroll.position.extentAfter >= 240) return;
+    final view = _controller.state.view;
+    final supportsIncrementalLoading =
+        mobileLayout ||
+        view == SearchView.overview ||
+        view == SearchView.tracks;
+    if (supportsIncrementalLoading) {
       unawaited(_controller.loadNextPage());
     }
+  }
+
+  Future<void> _retrySection(CatalogSearchKind kind) {
+    final section = switch (kind) {
+      CatalogSearchKind.track => _controller.state.trackSection,
+      CatalogSearchKind.album => _controller.state.albumSection,
+      CatalogSearchKind.playlist => _controller.state.playlistSection,
+    };
+    return section.items.isNotEmpty && section.phase == SearchPhase.failure
+        ? _controller.loadNextPage()
+        : _controller.retrySection(kind);
   }
 
   Future<void> _search({String? submittedKeyword}) async {
@@ -543,7 +560,7 @@ final class _SearchScreenState extends State<SearchScreen> {
                                   onViewAll: (view) =>
                                       unawaited(_controller.selectView(view)),
                                   onRetry: (kind) =>
-                                      unawaited(_controller.retrySection(kind)),
+                                      unawaited(_retrySection(kind)),
                                   onOpenCollection:
                                       widget.onOpenCollection ?? (_) {},
                                 )
@@ -561,9 +578,8 @@ final class _SearchScreenState extends State<SearchScreen> {
                                     onViewAll: (view) =>
                                         unawaited(_controller.selectView(view)),
                                     onPage: (page) => unawaited(_page(page)),
-                                    onRetry: (kind) => unawaited(
-                                      _controller.retrySection(kind),
-                                    ),
+                                    onRetry: (kind) =>
+                                        unawaited(_retrySection(kind)),
                                     onOpenCollection:
                                         widget.onOpenCollection ?? (_) {},
                                   ),

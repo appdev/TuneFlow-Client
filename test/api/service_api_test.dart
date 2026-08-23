@@ -9,6 +9,7 @@ import 'package:musicfree_service_client/api/service_origin.dart';
 
 void main() {
   test('decodes the success envelope and sends JSON', () async {
+    final logs = <String>[];
     final client = MockClient((request) async {
       expect(request.url.toString(), 'http://service.local/api/v1/test');
       expect(request.method, 'POST');
@@ -24,14 +25,20 @@ void main() {
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: client,
+      log: logs.add,
     );
 
     expect(await api.request('POST', '/api/v1/test', body: {'value': 1}), {
       'ok': true,
     });
+    expect(logs, hasLength(4));
+    expect(logs[1], '[HTTP] Request: {"value":1}');
+    expect(logs[2], contains('status=201'));
+    expect(logs[3], '[HTTP] Response: {"data":{"ok":true}}');
   });
 
   test('maps the service error envelope', () async {
+    final logs = <String>[];
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
       client: MockClient(
@@ -46,6 +53,7 @@ void main() {
           503,
         ),
       ),
+      log: logs.add,
     );
 
     await expectLater(
@@ -56,6 +64,9 @@ void main() {
             .having((e) => e.status, 'status', 503),
       ),
     );
+    expect(logs, hasLength(3));
+    expect(logs[1], contains('status=503'));
+    expect(logs[2], contains('"code":"SOURCE_UNAVAILABLE"'));
   });
 
   test('rejects redirects and malformed success envelopes', () async {
@@ -117,4 +128,59 @@ void main() {
       'http://192.168.1.20:3124/api/v1/test',
     ]);
   });
+
+  test('logs HTTP query parameters and response body in debug mode', () async {
+    final logs = <String>[];
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient(
+        (_) async => http.Response(jsonEncode({'data': null}), 200),
+      ),
+      log: logs.add,
+    );
+
+    await api.request(
+      'GET',
+      '/api/v1/search?keyword=private%20query&source=secret',
+    );
+
+    expect(logs, hasLength(3));
+    expect(
+      logs.first,
+      '[HTTP] --> GET '
+      'http://service.local/api/v1/search?keyword=private%20query&source=secret',
+    );
+    expect(logs[1], contains('[HTTP] <-- GET'));
+    expect(logs[1], contains('status=200'));
+    expect(logs[1], contains('duration='));
+    expect(logs.last, '[HTTP] Response: {"data":null}');
+  });
+
+  test(
+    'logs HTTP network failures with request details in debug mode',
+    () async {
+      final logs = <String>[];
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((_) async => throw StateError('private details')),
+        log: logs.add,
+      );
+
+      await expectLater(
+        api.request('GET', '/api/v1/test?token=secret'),
+        throwsA(
+          isA<ServiceException>().having(
+            (e) => e.code,
+            'code',
+            'NETWORK_ERROR',
+          ),
+        ),
+      );
+
+      expect(logs, hasLength(2));
+      expect(logs.last, contains('[HTTP] xx> GET'));
+      expect(logs.last, contains('token=secret'));
+      expect(logs.last, contains('error=Bad state: private details'));
+    },
+  );
 }

@@ -91,6 +91,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                         key: const Key('player-previous'),
                         label: '上一首',
                         icon: AppPlaybackIcons.previous,
+                        iconSize: 28,
                         enabled: state.canPrevious,
                         onPressed: controller.previous,
                       ),
@@ -105,6 +106,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                         icon: state.isPlaybackActive
                             ? AppPlaybackIcons.pause
                             : AppPlaybackIcons.play,
+                        iconSize: 36,
                         prominent: true,
                         loading: state.isPlaybackLoading,
                         onPressed: state.isPlaybackLoading
@@ -118,6 +120,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                         key: const Key('player-next'),
                         label: '下一首',
                         icon: AppPlaybackIcons.next,
+                        iconSize: 28,
                         enabled: state.canNext,
                         onPressed: controller.next,
                       ),
@@ -247,6 +250,7 @@ final class _ControlButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.iconSize = 20,
     this.enabled = true,
     this.prominent = false,
     this.loading = false,
@@ -255,6 +259,7 @@ final class _ControlButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
+  final double iconSize;
   final bool enabled;
   final bool prominent;
   final bool loading;
@@ -270,7 +275,7 @@ final class _ControlButton extends StatelessWidget {
               customBorder: const CircleBorder(),
               onTap: enabled ? onPressed : null,
               child: SizedBox.square(
-                dimension: 56,
+                dimension: 64,
                 child: Center(
                   child: loading
                       ? const SizedBox.square(
@@ -280,7 +285,7 @@ final class _ControlButton extends StatelessWidget {
                             color: Colors.white,
                           ),
                         )
-                      : Icon(icon, size: 23, color: Colors.white),
+                      : Icon(icon, size: iconSize, color: Colors.white),
                 ),
               ),
             ),
@@ -291,7 +296,7 @@ final class _ControlButton extends StatelessWidget {
             padding: EdgeInsets.zero,
             enabled: enabled,
             onPressed: enabled ? onPressed : null,
-            child: Icon(icon, size: 20),
+            child: Icon(icon, size: iconSize),
           );
     return Semantics(
       button: true,

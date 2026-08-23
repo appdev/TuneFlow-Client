@@ -79,21 +79,38 @@ final class CatalogTrackList extends StatelessWidget {
                 ),
                 Expanded(
                   child: ListView.builder(
-                    controller: scrollController,
-                    itemCount: tracks.length,
-                    itemBuilder: (context, index) => CatalogTrackRow(
-                      index: index + 1 + ((page - 1) * pageSize),
-                      track: tracks[index],
-                      providers: providers,
-                      aggregate: aggregate,
-                      showAlbum: showAlbum,
-                      showDuration: showDuration,
-                      compact: compact,
-                      loadPicture: loadPicture,
-                      onPlay: () => onPlay(tracks[index]),
-                      onFavorite: () => onFavorite(tracks[index]),
-                      actions: actionsFor(tracks[index]),
-                    ),
+                    controller: embedded ? null : scrollController,
+                    primary: embedded ? false : null,
+                    physics: embedded
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
+                    itemCount:
+                        tracks.length +
+                        (loadingMore || loadMoreError != null ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == tracks.length) {
+                        return _DesktopLoadMoreFooter(
+                          loading: loadingMore,
+                          onRetry: onRetry,
+                        );
+                      }
+                      return CatalogTrackRow(
+                        index:
+                            index +
+                            1 +
+                            (onPage == null ? 0 : (page - 1) * pageSize),
+                        track: tracks[index],
+                        providers: providers,
+                        aggregate: aggregate,
+                        showAlbum: showAlbum,
+                        showDuration: showDuration,
+                        compact: compact,
+                        loadPicture: loadPicture,
+                        onPlay: () => onPlay(tracks[index]),
+                        onFavorite: () => onFavorite(tracks[index]),
+                        actions: actionsFor(tracks[index]),
+                      );
+                    },
                   ),
                 ),
                 if (onPage case final callback?)
@@ -108,6 +125,31 @@ final class CatalogTrackList extends StatelessWidget {
             );
           },
         );
+}
+
+final class _DesktopLoadMoreFooter extends StatelessWidget {
+  const _DesktopLoadMoreFooter({required this.loading, this.onRetry});
+
+  final bool loading;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('catalog-desktop-load-more'),
+    height: 52,
+    child: Center(
+      child: loading
+          ? const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(LucideIcons.refreshCw, size: 16),
+              label: const Text('加载失败，点击重试'),
+            ),
+    ),
+  );
 }
 
 final class CatalogTrackTableHeader extends StatelessWidget {

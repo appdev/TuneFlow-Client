@@ -109,7 +109,6 @@ void main() {
       catalog: SearchRepository(api),
       source: 'wy',
       albumId: 'album-1',
-      supported: true,
       initialAlbum: seed(),
     );
 
@@ -132,33 +131,40 @@ void main() {
     expect(player.state.currentIndex, 1);
   });
 
-  testWidgets('unsupported album detail keeps metadata and explains support', (
-    tester,
-  ) async {
-    final api = ServiceApi(
-      ServiceOrigin.parse('http://service.local'),
-      client: MockClient((_) async => throw StateError('must not request')),
-    );
-    await tester.pumpWidget(
-      harness(
-        AlbumDetailScreen(
-          controller: AlbumDetailController(
-            catalog: SearchRepository(api),
-            source: 'wy',
-            albumId: 'album-1',
-            supported: false,
-            initialAlbum: seed(),
+  testWidgets(
+    'album detail reports service errors instead of capability state',
+    (tester) async {
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({'error': 'album detail is unsupported'}),
+            501,
+            headers: {'content-type': 'application/json; charset=utf-8'},
           ),
-          player: PlayerController(resolver: _Resolver(), audio: _Audio()),
-          playlists: PlaylistRepository(api),
-          downloads: DownloadRepository(api),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpWidget(
+        harness(
+          AlbumDetailScreen(
+            controller: AlbumDetailController(
+              catalog: SearchRepository(api),
+              source: 'wy',
+              albumId: 'album-1',
+              initialAlbum: seed(),
+            ),
+            player: PlayerController(resolver: _Resolver(), audio: _Audio()),
+            playlists: PlaylistRepository(api),
+            downloads: DownloadRepository(api),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('叶惠美'), findsOneWidget);
-    expect(find.text('当前音源不支持专辑详情'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
-  });
+      expect(find.text('叶惠美'), findsOneWidget);
+      expect(find.text('专辑加载失败'), findsOneWidget);
+      expect(find.text('当前音源不支持专辑详情'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    },
+  );
 }

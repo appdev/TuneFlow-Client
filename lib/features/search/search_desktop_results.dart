@@ -48,7 +48,11 @@ final class SearchDesktopResults extends StatelessWidget {
     }
     if (state.view == SearchView.overview) return _overview(context);
     if (state.view == SearchView.tracks) {
-      return _trackTable(context, state.trackSection, paginated: true);
+      return _trackTable(
+        context,
+        state.trackSection,
+        scrollController: scrollController,
+      );
     }
     final section = state.view == SearchView.albums
         ? state.albumSection
@@ -59,6 +63,13 @@ final class SearchDesktopResults extends StatelessWidget {
   Widget _overview(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final rowHeight = constraints.maxWidth < 900 ? 54.0 : 58.0;
+      final trackSection = state.trackSection;
+      final footerHeight =
+          trackSection.phase == SearchPhase.loadingMore ||
+              (trackSection.phase == SearchPhase.failure &&
+                  trackSection.items.isNotEmpty)
+          ? 52.0
+          : 0.0;
       return ListView(
         key: const Key('search-view-overview'),
         controller: scrollController,
@@ -73,17 +84,17 @@ final class SearchDesktopResults extends StatelessWidget {
           ],
           _DesktopSectionTitle(title: '搜索结果', count: state.trackSection.total),
           SizedBox(
-            height: 34 + state.overviewTracks.length * rowHeight,
+            height: 34 + trackSection.items.length * rowHeight + footerHeight,
             child: _trackTable(
               context,
               SearchSection(
-                items: state.overviewTracks,
-                page: 1,
-                total: state.trackSection.total,
-                phase: state.trackSection.phase,
-                error: state.trackSection.error,
+                items: trackSection.items,
+                page: trackSection.page,
+                total: trackSection.total,
+                phase: trackSection.phase,
+                error: trackSection.error,
               ),
-              paginated: false,
+              embedded: true,
             ),
           ),
           if (state.providerStatuses.isNotEmpty) ...[
@@ -111,7 +122,8 @@ final class SearchDesktopResults extends StatelessWidget {
   Widget _trackTable(
     BuildContext context,
     SearchSection<Track> section, {
-    required bool paginated,
+    ScrollController? scrollController,
+    bool embedded = false,
   }) {
     if (section.phase == SearchPhase.loading && section.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -140,8 +152,14 @@ final class SearchDesktopResults extends StatelessWidget {
       onPlay: onPlay,
       onFavorite: onFavorite,
       actionsFor: actionsFor,
-      onPage: paginated ? onPage : null,
-      scrollController: paginated ? scrollController : null,
+      scrollController: scrollController,
+      loadingMore: section.phase == SearchPhase.loadingMore,
+      loadMoreError:
+          section.phase == SearchPhase.failure && section.items.isNotEmpty
+          ? section.error ?? const Object()
+          : null,
+      onRetry: () => onRetry(CatalogSearchKind.track),
+      embedded: embedded,
     );
   }
 
