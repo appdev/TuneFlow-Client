@@ -12,7 +12,8 @@
 
 - The only workflow trigger is `workflow_dispatch`.
 - Android produces only a signed Release APK, never an AAB.
-- iOS and macOS artifacts remain unsigned.
+- The iOS artifact remains unsigned. The macOS artifact retains the valid
+  ad-hoc signature produced by Flutter/Xcode but has no Developer ID identity.
 - The release tag and title are the complete `pubspec.yaml` version prefixed with `v`, for example `v1.0.0+1`.
 - A release is created only after Android, iOS, macOS, Windows, and Linux all succeed.
 - Existing tags and releases are never overwritten.

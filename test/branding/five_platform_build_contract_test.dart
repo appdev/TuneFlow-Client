@@ -20,14 +20,26 @@ void main() {
     expect(workflow, isNot(contains('flutter build appbundle')));
     expect(workflow, contains('ANDROID_KEYSTORE_BASE64'));
     expect(workflow, contains('flutter build ios --release --no-codesign'));
-    expect(workflow, contains('CODE_SIGNING_ALLOWED=NO'));
+    expect(workflow, contains('flutter build macos --release'));
+    expect(workflow, isNot(contains('CODE_SIGNING_ALLOWED=NO')));
     expect(
       'codesign --remove-signature'.allMatches(workflow),
-      hasLength(2),
+      hasLength(1),
     );
     expect(
       'Verify Apple binaries are unsigned'.allMatches(workflow),
-      hasLength(2),
+      hasLength(1),
+    );
+    expect(workflow, contains('Verify macOS ad-hoc signature'));
+    expect(
+      workflow,
+      contains('codesign --verify --deep --strict --verbose=4'),
+    );
+    expect(workflow, contains(r"grep -q '^Signature=adhoc$'"));
+    expect(workflow, contains('Verify packaged macOS signature'));
+    expect(
+      workflow,
+      contains('ditto -x -k tuneflow-macos-unsigned.zip'),
     );
     expect(workflow, contains('runs-on: windows-2022'));
     expect(workflow, contains('flutter build windows --release'));

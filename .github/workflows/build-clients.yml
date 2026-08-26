@@ -112,7 +112,7 @@ jobs:
           if-no-files-found: error
 
   macos:
-    name: macOS unsigned
+    name: macOS ad-hoc signed
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,39 +122,23 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Build unsigned macOS app
-        run: CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO flutter build macos --release
-      - name: Remove macOS ad-hoc signatures
+      - name: Build ad-hoc signed macOS app
+        run: flutter build macos --release
+      - name: Verify macOS ad-hoc signature
         shell: bash
         run: |
           app=build/macos/Build/Products/Release/TuneFlow.app
-          strip_signature() {
-            codesign --remove-signature "$1" 2>/dev/null || true
-          }
-          strip_signature "$app"
-          while IFS= read -r -d '' binary; do
-            if file "$binary" | grep -q 'Mach-O'; then
-              strip_signature "$binary"
-            fi
-          done < <(find "$app" -type f -print0)
-      - name: Verify Apple binaries are unsigned
-        shell: bash
-        run: |
-          app=build/macos/Build/Products/Release/TuneFlow.app
-          verify_unsigned() {
-            if codesign -dv "$1" >/dev/null 2>&1; then
-              echo "::error file=$1::Code object still has a signature"
-              return 1
-            fi
-          }
-          verify_unsigned "$app"
-          while IFS= read -r -d '' binary; do
-            if file "$binary" | grep -q 'Mach-O'; then
-              verify_unsigned "$binary"
-            fi
-          done < <(find "$app" -type f -print0)
+          codesign --verify --deep --strict --verbose=4 "$app"
+          signature=$(codesign -dv --verbose=4 "$app" 2>&1)
+          grep -q '^Signature=adhoc$' <<< "$signature"
       - name: Package macOS app
         run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/TuneFlow.app tuneflow-macos-unsigned.zip
+      - name: Verify packaged macOS signature
+        shell: bash
+        run: |
+          unpacked=$(mktemp -d "$RUNNER_TEMP/tuneflow-macos.XXXXXX")
+          ditto -x -k tuneflow-macos-unsigned.zip "$unpacked"
+          codesign --verify --deep --strict --verbose=4 "$unpacked/TuneFlow.app"
       - name: Upload macOS app
         uses: actions/upload-artifact@v4
         with:

@@ -8,7 +8,7 @@
 
 - Android：使用 GitHub Secrets 恢复 JKS，只构建已签名 Release APK。
 - iOS：执行 `flutter build ios --release --no-codesign`，上传未签名 Runner.app 压缩包。
-- macOS：执行 `flutter build macos --release`，禁用代码签名，上传未签名 TuneFlow.app 压缩包。
+- macOS：执行 `flutter build macos --release`，保留 Flutter/Xcode 生成的 ad-hoc 签名，在压缩前及 ZIP 解压后验证整个应用包，上传不含 Developer ID 身份签名的 TuneFlow.app 压缩包。
 - Windows：执行 `flutter build windows --release`，上传 Release 目录压缩包。
 - Linux：安装 GTK/CMake 依赖后执行 `flutter build linux --release`，上传 bundle 压缩包。
 
@@ -30,4 +30,4 @@ JKS 内容、store password、key alias 和 key password 均存入 GitHub Action
 
 ## 验证
 
-仓库契约测试检查仅允许手动触发、五端命令、Android 仅 APK、iOS/macOS 无签名、五个 Artifact 上传、发布 Job 的依赖关系、版本解析、写权限和五个平台附件。上线后手动触发工作流，确认五个构建 Job 全部成功，随后创建与 `pubspec.yaml` 版本一致且包含五个平台附件的正式 Release。
+仓库契约测试检查仅允许手动触发、五端命令、Android 仅 APK、iOS 无签名、macOS 保留有效 ad-hoc 签名、五个 Artifact 上传、发布 Job 的依赖关系、版本解析、写权限和五个平台附件。上线后手动触发工作流，确认五个构建 Job 全部成功，随后创建与 `pubspec.yaml` 版本一致且包含五个平台附件的正式 Release。
