@@ -10,11 +10,61 @@ import 'package:musicfree_service_client/features/home/home_controller.dart';
 import 'package:musicfree_service_client/features/library/library_repository.dart';
 import 'package:musicfree_service_client/features/playback_history/playback_history_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
+import 'package:musicfree_service_client/features/recommendations/recommendation_controller.dart';
+import 'package:musicfree_service_client/features/recommendations/recommendation_models.dart';
+import 'package:musicfree_service_client/features/recommendations/recommendation_repository.dart';
+
+final class MemoryRecommendationCache implements RecommendationCache {
+  @override
+  Future<void> clear() async {}
+
+  @override
+  Future<DailyRecommendations?> read() async => null;
+
+  @override
+  Future<void> write(DailyRecommendations value) async {}
+}
 
 http.Response data(Object? value) =>
     http.Response(jsonEncode({'data': value}), 200);
 
 void main() {
+  test(
+    'recommendation failure does not mark the rest of home as stale',
+    () async {
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.url.path == '/api/v1/recommendations/daily') {
+            return http.Response(
+              jsonEncode({
+                'error': {'code': 'OFFLINE', 'message': 'offline'},
+              }),
+              503,
+            );
+          }
+          return data(<Object?>[]);
+        }),
+      );
+      final recommendations = RecommendationController(
+        repository: RecommendationRepository(api),
+        cache: MemoryRecommendationCache(),
+      );
+      final controller = HomeController(
+        playlists: PlaylistRepository(api),
+        downloads: DownloadRepository(api),
+        library: LibraryRepository(api),
+        recommendations: recommendations,
+      );
+
+      await controller.refresh();
+
+      expect(controller.state.error, isNull);
+      expect(controller.state.stale, isFalse);
+      expect(recommendations.state.error, isNotNull);
+    },
+  );
+
   test(
     'dashboard retains the successful resource when the other fails',
     () async {

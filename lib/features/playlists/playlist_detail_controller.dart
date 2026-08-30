@@ -60,6 +60,24 @@ final class PlaylistDetailController extends ChangeNotifier {
 
   Future<void> delete() => repository.delete(playlistId);
 
+  Future<List<PlaylistSummary>> moveTargets() async => (await repository.list())
+      .where((playlist) => playlist.id != playlistId)
+      .toList(growable: false);
+
+  Future<void> move(Track track, String targetId) async {
+    await repository.moveTracks(
+      fromId: playlistId,
+      toId: targetId,
+      tracks: [track],
+    );
+    await refresh();
+  }
+
+  Future<void> clear() async {
+    await repository.clearTracks(playlistId);
+    await refresh();
+  }
+
   Future<void> reorder({
     required int position,
     required List<String> trackIds,

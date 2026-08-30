@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:musicfree_service_client/api/models.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/features/library/library_repository.dart';
@@ -31,6 +32,33 @@ LibraryRepository emptyLibrary() => LibraryRepository(
 );
 
 void main() {
+  test('moves tracks between playlists and clears a playlist', () async {
+    final requests = <http.Request>[];
+    final repository = repositoryWith((request) async {
+      requests.add(request);
+      if (request.method == 'DELETE') return http.Response('', 204);
+      return data(null);
+    });
+    final track = Track.fromJson({
+      'id': 'song-1',
+      'name': 'Song',
+      'source': 'kw',
+    });
+
+    await repository.moveTracks(fromId: 'from', toId: 'to', tracks: [track]);
+    await repository.clearTracks('from');
+
+    expect(requests.first.url.path, '/api/v1/playlists/tracks/move');
+    expect(jsonDecode(requests.first.body), {
+      'fromId': 'from',
+      'toId': 'to',
+      'musicInfos': [track.toJson()],
+      'addMusicLocationType': 'bottom',
+    });
+    expect(requests.last.method, 'DELETE');
+    expect(requests.last.url.path, '/api/v1/playlists/from/tracks');
+  });
+
   test(
     'refresh resolves each Service playlist detail for count and artwork',
     () async {

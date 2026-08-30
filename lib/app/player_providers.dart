@@ -10,6 +10,8 @@ import '../features/player/playback_repository.dart';
 import '../features/player/player_controller.dart';
 import '../features/playlists/favorite_playlist.dart';
 import '../features/playlists/playlist_repository.dart';
+import '../features/radio/radio_controller.dart';
+import '../features/radio/radio_repository.dart';
 import '../storage/app_settings_controller.dart';
 import 'app_providers.dart';
 
@@ -31,6 +33,20 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
       api,
       platform: currentPlaybackPlatform(),
     ),
+  );
+  ref.onDispose(controller.dispose);
+  return controller;
+});
+
+final radioControllerProvider = Provider<RadioController?>((ref) {
+  final api = ref.watch(
+    connectionProvider.select((connection) => connection.value?.api),
+  );
+  final player = ref.watch(playerControllerProvider);
+  if (api == null || player == null) return null;
+  final controller = RadioController(
+    repository: RadioRepository(api),
+    player: player,
   );
   ref.onDispose(controller.dispose);
   return controller;

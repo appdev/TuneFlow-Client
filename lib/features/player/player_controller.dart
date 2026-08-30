@@ -20,6 +20,13 @@ final class _ActivePlaybackSession {
   _PlaybackTerminal? terminal;
 }
 
+final class PlaybackContext {
+  const PlaybackContext({this.recommendationItemId, this.radioSessionId});
+
+  final String? recommendationItemId;
+  final String? radioSessionId;
+}
+
 final class PlayerController extends ChangeNotifier {
   PlayerController({
     required this.resolver,
@@ -40,6 +47,7 @@ final class PlayerController extends ChangeNotifier {
   PlayerState state;
   final Random _random = Random();
   _ActivePlaybackSession? _activeSession;
+  List<PlaybackContext?> _playbackContexts = const [];
   int _playGeneration = 0;
   int? _bundleLyricsGeneration;
   int _lyricsRequestGeneration = 0;
@@ -47,14 +55,36 @@ final class PlayerController extends ChangeNotifier {
   _lyricsRefresh;
   ({String source, String id, int generation, Future<bool> future})?
   _artworkRefresh;
+  Future<bool> Function()? _sequentialQueueEndHandler;
 
-  Future<void> playTracks(List<Track> tracks, {int startIndex = 0}) async {
+  void setSequentialQueueEndHandler(Future<bool> Function()? handler) {
+    _sequentialQueueEndHandler = handler;
+  }
+
+  PlaybackContext? get currentPlaybackContext => _currentPlaybackContext;
+
+  Future<void> playTracks(
+    List<Track> tracks, {
+    int startIndex = 0,
+    List<PlaybackContext?>? contexts,
+    PlayerQueueKind queueKind = PlayerQueueKind.manual,
+  }) async {
     if (tracks.isEmpty) return;
     if (startIndex < 0 || startIndex >= tracks.length) {
       throw RangeError.index(startIndex, tracks, 'startIndex');
     }
+    if (contexts != null && contexts.length != tracks.length) {
+      throw ArgumentError.value(
+        contexts.length,
+        'contexts',
+        'Playback contexts must match the queue length.',
+      );
+    }
     _playGeneration++;
     final endingSession = _endSession(completed: false);
+    _playbackContexts = List.unmodifiable(
+      contexts ?? List<PlaybackContext?>.filled(tracks.length, null),
+    );
     state = PlayerState(
       queue: List.unmodifiable(tracks),
       currentIndex: startIndex,
@@ -65,6 +95,10 @@ final class PlayerController extends ChangeNotifier {
       showTranslation: state.showTranslation,
       view: state.view,
       playbackMode: state.playbackMode,
+      queueKind: queueKind,
+      volume: state.volume,
+      muted: state.muted,
+      playbackRate: state.playbackRate,
     );
     notifyListeners();
     await endingSession;
@@ -72,7 +106,32 @@ final class PlayerController extends ChangeNotifier {
   }
 
   void enqueue(Track track) {
+    _playbackContexts = List.unmodifiable([..._playbackContexts, null]);
     state = state.copyWith(queue: List.unmodifiable([...state.queue, track]));
+    notifyListeners();
+  }
+
+  void enqueueTracks(
+    List<Track> tracks, {
+    List<PlaybackContext?>? contexts,
+    PlayerQueueKind? queueKind,
+  }) {
+    if (tracks.isEmpty) return;
+    if (contexts != null && contexts.length != tracks.length) {
+      throw ArgumentError.value(
+        contexts.length,
+        'contexts',
+        'Playback contexts must match the appended tracks.',
+      );
+    }
+    _playbackContexts = List.unmodifiable([
+      ..._playbackContexts,
+      ...(contexts ?? List<PlaybackContext?>.filled(tracks.length, null)),
+    ]);
+    state = state.copyWith(
+      queue: List.unmodifiable([...state.queue, ...tracks]),
+      queueKind: queueKind,
+    );
     notifyListeners();
   }
 
@@ -86,10 +145,20 @@ final class PlayerController extends ChangeNotifier {
     final queue = state.queue
         .where((item) => item.source != track.source || item.id != track.id)
         .toList();
+    final contexts = <PlaybackContext?>[];
+    for (var index = 0; index < state.queue.length; index++) {
+      final item = state.queue[index];
+      if (item.source == track.source && item.id == track.id) continue;
+      contexts.add(
+        index < _playbackContexts.length ? _playbackContexts[index] : null,
+      );
+    }
     final currentIndex = queue.indexWhere(
       (item) => item.source == current.source && item.id == current.id,
     );
     queue.insert(currentIndex + 1, track);
+    contexts.insert(currentIndex + 1, null);
+    _playbackContexts = List.unmodifiable(contexts);
     state = state.copyWith(
       queue: List.unmodifiable(queue),
       currentIndex: currentIndex,
@@ -122,6 +191,9 @@ final class PlayerController extends ChangeNotifier {
 
     final removingCurrent = index == state.currentIndex;
     final queue = [...state.queue]..removeAt(index);
+    final contexts = [..._playbackContexts];
+    if (index < contexts.length) contexts.removeAt(index);
+    _playbackContexts = List.unmodifiable(contexts);
     if (!removingCurrent) {
       final nextIndex = index < state.currentIndex
           ? state.currentIndex - 1
@@ -167,11 +239,16 @@ final class PlayerController extends ChangeNotifier {
       return false;
     }
     await _endSession(completed: false);
+    _playbackContexts = const [];
     state = PlayerState(
       quality: state.quality,
       showTranslation: state.showTranslation,
       view: PlayerView.artwork,
       playbackMode: state.playbackMode,
+      queueKind: PlayerQueueKind.manual,
+      volume: state.volume,
+      muted: state.muted,
+      playbackRate: state.playbackRate,
     );
     notifyListeners();
     return true;
@@ -209,6 +286,62 @@ final class PlayerController extends ChangeNotifier {
     };
     state = state.copyWith(playbackMode: nextMode);
     notifyListeners();
+  }
+
+  Future<bool> setVolume(double value) async {
+    final controls = audio;
+    if (controls is! AudioControlPort) return false;
+    final normalized = value.clamp(0, 1).toDouble();
+    final previous = state;
+    state = state.copyWith(
+      volume: normalized,
+      muted: normalized == 0 ? true : false,
+    );
+    notifyListeners();
+    try {
+      await (controls as AudioControlPort).setVolume(normalized);
+      return true;
+    } on Object {
+      state = previous;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> setMuted(bool value) async {
+    final controls = audio;
+    if (controls is! AudioControlPort) return false;
+    final previous = state;
+    state = state.copyWith(muted: value);
+    notifyListeners();
+    try {
+      await (controls as AudioControlPort).setVolume(
+        value ? 0 : state.volume.clamp(.01, 1),
+      );
+      return true;
+    } on Object {
+      state = previous;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> setPlaybackRate(double value) async {
+    const supported = <double>[.5, .75, 1, 1.25, 1.5, 2];
+    if (!supported.contains(value)) return false;
+    final controls = audio;
+    if (controls is! AudioControlPort) return false;
+    final previous = state;
+    state = state.copyWith(playbackRate: value);
+    notifyListeners();
+    try {
+      await (controls as AudioControlPort).setSpeed(value);
+      return true;
+    } on Object {
+      state = previous;
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> pause() => audio.pause();
@@ -412,7 +545,7 @@ final class PlayerController extends ChangeNotifier {
     Object? lastError;
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        final source = await resolver.resolve(track, state.quality);
+        final source = await _resolve(track);
         if (!_isCurrent(generation, track)) return false;
         final playbackTrack = _applyResolvedBundle(
           source,
@@ -444,6 +577,27 @@ final class PlayerController extends ChangeNotifier {
     return false;
   }
 
+  Future<PlaybackSource> _resolve(Track track) {
+    final recommendationItemId = _currentPlaybackContext?.recommendationItemId;
+    final currentResolver = resolver;
+    if (recommendationItemId != null &&
+        currentResolver is ContextualPlaybackResolver) {
+      return (currentResolver as ContextualPlaybackResolver).resolveWithContext(
+        track,
+        state.quality,
+        recommendationItemId: recommendationItemId,
+      );
+    }
+    return currentResolver.resolve(track, state.quality);
+  }
+
+  PlaybackContext? get _currentPlaybackContext {
+    final index = state.currentIndex;
+    return index >= 0 && index < _playbackContexts.length
+        ? _playbackContexts[index]
+        : null;
+  }
+
   bool _isCurrent(int generation, Track track) {
     final current = state.current;
     return generation == _playGeneration &&
@@ -457,7 +611,7 @@ final class PlayerController extends ChangeNotifier {
       return;
     }
     try {
-      final source = await resolver.resolve(track, state.quality);
+      final source = await _resolve(track);
       if (!_isCurrent(generation, track)) return;
       _applyResolvedResources(source, generation: generation);
     } on Object {
@@ -521,7 +675,18 @@ final class PlayerController extends ChangeNotifier {
     final entry = _ActivePlaybackSession();
     _activeSession = entry;
     try {
-      entry.playbackId = await sessions.start(track);
+      final recommendationItemId =
+          _currentPlaybackContext?.recommendationItemId;
+      if (recommendationItemId != null &&
+          sessions is RecommendationPlaybackSessionPort) {
+        entry.playbackId = await (sessions as RecommendationPlaybackSessionPort)
+            .startRecommendation(
+              track,
+              recommendationItemId: recommendationItemId,
+            );
+      } else {
+        entry.playbackId = await sessions.start(track);
+      }
       final terminal = entry.terminal;
       if (terminal != null) await _reportSessionEnd(entry, terminal);
     } on Object {
@@ -601,6 +766,10 @@ final class PlayerController extends ChangeNotifier {
         await playIndex(_randomQueueIndex());
       case PlaybackMode.sequential:
         if (state.currentIndex + 1 < state.queue.length) {
+          await playIndex(state.currentIndex + 1);
+        } else if (await (_sequentialQueueEndHandler?.call() ??
+                Future.value(false)) &&
+            state.currentIndex + 1 < state.queue.length) {
           await playIndex(state.currentIndex + 1);
         }
     }

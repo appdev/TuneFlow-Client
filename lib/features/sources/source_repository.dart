@@ -126,6 +126,21 @@ final class SourceRepository {
     'sources',
   ).map(InstalledMusicSource.fromJson).toList(growable: false);
 
+  Future<InstalledMusicSource> installScript(String script) async =>
+      InstalledMusicSource.fromJson(
+        await api.request('POST', '/api/v1/sources', body: {'script': script}),
+      );
+
+  Future<InstalledMusicSource> importUrl(String url) async =>
+      InstalledMusicSource.fromJson(
+        await api.request('POST', '/api/v1/sources/import', body: {'url': url}),
+      );
+
+  Future<void> delete(String sourceId) =>
+      api.request('DELETE', '/api/v1/sources/${Uri.encodeComponent(sourceId)}');
+
+  Uri get exportUri => api.origin.resolve('/api/v1/sources/export');
+
   Future<InstalledMusicSource> activate(String sourceId) async =>
       InstalledMusicSource.fromJson(
         await api.request(

@@ -5,6 +5,7 @@ import '../downloads/download_repository.dart';
 import '../library/library_repository.dart';
 import '../playback_history/playback_history_repository.dart';
 import '../playlists/playlist_repository.dart';
+import '../recommendations/recommendation_controller.dart';
 
 List<Track> _uniqueTracks(Iterable<Track> tracks) {
   final seen = <String>{};
@@ -79,15 +80,21 @@ final class HomeController extends ChangeNotifier {
     required this.downloads,
     required this.library,
     this.history,
-  });
+    this.recommendations,
+  }) {
+    recommendations?.addListener(_onRecommendationsChanged);
+  }
 
   final PlaylistRepository playlists;
   final DownloadRepository downloads;
   final LibraryRepository library;
   final PlaybackHistoryRepository? history;
+  final RecommendationController? recommendations;
   HomeState state = const HomeState();
+  bool _disposed = false;
 
   Future<void> refresh() async {
+    if (_disposed) return;
     state = HomeState(
       playlists: state.playlists,
       downloads: state.downloads,
@@ -148,12 +155,18 @@ final class HomeController extends ChangeNotifier {
       }
     }
 
+    Future<void> loadRecommendations() async {
+      await recommendations?.load();
+    }
+
     await Future.wait([
       loadPlaylists(),
       loadDownloads(),
       loadLibrary(),
       loadHistory(),
+      loadRecommendations(),
     ]);
+    if (_disposed) return;
 
     final currentLibrary = nextLibrary ?? state.library;
     state = HomeState(
@@ -173,5 +186,15 @@ final class HomeController extends ChangeNotifier {
       error: firstError,
     );
     notifyListeners();
+  }
+
+  void _onRecommendationsChanged() => notifyListeners();
+
+  @override
+  void dispose() {
+    _disposed = true;
+    recommendations?.removeListener(_onRecommendationsChanged);
+    recommendations?.dispose();
+    super.dispose();
   }
 }

@@ -12,6 +12,8 @@ import '../features/connection/connection_repository.dart';
 import '../features/player/mini_player.dart';
 import '../features/player/current_track_actions_controller.dart';
 import '../features/player/player_controller.dart';
+import '../features/radio/radio_controller.dart';
+import '../features/radio/radio_status_strip.dart';
 import '../features/sources/source_repository.dart';
 import '../platform/app_platform.dart';
 import '../platform/desktop_window_controller.dart';
@@ -26,6 +28,7 @@ final class AppShell extends StatelessWidget {
     required this.player,
     required this.child,
     this.currentTrackActions,
+    this.radio,
     this.location,
     this.onOpenPlayer,
     this.onBack,
@@ -41,6 +44,7 @@ final class AppShell extends StatelessWidget {
   final VoidCallback? onDisconnect;
   final PlayerController player;
   final CurrentTrackActionsController? currentTrackActions;
+  final RadioController? radio;
   final String? location;
   final VoidCallback? onOpenPlayer;
   final VoidCallback? onBack;
@@ -137,13 +141,21 @@ final class AppShell extends StatelessWidget {
               resizeToAvoidBottomInset: false,
               body: SafeArea(bottom: false, child: child),
               bottomNavigationBar: showMiniPlayer
-                  ? AppMobileDock(
-                      player: player,
-                      destinations: _mobileDestinations,
-                      selectedId: mobileSelectedId,
-                      onSelected: navigate,
-                      onOpenPlayer: openPlayer,
-                      showNavigation: showsMobilePrimaryNavigation(location),
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (radio != null) RadioStatusStrip(controller: radio!),
+                        AppMobileDock(
+                          player: player,
+                          destinations: _mobileDestinations,
+                          selectedId: mobileSelectedId,
+                          onSelected: navigate,
+                          onOpenPlayer: openPlayer,
+                          showNavigation: showsMobilePrimaryNavigation(
+                            location,
+                          ),
+                        ),
+                      ],
                     )
                   : null,
             );
@@ -212,6 +224,12 @@ final class AppShell extends StatelessWidget {
                                   variant: MiniPlayerVariant.desktop,
                                 ),
                               ),
+                            ),
+                          if (showMiniPlayer && radio != null)
+                            Positioned(
+                              right: AppSpacing.lg,
+                              bottom: 102,
+                              child: RadioStatusStrip(controller: radio!),
                             ),
                         ],
                       );

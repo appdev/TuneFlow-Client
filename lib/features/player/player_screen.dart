@@ -658,6 +658,10 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
             onQualityChanged: (quality) =>
                 unawaited(controller.setQuality(quality)),
             onQueue: onQueue,
+            onVolumeChanged: (value) => unawaited(controller.setVolume(value)),
+            onMuteChanged: (value) => unawaited(controller.setMuted(value)),
+            onPlaybackRateChanged: (value) =>
+                unawaited(controller.setPlaybackRate(value)),
           ),
         ],
       ),

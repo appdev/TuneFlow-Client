@@ -12,18 +12,39 @@ abstract interface class PlaybackSessionPort {
   });
 }
 
-final class PlaybackHistoryRepository implements PlaybackSessionPort {
+abstract interface class RecommendationPlaybackSessionPort {
+  Future<String> startRecommendation(
+    Track track, {
+    required String recommendationItemId,
+  });
+}
+
+final class PlaybackHistoryRepository
+    implements PlaybackSessionPort, RecommendationPlaybackSessionPort {
   const PlaybackHistoryRepository(this.api, {required this.platform});
 
   final ServiceApi api;
   final String platform;
 
   @override
-  Future<String> start(Track track) async {
+  Future<String> start(Track track) => _start(track);
+
+  @override
+  Future<String> startRecommendation(
+    Track track, {
+    required String recommendationItemId,
+  }) => _start(track, recommendationItemId: recommendationItemId);
+
+  Future<String> _start(Track track, {String? recommendationItemId}) async {
     final value = await api.request(
       'POST',
       '/api/v1/playback/history',
-      body: {'track': track.toJson(), 'platform': platform},
+      body: {
+        'track': track.toJson(),
+        'platform': platform,
+        if (recommendationItemId != null)
+          'recommendationItemId': recommendationItemId,
+      },
     );
     if (value is! Map || value['playbackId'] is! String) {
       throw const FormatException(

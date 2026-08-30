@@ -59,6 +59,7 @@ final _appRouterReadsProvider = Provider((ref) {
     connection: () => ref.read(connectionProvider),
     player: () => ref.read(playerControllerProvider),
     currentTrackActions: () => ref.read(currentTrackActionsProvider),
+    radio: () => ref.read(radioControllerProvider),
     keepAwake: () => ref.read(appSettingsProvider).value?.keepAwake ?? false,
     settings: () => ref.read(settingsControllerProvider),
   );
@@ -80,20 +81,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       (connection) =>
           (hasError: connection.hasError, api: connection.value?.api),
     ),
-    (previous, next) => refresh.trigger(),
+    (previous, next) {
+      if (!identical(previous?.api, next.api)) {
+        invalidation.serviceChanged();
+      } else {
+        refresh.trigger();
+      }
+    },
   );
-  ref.watch(currentTrackActionsProvider);
   final reads = ref.read(_appRouterReadsProvider);
   final router = buildAppRouter(
     readConnection: reads.connection,
     readPlayer: reads.player,
     readCurrentTrackActions: reads.currentTrackActions,
+    readRadio: reads.radio,
     readKeepAwake: reads.keepAwake,
     readSettings: reads.settings,
     readSourceVersion: () => invalidation.sourcesVersion,
     readPlaylistVersion: () => invalidation.playlistsVersion,
     readDownloadVersion: () => invalidation.downloadsVersion,
     readLibraryVersion: () => invalidation.libraryVersion,
+    readRecommendationVersion: () => invalidation.recommendationsVersion,
     readPlaylistDetailVersion: invalidation.playlistDetailVersion,
     refreshListenable: refresh,
     disconnect: ref.read(connectionProvider.notifier).disconnect,

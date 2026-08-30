@@ -287,8 +287,8 @@ void main() {
     await tester.tap(find.text('我的收藏'));
     await tester.pumpAndSettle();
 
-    expect(find.text('添加失败'), findsOneWidget);
     expect(find.text('暂时无法添加到该歌单，请稍后重试。'), findsOneWidget);
     expect(find.textContaining('internal failure'), findsNothing);
+    await tester.pump(const Duration(seconds: 4));
   });
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image_ce/cached_network_image.dart';
@@ -14,12 +15,16 @@ import 'package:musicfree_service_client/features/downloads/download_repository.
 import 'package:musicfree_service_client/features/home/home_controller.dart';
 import 'package:musicfree_service_client/features/home/home_screen.dart';
 import 'package:musicfree_service_client/features/library/library_repository.dart';
+import 'package:musicfree_service_client/features/playback_history/playback_history_repository.dart';
 import 'package:musicfree_service_client/features/playlists/playlist_repository.dart';
+import 'package:musicfree_service_client/features/recommendations/recommendation_controller.dart';
+import 'package:musicfree_service_client/features/recommendations/recommendation_repository.dart';
 import 'package:musicfree_service_client/storage/app_image_cache_scope.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../support/fake_app_image_cache.dart';
 import '../../support/test_image_cache_manager.dart';
+import '../recommendations/recommendation_test_data.dart';
 
 Widget harness(Widget child) => AppImageCacheScope(
   cache: FakeAppImageCache(manager: TestImageCacheManager()),
@@ -33,6 +38,90 @@ Widget harness(Widget child) => AppImageCacheScope(
 );
 
 void main() {
+  testWidgets(
+    'preserves the in-flight home controller when navigation rebuilds its route',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final coldStartReady = Completer<void>();
+      final coldStartApi = ServiceApi(
+        ServiceOrigin.parse('http://cold-start.local'),
+        client: MockClient((request) async {
+          await coldStartReady.future;
+          final Object data = switch (request.url.path) {
+            '/api/v1/playlists' => [
+              {'id': 'preserved', 'name': '返回后仍保留'},
+            ],
+            '/api/v1/playlists/preserved' => {
+              'id': 'preserved',
+              'name': '返回后仍保留',
+              'tracks': <Object?>[],
+            },
+            _ => <Object?>[],
+          };
+          return http.Response(
+            jsonEncode({'data': data}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      final replacementRequests = <String>[];
+      final returnedApi = ServiceApi(
+        ServiceOrigin.parse('http://returned.local'),
+        client: MockClient((request) async {
+          replacementRequests.add(request.url.path);
+          return http.Response(
+            jsonEncode({'data': <Object?>[]}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      HomeController controller(ServiceApi api) => HomeController(
+        playlists: PlaylistRepository(api),
+        downloads: DownloadRepository(api),
+        library: LibraryRepository(api),
+      );
+      final coldStartController = controller(coldStartApi);
+      final returnedController = controller(returnedApi);
+
+      var currentController = coldStartController;
+      late StateSetter rebuild;
+      await tester.pumpWidget(
+        harness(
+          StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              return HomeScreen(
+                key: const Key('home-route'),
+                controller: currentController,
+                onSearch: () {},
+                onPlaylists: () {},
+                onDownloads: () {},
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      rebuild(() => currentController = returnedController);
+      await tester.pump();
+      expect(replacementRequests, isEmpty);
+
+      coldStartReady.complete();
+      await tester.pumpAndSettle();
+
+      expect(coldStartController.state.playlists.single.displayName, '返回后仍保留');
+      expect(coldStartController.state.error, isNull);
+      expect(find.text('返回后仍保留'), findsOneWidget);
+      expect(replacementRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('shows dashboard shortcuts and playlist summary', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;
@@ -376,5 +465,96 @@ void main() {
     expect(find.text('1 首本地音乐'), findsOneWidget);
     expect(find.textContaining('伍佰'), findsNothing);
     expect(find.text('让声音\n占据房间。'), findsNothing);
+  });
+
+  testWidgets('hero uses recommendation only when listening history is empty', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var includeHistory = false;
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        final Object data = switch (request.url.path) {
+          '/api/v1/recommendations/daily' => recommendationSnapshotJson(),
+          '/api/v1/playback/history' when includeHistory => [
+            {
+              'track': {
+                'id': 'history-hero',
+                'name': 'History Hero',
+                'singer': 'Known Artist',
+                'source': 'kw',
+              },
+              'startedAt': 123,
+            },
+          ],
+          _ => <Object?>[],
+        };
+        return http.Response(
+          jsonEncode({'data': data}),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    HomeController makeController(String cacheKey) => HomeController(
+      playlists: PlaylistRepository(api),
+      downloads: DownloadRepository(api),
+      library: LibraryRepository(api),
+      history: PlaybackHistoryRepository(api, platform: 'other'),
+      recommendations: RecommendationController(
+        repository: RecommendationRepository(api),
+        cache: SharedRecommendationCache(
+          serviceOrigin: Uri.parse('http://$cacheKey.local'),
+        ),
+      ),
+    );
+
+    final recommendationHome = makeController('hero-recommendation');
+    await recommendationHome.refresh();
+    await tester.pumpWidget(
+      harness(
+        HomeScreen(
+          key: const ValueKey('recommendation-home'),
+          controller: recommendationHome,
+          onSearch: () {},
+          onPlaylists: () {},
+          onDownloads: () {},
+          onRecommendations: () {},
+          onRecommendationSettings: () {},
+          loadRecommendationPicture: (_) async => null,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Track 0'), findsWidgets);
+    expect(find.text('播放推荐'), findsOneWidget);
+
+    includeHistory = true;
+    final historyHome = makeController('hero-history');
+    await historyHome.refresh();
+    await tester.pumpWidget(
+      harness(
+        HomeScreen(
+          key: const ValueKey('history-home'),
+          controller: historyHome,
+          onSearch: () {},
+          onPlaylists: () {},
+          onDownloads: () {},
+          onRecommendations: () {},
+          onRecommendationSettings: () {},
+          loadRecommendationPicture: (_) async => null,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('History Hero'), findsWidgets);
+    expect(find.text('继续播放'), findsOneWidget);
+    expect(find.text('播放推荐'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

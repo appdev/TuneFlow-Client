@@ -84,6 +84,36 @@ void main() {
     });
   });
 
+  test('recommendation start adds only the optional attribution id', () async {
+    late http.Request call;
+    final repository = PlaybackHistoryRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          call = request;
+          return data({'playbackId': 'play-recommendation'});
+        }),
+      ),
+      platform: 'web',
+    );
+    final track = Track.fromJson({
+      'id': 'track-1',
+      'source': 'kw',
+      'name': 'Recommended',
+    });
+
+    await repository.startRecommendation(
+      track,
+      recommendationItemId: 'recommendation-1',
+    );
+
+    expect(jsonDecode(call.body), {
+      'track': track.toJson(),
+      'platform': 'web',
+      'recommendationItemId': 'recommendation-1',
+    });
+  });
+
   test(
     'read playback history preserves metadata and skips malformed entries',
     () async {

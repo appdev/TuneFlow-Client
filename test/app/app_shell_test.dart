@@ -26,6 +26,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:toastr_flutter/toastr.dart';
 
 import '../support/memory_app_preferences.dart';
+import '../features/recommendations/recommendation_test_data.dart';
 
 void main() {
   testWidgets('application root hosts toastr feedback', (tester) async {
@@ -1097,12 +1098,81 @@ void main() {
     tester.element(find.byKey(const Key('main-shell'))).go('/playlists');
     await tester.pumpAndSettle();
 
-    expect(find.text('服务器 A 歌单'), findsNothing);
+    expect(
+      find.text('服务器 A 歌单'),
+      findsNothing,
+      reason: requestedUrls.join('\n'),
+    );
     expect(find.text('服务器 B 歌单'), findsOneWidget);
     expect(
       requestedUrls.map((url) => url.host),
       containsAllInOrder(['first.local', 'second.local']),
     );
+  });
+
+  testWidgets('daily recommendations survive leaving and entering twice', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var dailyRequests = 0;
+    final repository = ConnectionRepository(
+      (origin) => ServiceApi(
+        origin,
+        client: MockClient((request) async {
+          final Object data = switch (request.url.path) {
+            '/api/v1/health' => {'status': 'ok'},
+            '/api/v1/capabilities' => {
+              'runtime': 'service',
+              'apiVersion': 'v1',
+              'features': <String, Object?>{},
+            },
+            '/api/v1/events/snapshot' => {'sequence': 0, 'events': <Object?>[]},
+            '/api/v1/recommendations/daily' => () {
+              dailyRequests++;
+              return recommendationSnapshotJson();
+            }(),
+            _ => <Object?>[],
+          };
+          return http.Response(
+            jsonEncode({'data': data}),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MusicFreeServiceApp(
+        connectionRepository: repository,
+        preferences: MemoryAppPreferences(
+          const AppSettings(origin: 'http://service.local'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    dailyRequests = 0;
+    final router = GoRouter.of(
+      tester.element(find.byKey(const Key('main-shell'))),
+    );
+
+    router.go('/recommendations');
+    await tester.pumpAndSettle();
+    expect(find.text('Track 0'), findsOneWidget);
+    expect(dailyRequests, 1);
+
+    router.go('/');
+    await tester.pumpAndSettle();
+    router.go('/recommendations');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Track 0'), findsOneWidget);
+    expect(find.text('还没有可显示的每日推荐'), findsNothing);
+    expect(dailyRequests, 1);
+    expect(tester.takeException(), isNull);
   });
 }
 

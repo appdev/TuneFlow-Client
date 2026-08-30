@@ -235,8 +235,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('completed'), findsOneWidget);
-    expect(find.text('下载记录未清除'), findsOneWidget);
+    expect(find.text('下载记录未清除'), findsNothing);
     expect(find.textContaining('请更新 Service 后重试'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('download menu uses the shared choice presentation', (

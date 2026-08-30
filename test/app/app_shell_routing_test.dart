@@ -9,6 +9,7 @@ void main() {
     expect(navigationSelectionForLocation('/square/wy/list-1'), 'square');
     expect(navigationSelectionForLocation('/settings'), 'settings');
     expect(navigationSelectionForLocation('/settings/connection'), 'settings');
+    expect(navigationSelectionForLocation('/recommendations'), 'home');
   });
 
   test('secondary mobile routes remain grouped under more', () {
@@ -65,6 +66,7 @@ void main() {
       '/settings',
       '/sources',
       '/future-secondary',
+      '/recommendations',
     ]) {
       expect(showsMobilePrimaryNavigation(location), isFalse, reason: location);
     }

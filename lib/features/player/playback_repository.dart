@@ -21,12 +21,35 @@ abstract interface class PlaybackResolver {
   Future<PlaybackSource> resolve(Track track, String quality);
 }
 
-final class PlaybackRepository implements PlaybackResolver {
+abstract interface class ContextualPlaybackResolver {
+  Future<PlaybackSource> resolveWithContext(
+    Track track,
+    String quality, {
+    required String recommendationItemId,
+  });
+}
+
+final class PlaybackRepository
+    implements PlaybackResolver, ContextualPlaybackResolver {
   const PlaybackRepository(this.api);
   final ServiceApi api;
 
   @override
-  Future<PlaybackSource> resolve(Track track, String quality) async {
+  Future<PlaybackSource> resolve(Track track, String quality) =>
+      _resolve(track, quality);
+
+  @override
+  Future<PlaybackSource> resolveWithContext(
+    Track track,
+    String quality, {
+    required String recommendationItemId,
+  }) => _resolve(track, quality, recommendationItemId: recommendationItemId);
+
+  Future<PlaybackSource> _resolve(
+    Track track,
+    String quality, {
+    String? recommendationItemId,
+  }) async {
     final resolved = ResolvedTrack.fromJson(
       await api.request(
         'POST',
@@ -36,6 +59,8 @@ final class PlaybackRepository implements PlaybackResolver {
           'quality': quality,
           'preferLocal': true,
           'info': track.toServiceMusicInfoJson(),
+          if (recommendationItemId != null)
+            'recommendationItemId': recommendationItemId,
         },
       ),
     );

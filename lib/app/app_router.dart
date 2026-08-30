@@ -29,6 +29,10 @@ import '../features/player/player_controller.dart';
 import '../features/player/current_track_actions_controller.dart';
 import '../features/player/player_screen.dart';
 import '../features/player/wake_lock_port.dart';
+import '../features/recommendations/recommendation_controller.dart';
+import '../features/recommendations/recommendation_repository.dart';
+import '../features/recommendations/recommendation_screen.dart';
+import '../features/radio/radio_controller.dart';
 import '../features/playback_history/playback_history_repository.dart';
 import '../features/playback_history/playback_platform.dart';
 import '../features/playlists/playlist_detail_controller.dart';
@@ -41,6 +45,9 @@ import '../features/search/search_controller.dart' as feature;
 import '../features/search/search_screen.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/settings/connection_settings_screen.dart';
+import '../features/settings/service_function_settings_controller.dart';
+import '../features/settings/service_function_settings_screen.dart';
+import '../features/settings/service_settings_repository.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/sources/source_repository.dart';
 import '../features/sources/sources_controller.dart';
@@ -57,12 +64,14 @@ GoRouter buildAppRouter({
   required AsyncValue<ConnectedService?> Function() readConnection,
   required PlayerController? Function() readPlayer,
   required CurrentTrackActionsController? Function() readCurrentTrackActions,
+  RadioController? Function()? readRadio,
   required bool Function() readKeepAwake,
   required SettingsController? Function() readSettings,
   required int Function() readSourceVersion,
   required int Function() readPlaylistVersion,
   required int Function() readDownloadVersion,
   required int Function() readLibraryVersion,
+  required int Function() readRecommendationVersion,
   required int Function(String id) readPlaylistDetailVersion,
   required Listenable refreshListenable,
   required Future<void> Function() disconnect,
@@ -79,6 +88,11 @@ GoRouter buildAppRouter({
   PlayerController requirePlayer() => readPlayer()!;
   CurrentTrackActionsController requireCurrentTrackActions() =>
       readCurrentTrackActions()!;
+
+  Widget refreshed(Widget Function() builder) => ListenableBuilder(
+    listenable: refreshListenable,
+    builder: (context, _) => builder(),
+  );
 
   VoidCallback secondaryBack(BuildContext context, String fallbackLocation) =>
       () {
@@ -120,26 +134,72 @@ GoRouter buildAppRouter({
   }
 
   Widget localLibraryRoute(BuildContext context) {
-    final connected = requireConnected();
-    return LocalLibraryScreen(
-      key: ValueKey('local-library-${readLibraryVersion()}'),
-      controller: LocalLibraryController(LibraryRepository(connected.api)),
-      playlists: PlaylistRepository(connected.api),
-      playTracks: playTracks,
-      onBack: secondaryBack(context, '/playlists'),
-    );
+    return refreshed(() {
+      final connected = requireConnected();
+      return LocalLibraryScreen(
+        key: ValueKey('local-library-${readLibraryVersion()}'),
+        controller: LocalLibraryController(LibraryRepository(connected.api)),
+        playlists: PlaylistRepository(connected.api),
+        playTracks: playTracks,
+        onBack: secondaryBack(context, '/playlists'),
+      );
+    });
   }
 
-  Widget downloadsRoute(BuildContext context) => DownloadsScreen(
-    key: ValueKey('downloads-${readDownloadVersion()}'),
-    controller: DownloadsController(DownloadRepository(requireConnected().api)),
-    onBack: secondaryBack(context, '/more'),
+  Widget downloadsRoute(BuildContext context) => refreshed(
+    () => DownloadsScreen(
+      key: ValueKey('downloads-${readDownloadVersion()}'),
+      controller: DownloadsController(
+        DownloadRepository(requireConnected().api),
+      ),
+      onBack: secondaryBack(context, '/more'),
+      player: requirePlayer(),
+      playlists: PlaylistRepository(requireConnected().api),
+    ),
   );
 
-  Widget sourcesRoute(BuildContext context) => SourcesScreen(
-    key: sourceRouteKey(readSourceVersion()),
-    controller: SourcesController(SourceRepository(requireConnected().api)),
-    onBack: secondaryBack(context, '/more'),
+  Widget sourcesRoute(BuildContext context) => refreshed(
+    () => SourcesScreen(
+      key: sourceRouteKey(readSourceVersion()),
+      controller: SourcesController(SourceRepository(requireConnected().api)),
+      onBack: secondaryBack(context, '/more'),
+      onExport: openExternalUri,
+    ),
+  );
+
+  Widget recommendationsRoute(BuildContext context, {bool embedded = false}) {
+    return refreshed(() {
+      final connected = requireConnected();
+      final search = SearchRepository(connected.api);
+      return RecommendationScreen(
+        key: ValueKey(
+          'recommendations-${readRecommendationVersion()}-${embedded ? 'embedded' : 'page'}',
+        ),
+        controller: RecommendationController(
+          repository: RecommendationRepository(connected.api),
+          cache: SharedRecommendationCache(
+            serviceOrigin: connected.api.origin.uri,
+          ),
+        ),
+        player: requirePlayer(),
+        embedded: embedded,
+        onBack: embedded ? null : secondaryBack(context, '/'),
+        loadPicture: (item) async {
+          final value = await search.picture(item.track);
+          return Uri.tryParse(value);
+        },
+      );
+    });
+  }
+
+  Widget serviceFunctionSettingsRoute(
+    BuildContext context, {
+    required String fallbackLocation,
+  }) => ServiceFunctionSettingsScreen(
+    controller: ServiceFunctionSettingsController(
+      ServiceSettingsRepository(requireConnected().api),
+    ),
+    onBack: secondaryBack(context, fallbackLocation),
   );
 
   bool isMobileLayout(BuildContext context) =>
@@ -225,6 +285,7 @@ GoRouter buildAppRouter({
             onConnectionSettings: () => context.goNamed('settings-connection'),
             player: requirePlayer(),
             currentTrackActions: requireCurrentTrackActions(),
+            radio: readRadio?.call(),
             location: state.uri.path,
             onOpenPlayer: () => openPlayer(context),
             onBack: navigationHistory.canGoBack
@@ -247,7 +308,8 @@ GoRouter buildAppRouter({
                   return KeyedSubtree(
                     key: ValueKey(
                       'home-${readPlaylistVersion()}-'
-                      '${readDownloadVersion()}-${readLibraryVersion()}',
+                      '${readDownloadVersion()}-${readLibraryVersion()}-'
+                      '${readRecommendationVersion()}',
                     ),
                     child: HomeScreen(
                       key: const Key('home-route'),
@@ -259,11 +321,28 @@ GoRouter buildAppRouter({
                           connected.api,
                           platform: currentPlaybackPlatform(),
                         ),
+                        recommendations: RecommendationController(
+                          repository: RecommendationRepository(connected.api),
+                          cache: SharedRecommendationCache(
+                            serviceOrigin: connected.api.origin.uri,
+                          ),
+                        ),
                       ),
                       onSearch: () => context.goNamed('search'),
                       onPlaylists: () => context.goNamed('playlists'),
                       onDownloads: () => openDownloads(context),
+                      onRecommendations: () =>
+                          context.pushNamed('recommendations'),
+                      onRecommendationSettings: () =>
+                          context.pushNamed('service-settings'),
+                      loadRecommendationPicture: (item) async {
+                        final value = await SearchRepository(
+                          connected.api,
+                        ).picture(item.track);
+                        return Uri.tryParse(value);
+                      },
                       player: requirePlayer(),
+                      radio: readRadio?.call(),
                     ),
                   );
                 },
@@ -385,22 +464,24 @@ GoRouter buildAppRouter({
                 path: '/playlists',
                 name: 'playlists',
                 builder: (context, state) {
-                  final connected = requireConnected();
-                  return PlaylistsScreen(
-                    key: ValueKey(
-                      'playlists-${readPlaylistVersion()}-'
-                      '${readLibraryVersion()}',
-                    ),
-                    controller: PlaylistsController(
-                      PlaylistRepository(connected.api),
-                      library: LibraryRepository(connected.api),
-                    ),
-                    onOpen: (id) => context.pushNamed(
-                      'playlist',
-                      pathParameters: {'id': id},
-                    ),
-                    onOpenLocal: () => context.pushNamed('local-library'),
-                  );
+                  return refreshed(() {
+                    final connected = requireConnected();
+                    return PlaylistsScreen(
+                      key: ValueKey(
+                        'playlists-${readPlaylistVersion()}-'
+                        '${readLibraryVersion()}-${connected.api.origin.uri}',
+                      ),
+                      controller: PlaylistsController(
+                        PlaylistRepository(connected.api),
+                        library: LibraryRepository(connected.api),
+                      ),
+                      onOpen: (id) => context.pushNamed(
+                        'playlist',
+                        pathParameters: {'id': id},
+                      ),
+                      onOpenLocal: () => context.pushNamed('local-library'),
+                    );
+                  });
                 },
                 routes: [
                   GoRoute(
@@ -466,6 +547,8 @@ GoRouter buildAppRouter({
                       onBack: secondaryBack(context, '/more'),
                       onConnectionSettings: () =>
                           context.pushNamed('more-connection-settings'),
+                      onServiceSettings: () =>
+                          context.pushNamed('more-service-settings'),
                     ),
                     routes: [
                       GoRoute(
@@ -475,6 +558,15 @@ GoRouter buildAppRouter({
                           controller: readSettings()!,
                           onBack: secondaryBack(context, '/more/settings'),
                         ),
+                      ),
+                      GoRoute(
+                        path: 'service',
+                        name: 'more-service-settings',
+                        builder: (context, state) =>
+                            serviceFunctionSettingsRoute(
+                              context,
+                              fallbackLocation: '/more/settings',
+                            ),
                       ),
                     ],
                   ),
@@ -566,6 +658,8 @@ GoRouter buildAppRouter({
                   onBack: secondaryBack(context, '/more'),
                   onConnectionSettings: () =>
                       context.pushNamed('settings-connection'),
+                  onServiceSettings: () =>
+                      context.pushNamed('service-settings'),
                 ),
                 routes: [
                   GoRoute(
@@ -574,6 +668,14 @@ GoRouter buildAppRouter({
                     builder: (context, state) => ConnectionSettingsScreen(
                       controller: readSettings()!,
                       onBack: secondaryBack(context, '/settings'),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'service',
+                    name: 'service-settings',
+                    builder: (context, state) => serviceFunctionSettingsRoute(
+                      context,
+                      fallbackLocation: '/settings',
                     ),
                   ),
                 ],
@@ -586,6 +688,15 @@ GoRouter buildAppRouter({
                 path: '/sources',
                 name: 'sources',
                 builder: (context, state) => sourcesRoute(context),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/recommendations',
+                name: 'recommendations',
+                builder: (context, state) => recommendationsRoute(context),
               ),
             ],
           ),

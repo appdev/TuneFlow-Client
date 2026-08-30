@@ -6,6 +6,13 @@ enum PlayerView { artwork, lyrics, queue }
 
 enum PlaybackMode { sequential, repeatOne, shuffle }
 
+enum PlayerQueueKind {
+  manual,
+  dailyRecommendation,
+  dedicatedRadio,
+  radioContinuation,
+}
+
 bool effectivePlaybackPlaying({
   required bool playing,
   required PlayerProcessing processing,
@@ -43,6 +50,10 @@ final class PlayerState {
     this.showTranslation = true,
     this.view = PlayerView.artwork,
     this.playbackMode = PlaybackMode.sequential,
+    this.queueKind = PlayerQueueKind.manual,
+    this.volume = 1,
+    this.muted = false,
+    this.playbackRate = 1,
     this.bundleCompleteness,
     this.error,
     this.lyricsError,
@@ -62,6 +73,10 @@ final class PlayerState {
   final bool showTranslation;
   final PlayerView view;
   final PlaybackMode playbackMode;
+  final PlayerQueueKind queueKind;
+  final double volume;
+  final bool muted;
+  final double playbackRate;
   final PlaybackBundleCompleteness? bundleCompleteness;
   final Object? error;
   final Object? lyricsError;
@@ -101,6 +116,10 @@ final class PlayerState {
     bool? showTranslation,
     PlayerView? view,
     PlaybackMode? playbackMode,
+    PlayerQueueKind? queueKind,
+    double? volume,
+    bool? muted,
+    double? playbackRate,
     Object? bundleCompleteness = _unchanged,
     Object? error = _unchanged,
     Object? lyricsError = _unchanged,
@@ -119,6 +138,10 @@ final class PlayerState {
     showTranslation: showTranslation ?? this.showTranslation,
     view: view ?? this.view,
     playbackMode: playbackMode ?? this.playbackMode,
+    queueKind: queueKind ?? this.queueKind,
+    volume: volume ?? this.volume,
+    muted: muted ?? this.muted,
+    playbackRate: playbackRate ?? this.playbackRate,
     bundleCompleteness: identical(bundleCompleteness, _unchanged)
         ? this.bundleCompleteness
         : bundleCompleteness as PlaybackBundleCompleteness?,

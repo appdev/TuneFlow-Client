@@ -39,6 +39,52 @@ http.Response ok(Object? data) => http.Response(
 );
 
 void main() {
+  test('installs, imports, deletes and exposes the export endpoint', () async {
+    final calls = <(String, String, Object?)>[];
+    var installed = false;
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        final body = request.body.isEmpty ? null : jsonDecode(request.body);
+        calls.add((request.method, request.url.path, body));
+        if (request.method == 'GET') {
+          return ok([
+            if (installed)
+              source('installed', active: true, enabled: true, priority: 0),
+          ]);
+        }
+        if (request.method == 'DELETE') {
+          installed = false;
+          return http.Response('', 204);
+        }
+        installed = true;
+        return ok(
+          source('installed', active: true, enabled: true, priority: 0),
+        );
+      }),
+    );
+    final repository = SourceRepository(api);
+    final controller = SourcesController(repository);
+
+    await controller.installScript('  const source = {};  ');
+    await controller.importUrl('  https://example.com/source.js  ');
+    await controller.delete('installed');
+
+    expect(calls[0].$1, 'POST');
+    expect(calls[0].$2, '/api/v1/sources');
+    expect(calls[0].$3, {'script': 'const source = {};'});
+    expect(calls[2].$1, 'POST');
+    expect(calls[2].$2, '/api/v1/sources/import');
+    expect(calls[2].$3, {'url': 'https://example.com/source.js'});
+    expect(calls[4].$1, 'DELETE');
+    expect(calls[4].$2, '/api/v1/sources/installed');
+    expect(controller.state.items, isEmpty);
+    expect(
+      repository.exportUri.toString(),
+      'http://service.local/api/v1/sources/export',
+    );
+  });
+
   test(
     'parses ordered summaries compatibly and submits the complete array',
     () async {

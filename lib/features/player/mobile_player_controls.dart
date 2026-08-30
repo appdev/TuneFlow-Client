@@ -21,6 +21,9 @@ final class MobilePlayerControls extends StatelessWidget {
     required this.onPlaybackMode,
     required this.onQualityChanged,
     required this.onQueue,
+    this.onVolumeChanged,
+    this.onMuteChanged,
+    this.onPlaybackRateChanged,
   });
 
   final PlayerState state;
@@ -31,6 +34,9 @@ final class MobilePlayerControls extends StatelessWidget {
   final VoidCallback onPlaybackMode;
   final ValueChanged<String> onQualityChanged;
   final VoidCallback onQueue;
+  final ValueChanged<double>? onVolumeChanged;
+  final ValueChanged<bool>? onMuteChanged;
+  final ValueChanged<double>? onPlaybackRateChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +95,55 @@ final class MobilePlayerControls extends StatelessWidget {
                   onChanged: (value) {
                     if (value != null) onQualityChanged(value);
                   },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              SizedBox(
+                width: 84,
+                child: ShadSelect<double>(
+                  key: const Key('player-mobile-speed'),
+                  initialValue: state.playbackRate,
+                  decoration: ShadDecoration.none,
+                  options: const [
+                    ShadOption(value: .5, child: Text('0.5x')),
+                    ShadOption(value: .75, child: Text('0.75x')),
+                    ShadOption(value: 1, child: Text('1.0x')),
+                    ShadOption(value: 1.25, child: Text('1.25x')),
+                    ShadOption(value: 1.5, child: Text('1.5x')),
+                    ShadOption(value: 2, child: Text('2.0x')),
+                  ],
+                  selectedOptionBuilder: (context, value) => Text('${value}x'),
+                  onChanged: (value) {
+                    if (value != null) onPlaybackRateChanged?.call(value);
+                  },
+                ),
+              ),
+              IconButton(
+                key: const Key('player-mobile-mute'),
+                tooltip: state.muted ? '取消静音' : '静音',
+                constraints: const BoxConstraints.tightFor(
+                  width: 44,
+                  height: 44,
+                ),
+                onPressed: onMuteChanged == null
+                    ? null
+                    : () => onMuteChanged!.call(!state.muted),
+                icon: Icon(
+                  state.muted || state.volume == 0
+                      ? LucideIcons.volumeX
+                      : LucideIcons.volume2,
+                  size: 18,
+                ),
+              ),
+              Expanded(
+                child: Slider(
+                  key: const Key('player-mobile-volume'),
+                  value: state.muted ? 0 : state.volume,
+                  onChanged: onVolumeChanged,
                 ),
               ),
             ],

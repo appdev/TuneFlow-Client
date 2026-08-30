@@ -13,6 +13,11 @@ import '../../design/components/playlist_card.dart';
 import '../../design/app_theme_definition.dart';
 import '../../design/design_tokens.dart';
 import '../player/player_controller.dart';
+import '../recommendations/recommendation_controller.dart';
+import '../recommendations/recommendation_models.dart';
+import '../radio/radio_controller.dart';
+import '../radio/radio_home_card.dart';
+import 'home_recommendation_section.dart';
 import 'home_controller.dart';
 
 final class HomeScreen extends StatefulWidget {
@@ -22,7 +27,11 @@ final class HomeScreen extends StatefulWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
+    this.onRecommendations,
+    this.onRecommendationSettings,
+    this.loadRecommendationPicture,
     this.player,
+    this.radio,
     this.now = DateTime.now,
   });
 
@@ -30,7 +39,12 @@ final class HomeScreen extends StatefulWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
+  final VoidCallback? onRecommendations;
+  final VoidCallback? onRecommendationSettings;
+  final Future<Uri?> Function(RecommendationItem item)?
+  loadRecommendationPicture;
   final PlayerController? player;
+  final RadioController? radio;
   final DateTime Function() now;
 
   @override
@@ -38,25 +52,44 @@ final class HomeScreen extends StatefulWidget {
 }
 
 final class _HomeScreenState extends State<HomeScreen> {
+  late final HomeController _controller;
+
   @override
   void initState() {
     super.initState();
-    if (widget.controller.state.playlists.isEmpty &&
-        widget.controller.state.downloads.isEmpty &&
-        widget.controller.state.library.isEmpty) {
-      widget.controller.refresh();
+    _controller = widget.controller;
+    _refreshIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(widget.controller, _controller)) {
+      widget.controller.dispose();
+    }
+  }
+
+  void _refreshIfNeeded() {
+    final recommendationMissing =
+        _controller.recommendations != null &&
+        _controller.recommendations!.state.snapshot == null;
+    if (recommendationMissing ||
+        (_controller.state.playlists.isEmpty &&
+            _controller.state.downloads.isEmpty &&
+            _controller.state.library.isEmpty)) {
+      _controller.refresh();
     }
   }
 
   @override
   void dispose() {
-    widget.controller.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.controller,
+    listenable: _controller,
     builder: (context, _) => LayoutBuilder(
       builder: (context, constraints) {
         final layout = classifyLayout(MediaQuery.sizeOf(context));
@@ -65,22 +98,30 @@ final class _HomeScreenState extends State<HomeScreen> {
           child: layout == AppLayoutClass.mobile
               ? _MobileHome(
                   key: const Key('home-mobile-layout'),
-                  state: widget.controller.state,
-                  controller: widget.controller,
+                  state: _controller.state,
+                  controller: _controller,
                   onSearch: widget.onSearch,
                   onPlaylists: widget.onPlaylists,
                   onDownloads: widget.onDownloads,
+                  onRecommendations: widget.onRecommendations,
+                  onRecommendationSettings: widget.onRecommendationSettings,
+                  loadRecommendationPicture: widget.loadRecommendationPicture,
                   player: widget.player,
+                  radio: widget.radio,
                   now: widget.now,
                 )
               : _WideHome(
                   key: const Key('home-wide-layout'),
-                  state: widget.controller.state,
-                  controller: widget.controller,
+                  state: _controller.state,
+                  controller: _controller,
                   onSearch: widget.onSearch,
                   onPlaylists: widget.onPlaylists,
                   onDownloads: widget.onDownloads,
+                  onRecommendations: widget.onRecommendations,
+                  onRecommendationSettings: widget.onRecommendationSettings,
+                  loadRecommendationPicture: widget.loadRecommendationPicture,
                   player: widget.player,
+                  radio: widget.radio,
                   showQueue: false,
                   now: widget.now,
                 ),
@@ -98,7 +139,11 @@ final class _WideHome extends StatelessWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
+    required this.onRecommendations,
+    required this.onRecommendationSettings,
+    required this.loadRecommendationPicture,
     required this.player,
+    required this.radio,
     required this.showQueue,
     required this.now,
   });
@@ -108,7 +153,12 @@ final class _WideHome extends StatelessWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
+  final VoidCallback? onRecommendations;
+  final VoidCallback? onRecommendationSettings;
+  final Future<Uri?> Function(RecommendationItem item)?
+  loadRecommendationPicture;
   final PlayerController? player;
+  final RadioController? radio;
   final bool showQueue;
   final DateTime Function() now;
 
@@ -126,8 +176,13 @@ final class _WideHome extends StatelessWidget {
           onPlaylists: onPlaylists,
           onDownloads: onDownloads,
           player: player,
+          recommendations: controller.recommendations,
           now: now,
         ),
+        if (radio != null) ...[
+          const SizedBox(height: AppSpacing.lg),
+          RadioHomeCard(controller: radio!),
+        ],
         if (state.loading) ...[
           const SizedBox(height: AppSpacing.md),
           const LinearProgressIndicator(minHeight: 2),
@@ -170,6 +225,16 @@ final class _WideHome extends StatelessWidget {
           ),
         const SizedBox(height: AppSpacing.xl),
         _HomeMetrics(state: state),
+        if (controller.recommendations case final recommendations?) ...[
+          const SizedBox(height: AppSpacing.xl),
+          HomeRecommendationSection(
+            controller: recommendations,
+            player: player,
+            loadPicture: loadRecommendationPicture ?? (_) async => null,
+            onViewAll: onRecommendations ?? () {},
+            onSettings: onRecommendationSettings ?? () {},
+          ),
+        ],
         const SizedBox(height: AppSpacing.xl),
         _SectionHeader(
           title: _primarySectionTitle(state),
@@ -210,6 +275,7 @@ final class _WideHero extends StatelessWidget {
     required this.onPlaylists,
     required this.onDownloads,
     required this.player,
+    required this.recommendations,
     required this.now,
   });
 
@@ -219,11 +285,16 @@ final class _WideHero extends StatelessWidget {
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
   final PlayerController? player;
+  final RecommendationController? recommendations;
   final DateTime Function() now;
 
   @override
   Widget build(BuildContext context) {
-    final track = state.featured.firstOrNull;
+    final recommendation = _heroRecommendation(state, recommendations);
+    final track =
+        state.continueListening.firstOrNull ??
+        recommendation?.track ??
+        state.featured.firstOrNull;
     final details = track == null ? '' : _trackDetails(track);
     final tokens = AppTokens.of(context);
     final narrowWindow = MediaQuery.sizeOf(context).width <= 1180;
@@ -273,9 +344,12 @@ final class _WideHero extends StatelessWidget {
                           AppButton.playback(
                             onPressed: track == null || player == null
                                 ? onPlaylists
-                                : () => player!.play(track),
+                                : () =>
+                                      _playHero(player!, track, recommendation),
                             leading: const AppPlaybackGlyph.play(size: 18),
-                            child: const Text('继续播放'),
+                            child: Text(
+                              recommendation == null ? '继续播放' : '播放推荐',
+                            ),
                           ),
                           AppButton(
                             key: const Key('home-search'),
@@ -333,7 +407,11 @@ final class _MobileHome extends StatelessWidget {
     required this.onSearch,
     required this.onPlaylists,
     required this.onDownloads,
+    required this.onRecommendations,
+    required this.onRecommendationSettings,
+    required this.loadRecommendationPicture,
     required this.player,
+    required this.radio,
     required this.now,
   });
 
@@ -342,12 +420,24 @@ final class _MobileHome extends StatelessWidget {
   final VoidCallback onSearch;
   final VoidCallback onPlaylists;
   final VoidCallback onDownloads;
+  final VoidCallback? onRecommendations;
+  final VoidCallback? onRecommendationSettings;
+  final Future<Uri?> Function(RecommendationItem item)?
+  loadRecommendationPicture;
   final PlayerController? player;
+  final RadioController? radio;
   final DateTime Function() now;
 
   @override
   Widget build(BuildContext context) {
-    final track = state.featured.firstOrNull;
+    final recommendation = _heroRecommendation(
+      state,
+      controller.recommendations,
+    );
+    final track =
+        state.continueListening.firstOrNull ??
+        recommendation?.track ??
+        state.featured.firstOrNull;
     return SingleChildScrollView(
       key: const Key('home-screen'),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 124),
@@ -364,7 +454,10 @@ final class _MobileHome extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          const Text('继续听点熟悉的。', style: AppTypography.mobilePageTitle),
+          Text(
+            recommendation == null ? '继续听点熟悉的。' : '今天，听点新的。',
+            style: AppTypography.mobilePageTitle,
+          ),
           if (state.error != null) ...[
             const SizedBox(height: AppSpacing.md),
             AppNotice.error(
@@ -376,12 +469,17 @@ final class _MobileHome extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
+          if (radio != null) ...[
+            RadioHomeCard(controller: radio!),
+            const SizedBox(height: 20),
+          ],
           if (track != null)
             _MobileContinueCard(
               key: const Key('home-feature-card'),
               track: track,
-              onPlay: () =>
-                  player == null ? onPlaylists() : player!.play(track),
+              onPlay: () => player == null
+                  ? onPlaylists()
+                  : _playHero(player!, track, recommendation),
             )
           else
             _EmptyHero(onSearch: onSearch),
@@ -395,6 +493,16 @@ final class _MobileHome extends StatelessWidget {
             onPressed: onDownloads,
           ),
           const SizedBox(height: 28),
+          if (controller.recommendations case final recommendations?) ...[
+            HomeRecommendationSection(
+              controller: recommendations,
+              player: player,
+              loadPicture: loadRecommendationPicture ?? (_) async => null,
+              onViewAll: onRecommendations ?? () {},
+              onSettings: onRecommendationSettings ?? () {},
+            ),
+            const SizedBox(height: 28),
+          ],
           _SectionHeader(
             title: '最近常听',
             caption: '',
@@ -611,6 +719,25 @@ String _trackDetails(Track track) {
       : '';
   return [track.artist, album].where((value) => value.isNotEmpty).join(' · ');
 }
+
+RecommendationItem? _heroRecommendation(
+  HomeState state,
+  RecommendationController? recommendations,
+) {
+  if (state.continueListening.isNotEmpty) return null;
+  return recommendations?.state.snapshot?.items.firstOrNull;
+}
+
+Future<void> _playHero(
+  PlayerController player,
+  Track track,
+  RecommendationItem? recommendation,
+) => recommendation == null
+    ? player.play(track)
+    : player.playTracks(
+        [track],
+        contexts: [PlaybackContext(recommendationItemId: recommendation.id)],
+      );
 
 List<Track> _primaryTracks(HomeState state) {
   if (state.continueListening.isNotEmpty) return state.continueListening;

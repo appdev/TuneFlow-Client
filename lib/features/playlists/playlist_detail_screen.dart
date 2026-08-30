@@ -104,6 +104,57 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     widget.onDeleted?.call();
   }
 
+  Future<void> _clear(String name) async {
+    final accepted = await AppBottomSheet.showDestructive(
+      context,
+      title: '清空歌单？',
+      message: '将移除“$name”中的全部歌曲，歌单本身会保留。',
+      confirmLabel: '清空',
+    );
+    if (!accepted || !mounted) return;
+    await widget.controller.clear();
+  }
+
+  Future<void> _trackActions(Track track) async {
+    final action = await AppBottomSheet.showActions<String>(
+      context,
+      title: track.title.isEmpty ? track.id : track.title,
+      actions: const [
+        AppBottomSheetAction(value: 'move', label: '移动到其他歌单'),
+        AppBottomSheetAction(
+          value: 'remove',
+          label: '从当前歌单移除',
+          destructive: true,
+        ),
+      ],
+    );
+    if (!mounted || action == null) return;
+    if (action == 'remove') {
+      await widget.controller.remove(track.id);
+      return;
+    }
+    final targets = await widget.controller.moveTargets();
+    if (!mounted) return;
+    if (targets.isEmpty) {
+      showAppMessage(context, title: '没有可移动到的歌单');
+      return;
+    }
+    final target = await AppBottomSheet.showSelection<String>(
+      context,
+      title: '移动到歌单',
+      options: [
+        for (final playlist in targets)
+          AppBottomSheetSelection(
+            value: playlist.id,
+            label: playlist.displayName,
+          ),
+      ],
+      selectedValue: targets.first.id,
+    );
+    if (!mounted || target == null) return;
+    await widget.controller.move(track, target);
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.controller,
@@ -170,6 +221,9 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                   ),
                             onRename: () => _rename(detail.displayName),
                             onDelete: () => _delete(detail.displayName),
+                            onClear: detail.tracks.isEmpty
+                                ? null
+                                : () => _clear(detail.displayName),
                           ),
                           if (detail.tracks.isEmpty)
                             const SizedBox(
@@ -182,6 +236,7 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               controller: widget.controller,
                               playTracks: widget.playTracks,
                               mobile: true,
+                              onTrackActions: _trackActions,
                             ),
                         ],
                       ),
@@ -209,6 +264,9 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 ),
                           onRename: () => _rename(detail.displayName),
                           onDelete: () => _delete(detail.displayName),
+                          onClear: detail.tracks.isEmpty
+                              ? null
+                              : () => _clear(detail.displayName),
                         ),
                         Expanded(
                           child: detail.tracks.isEmpty
@@ -218,6 +276,7 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                   controller: widget.controller,
                                   playTracks: widget.playTracks,
                                   mobile: mobile,
+                                  onTrackActions: _trackActions,
                                 ),
                         ),
                       ],
@@ -237,6 +296,7 @@ final class _PlaylistHero extends StatelessWidget {
     required this.onPlayAll,
     required this.onRename,
     required this.onDelete,
+    required this.onClear,
   });
 
   final PlaylistDetail detail;
@@ -244,6 +304,7 @@ final class _PlaylistHero extends StatelessWidget {
   final VoidCallback? onPlayAll;
   final VoidCallback onRename;
   final VoidCallback onDelete;
+  final VoidCallback? onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +366,12 @@ final class _PlaylistHero extends StatelessWidget {
                 ),
               ),
             ],
+            AppButton(
+              key: const Key('playlist-clear'),
+              variant: ShadButtonVariant.outline,
+              onPressed: onClear,
+              child: const Text('清空'),
+            ),
           ],
         ),
       ],
@@ -375,6 +442,13 @@ final class _PlaylistHero extends StatelessWidget {
                     ),
                   ),
                 ],
+                const SizedBox(width: 8),
+                AppButton(
+                  key: const Key('playlist-clear'),
+                  variant: ShadButtonVariant.outline,
+                  onPressed: onClear,
+                  child: const Text('清空'),
+                ),
               ],
             ),
           ],
@@ -429,12 +503,14 @@ final class _TrackList extends StatelessWidget {
     required this.controller,
     required this.playTracks,
     required this.mobile,
+    required this.onTrackActions,
   });
 
   final PlaylistDetail detail;
   final PlaylistDetailController controller;
   final PlayTracks playTracks;
   final bool mobile;
+  final ValueChanged<Track> onTrackActions;
 
   @override
   Widget build(BuildContext context) {
@@ -463,6 +539,7 @@ final class _TrackList extends StatelessWidget {
           index: index,
           onPlay: () => controller.playOne(playTracks, index),
           onRemove: () => controller.remove(track.id),
+          onMore: () => onTrackActions(track),
           mobile: mobile,
         );
       },
@@ -510,9 +587,9 @@ final class _TrackList extends StatelessWidget {
                       return embedded is String ? Uri.tryParse(embedded) : null;
                     },
                     onPlay: () => controller.playOne(playTracks, index),
-                    onFavorite: () => controller.remove(track.id),
-                    favoriteIcon: LucideIcons.heartMinus,
-                    favoriteTooltip: '从歌单移除',
+                    onFavorite: () => onTrackActions(track),
+                    favoriteIcon: LucideIcons.ellipsis,
+                    favoriteTooltip: '更多操作',
                     actions: const [],
                     trailing: ReorderableDragStartListener(
                       index: index,
@@ -541,6 +618,7 @@ final class _PlaylistTrackRow extends StatelessWidget {
     required this.index,
     required this.onPlay,
     required this.onRemove,
+    required this.onMore,
     required this.mobile,
   });
 
@@ -548,6 +626,7 @@ final class _PlaylistTrackRow extends StatelessWidget {
   final int index;
   final VoidCallback onPlay;
   final VoidCallback onRemove;
+  final VoidCallback onMore;
   final bool mobile;
 
   @override
@@ -610,7 +689,7 @@ final class _PlaylistTrackRow extends StatelessWidget {
             IconButton(
               tooltip: '更多操作',
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              onPressed: onRemove,
+              onPressed: onMore,
               icon: const Icon(LucideIcons.ellipsis, size: 19),
             ),
           ],

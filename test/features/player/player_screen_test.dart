@@ -277,6 +277,7 @@ void main() {
     final tracks = body['tracks']! as List<Object?>;
     expect((tracks.single as Map<String, Object?>)['id'], 'one');
     expect(find.text('已添加到 每日收藏'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('mobile player downloads the current track at default quality', (
@@ -318,6 +319,7 @@ void main() {
     expect(body['quality'], '128k');
     expect(body['existingFilePolicy'], 'error');
     expect(find.text('已加入下载队列'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('mobile player confirms before replacing an existing download', (
@@ -371,6 +373,7 @@ void main() {
 
     expect(policies, ['error', 'replace']);
     expect(find.text('已加入重新下载队列'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('failed mobile player action preserves the current track', (
@@ -391,8 +394,9 @@ void main() {
     await tester.tap(find.byKey(const Key('track-action-download')));
     await pumpFiniteAnimations(tester);
 
-    expect(find.text('下载失败'), findsOneWidget);
+    expect(find.text('操作未完成，请稍后重试。'), findsOneWidget);
     expect(controller.state.current?.id, 'one');
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('mini player is hidden without a queue and opens when visible', (

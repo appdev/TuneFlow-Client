@@ -21,10 +21,12 @@ final class SettingsScreen extends StatefulWidget {
     required this.controller,
     this.onBack,
     this.onConnectionSettings,
+    this.onServiceSettings,
   });
   final SettingsController controller;
   final VoidCallback? onBack;
   final VoidCallback? onConnectionSettings;
+  final VoidCallback? onServiceSettings;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -87,6 +89,8 @@ final class _SettingsScreenState extends State<SettingsScreen> {
                     compact: true,
                   ),
                   const SizedBox(height: 12),
+                  _ServiceSettingsEntry(onPressed: widget.onServiceSettings),
+                  const SizedBox(height: 12),
                   _MobilePreferences(
                     controller: widget.controller,
                     settings: settings,
@@ -97,10 +101,18 @@ final class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       SizedBox(
                         width: 280,
-                        child: _ConnectionCard(
-                          controller: widget.controller,
-                          onPressed: widget.onConnectionSettings,
-                          compact: true,
+                        child: Column(
+                          children: [
+                            _ConnectionCard(
+                              controller: widget.controller,
+                              onPressed: widget.onConnectionSettings,
+                              compact: true,
+                            ),
+                            const SizedBox(height: 12),
+                            _ServiceSettingsEntry(
+                              onPressed: widget.onServiceSettings,
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: AppSpacing.md),
@@ -120,6 +132,49 @@ final class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     ),
+  );
+}
+
+final class _ServiceSettingsEntry extends StatelessWidget {
+  const _ServiceSettingsEntry({this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final width = constraints.hasBoundedWidth ? constraints.maxWidth : 280.0;
+      return ShadButton.outline(
+        key: const Key('settings-service-functions-entry'),
+        width: width,
+        height: 76,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        onPressed: onPressed,
+        child: SizedBox(
+          // ShadButton reserves one logical pixel per side for its outline in
+          // addition to the configured horizontal padding.
+          width: width - 34,
+          child: const Row(
+            children: [
+              Icon(LucideIcons.slidersHorizontal, size: 20),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Service 功能设置', style: AppTypography.title),
+                    SizedBox(height: 4),
+                    Text('下载、元数据与每日推荐', style: AppTypography.metadata),
+                  ],
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, size: 18),
+            ],
+          ),
+        ),
+      );
+    },
   );
 }
 

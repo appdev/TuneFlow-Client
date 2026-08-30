@@ -5,6 +5,8 @@ import '../../app/app_error.dart';
 import '../../design/app_breakpoints.dart';
 import '../../design/components/app_bottom_sheet.dart';
 import '../../design/components/app_feedback.dart';
+import '../../design/components/app_button.dart';
+import '../../design/components/app_form.dart';
 import '../../design/components/app_mobile_chrome.dart';
 import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
@@ -12,9 +14,15 @@ import 'source_repository.dart';
 import 'sources_controller.dart';
 
 final class SourcesScreen extends StatefulWidget {
-  const SourcesScreen({super.key, required this.controller, this.onBack});
+  const SourcesScreen({
+    super.key,
+    required this.controller,
+    this.onBack,
+    this.onExport,
+  });
   final SourcesController controller;
   final VoidCallback? onBack;
+  final Future<void> Function(Uri uri)? onExport;
 
   @override
   State<SourcesScreen> createState() => _SourcesScreenState();
@@ -47,6 +55,63 @@ final class _SourcesScreenState extends State<SourcesScreen> {
     await widget.controller.toggle(source.id, enabled);
   }
 
+  Future<void> _installScript() async {
+    final script = await AppBottomSheet.showContent<String>(
+      context,
+      title: '安装音源脚本',
+      message: '粘贴完整的 JavaScript 音源脚本。Service 会校验脚本大小和元数据。',
+      child: const _SourceTextForm(
+        placeholder: '在这里粘贴音源脚本…',
+        submitLabel: '安装',
+        multiline: true,
+      ),
+    );
+    if (!mounted || script == null || script.trim().isEmpty) return;
+    await widget.controller.installScript(script);
+  }
+
+  Future<void> _importUrl() async {
+    final url = await AppBottomSheet.showContent<String>(
+      context,
+      title: '从 URL 导入',
+      message: '仅支持可直接访问的 HTTP 或 HTTPS 音源脚本地址。',
+      child: const _SourceTextForm(
+        placeholder: 'https://example.com/source.js',
+        submitLabel: '导入',
+      ),
+    );
+    if (!mounted || url == null || url.trim().isEmpty) return;
+    await widget.controller.importUrl(url);
+  }
+
+  Future<void> _delete(InstalledMusicSource source) async {
+    final accepted = await AppBottomSheet.showDestructive(
+      context,
+      title: '删除音源？',
+      message:
+          '将从 Service 删除「${source.name.isEmpty ? source.id : source.name}」及其脚本。',
+      confirmLabel: '删除',
+    );
+    if (!accepted || !mounted) return;
+    await widget.controller.delete(source.id);
+  }
+
+  Future<void> _export() async {
+    final export = widget.onExport;
+    if (export == null) return;
+    try {
+      await export(widget.controller.repository.exportUri);
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '导出失败',
+        message: appErrorMessage(error, fallback: '无法打开音源导出地址。'),
+        destructive: true,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.controller,
@@ -76,6 +141,34 @@ final class _SourcesScreenState extends State<SourcesScreen> {
               const SizedBox(height: 4),
               const Text('音源管理', style: AppTypography.display),
             ],
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                AppButton(
+                  key: const Key('source-install-script'),
+                  onPressed: state.saving ? null : _installScript,
+                  leading: const Icon(LucideIcons.filePlus2, size: 16),
+                  child: const Text('安装脚本'),
+                ),
+                AppButton(
+                  key: const Key('source-import-url'),
+                  variant: ShadButtonVariant.outline,
+                  onPressed: state.saving ? null : _importUrl,
+                  leading: const Icon(LucideIcons.link, size: 16),
+                  child: const Text('从 URL 导入'),
+                ),
+                if (widget.onExport != null)
+                  AppButton(
+                    key: const Key('source-export'),
+                    variant: ShadButtonVariant.outline,
+                    onPressed: state.saving ? null : _export,
+                    leading: const Icon(LucideIcons.archive, size: 16),
+                    child: const Text('导出全部'),
+                  ),
+              ],
+            ),
             if (state.loading) ...[
               const SizedBox(height: 18),
               const LinearProgressIndicator(minHeight: 2),
@@ -117,6 +210,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
                         label: index == 0 ? '首选' : '备用 $index',
                         saving: state.saving,
                         onToggle: (value) => _toggle(source, value),
+                        onDelete: () => _delete(source),
                         dragHandle: ReorderableDragStartListener(
                           index: index,
                           enabled: !state.saving,
@@ -144,6 +238,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
                       label: '未启用',
                       saving: state.saving,
                       onToggle: (value) => _toggle(source, value),
+                      onDelete: () => _delete(source),
                     ),
                   ),
               ],
@@ -162,6 +257,7 @@ final class _SourceCard extends StatelessWidget {
     required this.label,
     required this.saving,
     required this.onToggle,
+    required this.onDelete,
     this.dragHandle,
   });
   final InstalledMusicSource source;
@@ -169,6 +265,7 @@ final class _SourceCard extends StatelessWidget {
   final String label;
   final bool saving;
   final ValueChanged<bool> onToggle;
+  final VoidCallback onDelete;
   final Widget? dragHandle;
 
   @override
@@ -236,6 +333,14 @@ final class _SourceCard extends StatelessWidget {
         ),
         const SizedBox(width: 18),
         if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 6)],
+        IconButton(
+          key: Key('delete-source-${source.id}'),
+          tooltip: '删除音源',
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+          onPressed: saving ? null : onDelete,
+          icon: const Icon(LucideIcons.trash2, size: 18),
+        ),
+        const SizedBox(width: 4),
         ShadSwitch(
           value: source.enabled,
           onChanged: saving ? null : onToggle,
@@ -243,6 +348,71 @@ final class _SourceCard extends StatelessWidget {
         ),
       ],
     ),
+  );
+}
+
+final class _SourceTextForm extends StatefulWidget {
+  const _SourceTextForm({
+    required this.placeholder,
+    required this.submitLabel,
+    this.multiline = false,
+  });
+
+  final String placeholder;
+  final String submitLabel;
+  final bool multiline;
+
+  @override
+  State<_SourceTextForm> createState() => _SourceTextFormState();
+}
+
+final class _SourceTextFormState extends State<_SourceTextForm> {
+  late final TextEditingController controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = controller.text.trim();
+    if (value.isEmpty) return;
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (widget.multiline)
+        TextField(
+          key: const Key('source-script-input'),
+          controller: controller,
+          minLines: 8,
+          maxLines: 16,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(hintText: widget.placeholder),
+        )
+      else
+        AppTextField(
+          key: const Key('source-url-input'),
+          controller: controller,
+          placeholder: widget.placeholder,
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submit(),
+        ),
+      const SizedBox(height: 16),
+      AppButton(
+        key: const Key('source-form-submit'),
+        onPressed: _submit,
+        expands: true,
+        child: Text(widget.submitLabel),
+      ),
+    ],
   );
 }
 

@@ -79,6 +79,17 @@ class FakeAudio implements AudioPort {
   }
 }
 
+final class ControlledAudio extends FakeAudio implements AudioControlPort {
+  final List<double> volumes = [];
+  final List<double> speeds = [];
+
+  @override
+  Future<void> setVolume(double volume) async => volumes.add(volume);
+
+  @override
+  Future<void> setSpeed(double speed) async => speeds.add(speed);
+}
+
 Track track(String id) =>
     Track.fromJson({'id': id, 'name': id, 'source': 'kw'});
 
@@ -130,6 +141,29 @@ final class ErrorResolver implements PlaybackResolver {
   }
 }
 
+final class ContextResolver
+    implements PlaybackResolver, ContextualPlaybackResolver {
+  final List<String?> recommendationIds = [];
+
+  PlaybackSource get _source => bundleSource();
+
+  @override
+  Future<PlaybackSource> resolve(Track track, String quality) async {
+    recommendationIds.add(null);
+    return _source;
+  }
+
+  @override
+  Future<PlaybackSource> resolveWithContext(
+    Track track,
+    String quality, {
+    required String recommendationItemId,
+  }) async {
+    recommendationIds.add(recommendationItemId);
+    return _source;
+  }
+}
+
 class FakeSessions implements PlaybackSessionPort {
   final List<String> starts = [];
   Object? startError;
@@ -172,6 +206,27 @@ final class DeferredSessions extends FakeSessions {
     final pending = Completer<String>();
     pendingStarts.add(pending);
     return pending.future;
+  }
+}
+
+final class ContextSessions extends FakeSessions
+    implements RecommendationPlaybackSessionPort {
+  final List<String?> recommendationIds = [];
+
+  @override
+  Future<String> start(Track track) async {
+    recommendationIds.add(null);
+    return super.start(track);
+  }
+
+  @override
+  Future<String> startRecommendation(
+    Track track, {
+    required String recommendationItemId,
+  }) async {
+    recommendationIds.add(recommendationItemId);
+    starts.add(track.id);
+    return 'play-${starts.length}';
   }
 }
 
@@ -1367,6 +1422,96 @@ void main() {
 
     expect(controller.state.view, PlayerView.queue);
   });
+
+  test('volume, mute and playback speed reach capable audio ports', () async {
+    final audio = ControlledAudio();
+    final controller = PlayerController(resolver: FakeResolver(), audio: audio);
+
+    expect(await controller.setVolume(.6), isTrue);
+    expect(await controller.setMuted(true), isTrue);
+    expect(await controller.setMuted(false), isTrue);
+    expect(await controller.setPlaybackRate(1.5), isTrue);
+
+    expect(audio.volumes, [.6, 0, .6]);
+    expect(audio.speeds, [1.5]);
+    expect(controller.state.volume, .6);
+    expect(controller.state.muted, isFalse);
+    expect(controller.state.playbackRate, 1.5);
+  });
+
+  test(
+    'recommendation context follows queue entries without altering tracks',
+    () async {
+      final resolver = ContextResolver();
+      final sessions = ContextSessions();
+      final first = track('first');
+      final second = track('second');
+      final controller = PlayerController(
+        resolver: resolver,
+        audio: FakeAudio(),
+        sessions: sessions,
+      );
+
+      await controller.playTracks(
+        [first, second],
+        contexts: const [
+          PlaybackContext(recommendationItemId: 'recommendation-1'),
+          PlaybackContext(recommendationItemId: 'recommendation-2'),
+        ],
+      );
+      await controller.next();
+
+      expect(resolver.recommendationIds, [
+        'recommendation-1',
+        'recommendation-2',
+      ]);
+      expect(sessions.recommendationIds, [
+        'recommendation-1',
+        'recommendation-2',
+      ]);
+      expect(first.raw.containsKey('recommendationItemId'), isFalse);
+      expect(second.raw.containsKey('recommendationItemId'), isFalse);
+    },
+  );
+
+  test(
+    'sequential queue end awaits an attributed continuation batch',
+    () async {
+      final audio = FakeAudio();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+      );
+      await controller.playTracks([
+        track('first'),
+      ], queueKind: PlayerQueueKind.dedicatedRadio);
+      controller.setSequentialQueueEndHandler(() async {
+        controller.enqueueTracks(
+          [track('second')],
+          contexts: const [
+            PlaybackContext(
+              recommendationItemId: 'recommendation-2',
+              radioSessionId: 'radio-1',
+            ),
+          ],
+        );
+        return true;
+      });
+
+      audio.controller.add(
+        const AudioSnapshot(processing: PlayerProcessing.completed),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.current?.id, 'second');
+      expect(controller.currentPlaybackContext?.radioSessionId, 'radio-1');
+      expect(
+        controller.currentPlaybackContext?.recommendationItemId,
+        'recommendation-2',
+      );
+    },
+  );
 }
 
 final class _ExpireOnceAudio extends FakeAudio {

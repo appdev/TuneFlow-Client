@@ -8,8 +8,11 @@ import 'package:musicfree_service_client/api/service_exception.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
 import 'package:musicfree_service_client/features/settings/service_settings_repository.dart';
 
-http.Response data(Object? value) =>
-    http.Response(jsonEncode({'data': value}), 200);
+http.Response data(Object? value) => http.Response.bytes(
+  utf8.encode(jsonEncode({'data': value})),
+  200,
+  headers: {'content-type': 'application/json; charset=utf-8'},
+);
 
 ServiceSettingsRepository repositoryFor(
   Future<http.Response> Function(http.Request request) handler,
@@ -21,6 +24,99 @@ ServiceSettingsRepository repositoryFor(
 );
 
 void main() {
+  test('round trips the complete Service function settings contract', () async {
+    final initial = <String, Object?>{
+      'player.autoDownloadOnPlay': false,
+      'download.enable': true,
+      'download.isSavePathGroupByListName': false,
+      'download.fileName': '歌名 - 歌手',
+      'download.maxDownloadNum': 3,
+      'download.skipExistFile': true,
+      'download.isUseOtherSource': true,
+      'download.isDownloadLrc': true,
+      'download.isDownloadTLrc': true,
+      'download.isDownloadRLrc': true,
+      'download.isDownloadVerbatimLyric': true,
+      'download.lrcFormat': 'utf8',
+      'download.isEmbedPic': true,
+      'download.isEmbedLyric': true,
+      'download.isEmbedLyricT': true,
+      'download.isEmbedLyricR': true,
+      'download.isEmbedVerbatimLyric': true,
+      'recommendation.timeZone': 'system',
+      'recommendation.musicBrainzBaseUrl': officialMusicBrainzBaseUrl,
+    };
+    late Map<String, Object?> patch;
+    final repository = repositoryFor((request) async {
+      if (request.method == 'GET') return data(initial);
+      patch = Map<String, Object?>.from(jsonDecode(request.body) as Map);
+      return data(patch);
+    });
+
+    final loaded = await repository.getFunctionSettings();
+    final updated = loaded.copyWith(
+      maxConcurrent: 5,
+      recommendationTimeZone: 'Asia/Shanghai',
+    );
+    final confirmed = await repository.updateFunctionSettings(updated);
+
+    expect(patch, updated.toPatch());
+    expect(confirmed, updated);
+    expect(confirmed.maxConcurrent, 5);
+    expect(confirmed.recommendationTimeZone, 'Asia/Shanghai');
+    expect(confirmed.musicBrainzBaseUrl, officialMusicBrainzBaseUrl);
+  });
+
+  test('preserves an explicitly empty MusicBrainz address', () async {
+    final json = <String, Object?>{
+      'player.autoDownloadOnPlay': false,
+      'download.enable': true,
+      'download.isSavePathGroupByListName': false,
+      'download.fileName': '歌名 - 歌手',
+      'download.maxDownloadNum': 3,
+      'download.skipExistFile': true,
+      'download.isUseOtherSource': true,
+      'download.isDownloadLrc': true,
+      'download.isDownloadTLrc': true,
+      'download.isDownloadRLrc': true,
+      'download.isDownloadVerbatimLyric': true,
+      'download.lrcFormat': 'utf8',
+      'download.isEmbedPic': true,
+      'download.isEmbedLyric': true,
+      'download.isEmbedLyricT': true,
+      'download.isEmbedLyricR': true,
+      'download.isEmbedVerbatimLyric': true,
+      'recommendation.timeZone': 'system',
+      'recommendation.musicBrainzBaseUrl': '',
+    };
+    final repository = repositoryFor((_) async => data(json));
+
+    final loaded = await repository.getFunctionSettings();
+
+    expect(loaded.musicBrainzBaseUrl, isEmpty);
+    expect(loaded.toPatch()['recommendation.musicBrainzBaseUrl'], isEmpty);
+  });
+
+  test('tests a draft MusicBrainz endpoint without saving settings', () async {
+    final repository = repositoryFor((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/recommendations/musicbrainz/test');
+      expect(jsonDecode(request.body), {'baseUrl': 'https://mb.local/ws/2'});
+      return data({
+        'ok': true,
+        'normalizedBaseUrl': 'https://mb.local/ws/2/',
+        'errorCode': null,
+      });
+    });
+
+    final result = await repository.testMusicBrainzConnection(
+      'https://mb.local/ws/2',
+    );
+
+    expect(result.ok, isTrue);
+    expect(result.normalizedBaseUrl, 'https://mb.local/ws/2/');
+  });
+
   test('reads the Service auto-download setting', () async {
     final repository = repositoryFor((request) async {
       expect(request.method, 'GET');

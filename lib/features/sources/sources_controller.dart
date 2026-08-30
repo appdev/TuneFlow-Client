@@ -80,6 +80,41 @@ final class SourcesController extends ChangeNotifier {
     await _saveOrder(ids, mutatingId: id);
   }
 
+  Future<void> installScript(String script) => _mutateAndRefresh(
+    'install',
+    () => repository.installScript(script.trim()),
+  );
+
+  Future<void> importUrl(String url) =>
+      _mutateAndRefresh('import', () => repository.importUrl(url.trim()));
+
+  Future<void> delete(String id) =>
+      _mutateAndRefresh(id, () => repository.delete(id));
+
+  Future<void> _mutateAndRefresh(
+    String mutatingId,
+    Future<Object?> Function() operation,
+  ) async {
+    if (state.saving) return;
+    state = state.copyWith(
+      saving: true,
+      mutatingId: mutatingId,
+      clearError: true,
+    );
+    notifyListeners();
+    try {
+      await operation();
+      state = state.copyWith(
+        items: await repository.list(),
+        saving: false,
+        clearMutating: true,
+      );
+    } on Object catch (error) {
+      state = state.copyWith(saving: false, error: error, clearMutating: true);
+    }
+    notifyListeners();
+  }
+
   Future<void> _saveOrder(
     List<String> ids, {
     required String mutatingId,

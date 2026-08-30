@@ -19,14 +19,32 @@ import '../../design/components/app_states.dart';
 import '../../design/components/artwork.dart';
 import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
+import '../player/player_controller.dart';
+import '../playlists/playlist_repository.dart';
 import 'downloads_controller.dart';
 
-enum _DownloadAction { start, pause, resume, delete }
+enum _DownloadAction {
+  start,
+  pause,
+  resume,
+  play,
+  playNext,
+  addToPlaylist,
+  delete,
+}
 
 final class DownloadsScreen extends StatefulWidget {
-  const DownloadsScreen({super.key, required this.controller, this.onBack});
+  const DownloadsScreen({
+    super.key,
+    required this.controller,
+    this.onBack,
+    this.player,
+    this.playlists,
+  });
   final DownloadsController controller;
   final VoidCallback? onBack;
+  final PlayerController? player;
+  final PlaylistRepository? playlists;
 
   @override
   State<DownloadsScreen> createState() => _DownloadsScreenState();
@@ -110,10 +128,23 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
   }
 
   Future<void> _actions(DownloadJob job) async {
+    final completed = job.status == DownloadStatus.completed;
     final selected = await AppBottomSheet.showActions<_DownloadAction>(
       context,
       title: job.fileName,
       actions: [
+        if (completed && widget.player != null)
+          const AppBottomSheetAction(value: _DownloadAction.play, label: '播放'),
+        if (completed && widget.player != null)
+          const AppBottomSheetAction(
+            value: _DownloadAction.playNext,
+            label: '下一首播放',
+          ),
+        if (completed && widget.playlists != null)
+          const AppBottomSheetAction(
+            value: _DownloadAction.addToPlaylist,
+            label: '添加到歌单',
+          ),
         if (job.canStart)
           const AppBottomSheetAction(value: _DownloadAction.start, label: '开始'),
         if (job.canPause)
@@ -139,8 +170,50 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
         await _run(() => widget.controller.pause(job.id));
       case _DownloadAction.resume:
         await _run(() => widget.controller.resume(job.id));
+      case _DownloadAction.play:
+        await widget.player?.play(job.musicInfo);
+      case _DownloadAction.playNext:
+        await widget.player?.playNext(job.musicInfo);
+      case _DownloadAction.addToPlaylist:
+        await _addToPlaylist(job.musicInfo);
       case _DownloadAction.delete:
         await _delete(job);
+    }
+  }
+
+  Future<void> _addToPlaylist(Track track) async {
+    final repository = widget.playlists;
+    if (repository == null) return;
+    try {
+      final playlists = await repository.list();
+      if (!mounted) return;
+      if (playlists.isEmpty) {
+        showAppMessage(context, title: '还没有可用歌单');
+        return;
+      }
+      final id = await AppBottomSheet.showSelection<String>(
+        context,
+        title: '添加到歌单',
+        options: [
+          for (final playlist in playlists)
+            AppBottomSheetSelection(
+              value: playlist.id,
+              label: playlist.displayName,
+            ),
+        ],
+        selectedValue: playlists.first.id,
+      );
+      if (id == null) return;
+      await repository.addTracks(id, [track]);
+      if (mounted) showAppMessage(context, title: '已添加到歌单');
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '添加失败',
+        message: appErrorMessage(error, fallback: '无法添加到歌单。'),
+        destructive: true,
+      );
     }
   }
 

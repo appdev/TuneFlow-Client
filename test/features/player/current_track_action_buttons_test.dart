@@ -45,6 +45,7 @@ void main() {
 
     expect(fixture.downloadCalls, ['kw:a:128k']);
     expect(find.text('已加入下载队列'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('shows stable download progress and restores after failure', (
@@ -66,12 +67,13 @@ void main() {
     gate.completeError(StateError('download failed'));
     await _pumpFiniteAnimations(tester);
 
-    expect(find.text('下载失败'), findsOneWidget);
+    expect(find.text('操作未完成，请稍后重试。'), findsOneWidget);
     expect(find.byKey(const Key('test-download-loading')), findsNothing);
     expect(
       tester.widget<ShadButton>(find.byKey(const Key('test-download'))).enabled,
       isTrue,
     );
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('rolls back favorite shape and reports a failed action', (
@@ -86,12 +88,13 @@ void main() {
     await _pumpFiniteAnimations(tester);
 
     expect(fixture.favorites.setCalls, ['kw:a:true']);
-    expect(find.text('收藏失败'), findsOneWidget);
+    expect(find.text('操作未完成，请稍后重试。'), findsOneWidget);
     expect(find.bySemanticsLabel('收藏当前歌曲'), findsOneWidget);
     expect(
       tester.widget<ShadButton>(find.byKey(const Key('test-favorite'))).variant,
       ShadButtonVariant.ghost,
     );
+    await tester.pump(const Duration(seconds: 4));
   });
 }
 

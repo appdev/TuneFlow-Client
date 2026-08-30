@@ -100,6 +100,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('discovery-tab-playlists')), findsOneWidget);
+    expect(
+      find.byKey(const Key('discovery-tab-recommendations')),
+      findsNothing,
+    );
     expect(find.byKey(const Key('playlist-square-layout')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('discovery-tab-charts')));

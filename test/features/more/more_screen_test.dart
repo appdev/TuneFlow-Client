@@ -211,8 +211,8 @@ void main() {
     await tester.tap(find.byKey(const Key('more-check-update')));
     await tester.pumpAndSettle();
 
-    expect(find.text('检查更新失败'), findsOneWidget);
     expect(find.text('暂时无法检查更新，请稍后重试。'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('release page launch failure shows feedback', (tester) async {
@@ -244,6 +244,10 @@ void main() {
     await tester.tap(find.byKey(const Key('more-open-release')));
     await tester.pumpAndSettle();
 
-    expect(find.text('无法打开下载页面'), findsOneWidget);
+    expect(
+      find.text('请稍后重试，或前往 TuneFlow Client 项目查看 Release。'),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 4));
   });
 }

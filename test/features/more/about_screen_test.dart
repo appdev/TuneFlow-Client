@@ -73,7 +73,8 @@ void main() {
     await tester.tap(find.byKey(const Key('about-client-repository')));
     await tester.pumpAndSettle();
 
-    expect(find.text('无法打开链接'), findsOneWidget);
+    expect(find.text('请稍后重试，或复制项目地址到浏览器打开。'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('reports package metadata loading failure', (tester) async {

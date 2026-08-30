@@ -83,7 +83,18 @@ final class EventInvalidation extends ChangeNotifier {
   int playlistsVersion = 0;
   int downloadsVersion = 0;
   int libraryVersion = 0;
+  int recommendationsVersion = 0;
   final Map<String, int> _playlistDetails = {};
+
+  void serviceChanged() {
+    sourcesVersion++;
+    playlistsVersion++;
+    downloadsVersion++;
+    libraryVersion++;
+    recommendationsVersion++;
+    _playlistDetails.clear();
+    notifyListeners();
+  }
 
   void sources() {
     sourcesVersion++;
@@ -102,6 +113,11 @@ final class EventInvalidation extends ChangeNotifier {
 
   void library() {
     libraryVersion++;
+    notifyListeners();
+  }
+
+  void recommendations() {
+    recommendationsVersion++;
     notifyListeners();
   }
 
@@ -135,6 +151,7 @@ final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
     invalidatePlaylists: invalidation.playlists,
     invalidateDownloads: invalidation.downloads,
     invalidateLibrary: invalidation.library,
+    invalidateRecommendations: invalidation.recommendations,
     invalidatePlaylistDetail: invalidation.playlistDetail,
     trackResourcesUpdated: (source, trackId, resources) {
       if (resources.contains('lyrics')) {

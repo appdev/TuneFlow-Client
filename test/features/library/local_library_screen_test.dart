@@ -311,6 +311,7 @@ void main() {
       final tracks = body['tracks']! as List<Object?>;
       expect((tracks.single as Map<String, Object?>)['id'], 'track-a');
       expect(find.text('已添加到 每日收藏'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
     });
   }
 

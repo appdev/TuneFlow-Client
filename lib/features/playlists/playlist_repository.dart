@@ -77,4 +77,23 @@ final class PlaylistRepository {
     ),
     'tracks',
   ).map(Track.fromJson).toList(growable: false);
+
+  Future<void> moveTracks({
+    required String fromId,
+    required String toId,
+    required List<Track> tracks,
+    String position = 'bottom',
+  }) => api.request(
+    'POST',
+    '/api/v1/playlists/tracks/move',
+    body: {
+      'fromId': fromId,
+      'toId': toId,
+      'musicInfos': tracks.map((track) => track.toJson()).toList(),
+      'addMusicLocationType': position,
+    },
+  );
+
+  Future<void> clearTracks(String id) =>
+      api.request('DELETE', '${_playlist(id)}/tracks');
 }

@@ -12,6 +12,7 @@ import 'current_track_action_buttons.dart';
 import 'current_track_actions_controller.dart';
 import 'desktop_queue_popover.dart';
 import 'player_controller.dart';
+import 'player_state.dart';
 
 final class DesktopPlayerControls extends StatefulWidget {
   const DesktopPlayerControls({
@@ -32,6 +33,8 @@ final class DesktopPlayerControls extends StatefulWidget {
 final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
   final queuePopover = ShadPopoverController();
   final qualityPopover = ShadPopoverController();
+  final speedPopover = ShadPopoverController();
+  final volumePopover = ShadPopoverController();
   String? failedQuality;
 
   Future<void> changeQuality(String quality) async {
@@ -49,6 +52,8 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
   void dispose() {
     queuePopover.dispose();
     qualityPopover.dispose();
+    speedPopover.dispose();
+    volumePopover.dispose();
     super.dispose();
   }
 
@@ -65,7 +70,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
           Align(
             alignment: Alignment.bottomCenter,
             child: FractionallySizedBox(
-              widthFactor: .62,
+              widthFactor: MediaQuery.sizeOf(context).width < 1200 ? .48 : .62,
               child: Column(
                 key: const Key('player-desktop-core'),
                 mainAxisSize: MainAxisSize.min,
@@ -154,6 +159,86 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  _ControlButton(
+                    key: const Key('player-desktop-playback-mode'),
+                    label: _playbackModeLabel(state.playbackMode),
+                    icon: _playbackModeIcon(state.playbackMode),
+                    onPressed: controller.cyclePlaybackMode,
+                  ),
+                  ShadPopover(
+                    controller: speedPopover,
+                    popover: (_) => SizedBox(
+                      key: const Key('player-desktop-speed-popover'),
+                      width: 150,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final speed in const <double>[
+                            .5,
+                            .75,
+                            1,
+                            1.25,
+                            1.5,
+                            2,
+                          ])
+                            ShadButton.ghost(
+                              key: Key('player-speed-$speed'),
+                              width: double.infinity,
+                              onPressed: () async {
+                                if (await controller.setPlaybackRate(speed)) {
+                                  speedPopover.hide();
+                                }
+                              },
+                              child: Text('${speed}x'),
+                            ),
+                        ],
+                      ),
+                    ),
+                    child: SizedBox(
+                      width: 58,
+                      child: ShadButton.ghost(
+                        key: const Key('player-desktop-speed'),
+                        padding: EdgeInsets.zero,
+                        onPressed: speedPopover.toggle,
+                        child: Text('${state.playbackRate}x'),
+                      ),
+                    ),
+                  ),
+                  ShadPopover(
+                    controller: volumePopover,
+                    popover: (_) => SizedBox(
+                      key: const Key('player-desktop-volume-popover'),
+                      width: 220,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: state.muted ? '取消静音' : '静音',
+                            onPressed: () => controller.setMuted(!state.muted),
+                            icon: Icon(
+                              state.muted || state.volume == 0
+                                  ? LucideIcons.volumeX
+                                  : LucideIcons.volume2,
+                              size: 18,
+                            ),
+                          ),
+                          Expanded(
+                            child: Slider(
+                              value: state.muted ? 0 : state.volume,
+                              onChanged: (value) => controller.setVolume(value),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    child: _ControlButton(
+                      key: const Key('player-desktop-volume'),
+                      label: state.muted ? '取消静音' : '音量',
+                      icon: state.muted || state.volume == 0
+                          ? LucideIcons.volumeX
+                          : LucideIcons.volume2,
+                      onPressed: volumePopover.toggle,
+                    ),
+                  ),
                   ShadPopover(
                     controller: qualityPopover,
                     popover: (_) => SizedBox(
@@ -243,6 +328,18 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
     );
   }
 }
+
+String _playbackModeLabel(PlaybackMode mode) => switch (mode) {
+  PlaybackMode.sequential => '顺序播放',
+  PlaybackMode.repeatOne => '单曲循环',
+  PlaybackMode.shuffle => '随机播放',
+};
+
+IconData _playbackModeIcon(PlaybackMode mode) => switch (mode) {
+  PlaybackMode.sequential => LucideIcons.listOrdered,
+  PlaybackMode.repeatOne => LucideIcons.repeat1,
+  PlaybackMode.shuffle => LucideIcons.shuffle,
+};
 
 final class _ControlButton extends StatelessWidget {
   const _ControlButton({

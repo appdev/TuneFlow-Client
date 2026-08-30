@@ -7,6 +7,7 @@ final class EventCoordinator {
     required this.invalidateDownloads,
     required this.invalidateLibrary,
     required this.invalidatePlaylistDetail,
+    this.invalidateRecommendations,
     this.trackResourcesUpdated,
   });
 
@@ -15,6 +16,7 @@ final class EventCoordinator {
   final void Function() invalidateDownloads;
   final void Function() invalidateLibrary;
   final void Function(String id) invalidatePlaylistDetail;
+  final void Function()? invalidateRecommendations;
   final void Function(String source, String trackId, Set<String> resources)?
   trackResourcesUpdated;
   int sequence = 0;
@@ -26,6 +28,9 @@ final class EventCoordinator {
     if (event.type.startsWith('playlists.')) invalidatePlaylists();
     if (event.type.startsWith('downloads.')) invalidateDownloads();
     if (event.type.startsWith('library.')) invalidateLibrary();
+    if (event.type.startsWith('recommendations.')) {
+      invalidateRecommendations?.call();
+    }
     if (event.type == 'track.resources.updated') {
       final data = event.data;
       if (data is Map &&

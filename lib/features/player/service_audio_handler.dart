@@ -55,7 +55,12 @@ abstract interface class AudioPort {
   Future<void> stopPlayback();
 }
 
-final class SilentAudioPort implements AudioPort {
+abstract interface class AudioControlPort {
+  Future<void> setVolume(double volume);
+  Future<void> setSpeed(double speed);
+}
+
+final class SilentAudioPort implements AudioPort, AudioControlPort {
   @override
   Stream<AudioSnapshot> get snapshots => Stream.value(const AudioSnapshot());
   @override
@@ -75,11 +80,15 @@ final class SilentAudioPort implements AudioPort {
   Future<void> seek(Duration position) async {}
   @override
   Future<void> stopPlayback() async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<void> setSpeed(double speed) async {}
 }
 
 final class ServiceAudioHandler extends BaseAudioHandler
     with SeekHandler
-    implements AudioPort {
+    implements AudioPort, AudioControlPort {
   ServiceAudioHandler({required Uri fallbackArtUri, MediaCache? cache})
     : _fallbackArtUri = fallbackArtUri,
       _cache = cache {
@@ -297,6 +306,10 @@ final class ServiceAudioHandler extends BaseAudioHandler
   Future<void> pause() => _player.pause();
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+  @override
+  Future<void> setVolume(double volume) => _player.setVolume(volume);
+  @override
+  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
   @override
   Future<void> stopPlayback() async {
     await _player.stop();

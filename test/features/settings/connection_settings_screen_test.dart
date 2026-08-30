@@ -90,5 +90,6 @@ void main() {
 
     expect(find.text('请输入有效的 HTTP(S) 地址'), findsOneWidget);
     expect(applied, hasLength(1));
+    await tester.pump(const Duration(seconds: 4));
   });
 }
