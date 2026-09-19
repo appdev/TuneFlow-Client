@@ -135,6 +135,23 @@ or shadows locally. A future theme must provide all glass roles.
 - Player: blurred current-cover background, stable artwork and lyrics, plus
   glass top actions, transport island, progress, and secondary controls.
 
+### Immersive player lyrics
+
+- Timed lyrics use the original track as the reading axis, followed by optional
+  translation and romanization. Missing auxiliary text never leaves blank rows.
+- Automatic following keeps the current line near 35% of the viewport. A user
+  drag enters browsing mode and reveals an explicit “回到当前歌词” action;
+  programmatic scrolling never enters browsing mode.
+- A timed line is a seek target with a minimum 44 px hit area and Chinese
+  semantics. Untimed lyrics remain selectable reading text and are not seekable.
+- Positive timing offset means lyrics appear later than audio. The current-track
+  control adjusts in 100 ms steps, resets to zero, and stays within ±5000 ms.
+- Adaptive alignment preserves the split-studio layout: desktop lyrics align
+  left and mobile lyrics center. Explicit left or center choices override it.
+- The lyric-settings trigger is at least 44 px. Mobile presents controls in the
+  standard bottom sheet; desktop uses a compact anchored popover. Neither may
+  cover the transport cluster or the primary lyric reading column.
+
 ### Cross-platform behaviour
 
 - iOS and Android share the same material appearance and component geometry.

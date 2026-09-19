@@ -22,6 +22,18 @@ void main() {
     expect(settings.quality, PlaybackQuality.low128k);
     expect(settings.keepAwake, isFalse);
     expect(settings.showLyrics, isFalse);
+    expect(settings.showTranslation, isTrue);
+    expect(settings.showRomanization, isFalse);
+    expect(settings.lyricFontSize, LyricFontSize.standard);
+    expect(settings.lyricAlignment, LyricAlignment.adaptive);
+    expect(
+      settings.lyricAuxiliaryOrder,
+      LyricAuxiliaryOrder.translationFirst,
+    );
+    expect(settings.useTraditionalLyrics, isFalse);
+    expect(settings.emphasizeActiveLyric, isTrue);
+    expect(settings.rememberPlaybackProgress, isFalse);
+    expect(settings.autoSkipPlaybackErrors, isFalse);
     expect(settings.reduceTransparency, isFalse);
     expect(settings.cacheLimitBytes, defaultMediaCacheLimitBytes);
   });
@@ -38,6 +50,15 @@ void main() {
       quality: PlaybackQuality.high320k,
       keepAwake: true,
       showLyrics: true,
+      showTranslation: false,
+      showRomanization: true,
+      lyricFontSize: LyricFontSize.large,
+      lyricAlignment: LyricAlignment.left,
+      lyricAuxiliaryOrder: LyricAuxiliaryOrder.romanizationFirst,
+      useTraditionalLyrics: true,
+      emphasizeActiveLyric: false,
+      rememberPlaybackProgress: true,
+      autoSkipPlaybackErrors: true,
       reduceTransparency: true,
       cacheLimitBytes: 10 * bytesPerGiB,
     );
@@ -45,6 +66,24 @@ void main() {
     await preferences.write(expected);
 
     expect(await preferences.read(), expected);
+  });
+
+  test('invalid lyric enum values use compatible defaults', () async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.withData({
+          'lyric_font_size': 'huge',
+          'lyric_alignment': 'diagonal',
+          'lyric_auxiliary_order': 'unknown',
+        });
+
+    final settings = await SharedAppPreferences().read();
+
+    expect(settings.lyricFontSize, LyricFontSize.standard);
+    expect(settings.lyricAlignment, LyricAlignment.adaptive);
+    expect(
+      settings.lyricAuxiliaryOrder,
+      LyricAuxiliaryOrder.translationFirst,
+    );
   });
 
   test('legacy origin seeds the last connected origin', () async {
@@ -81,34 +120,37 @@ void main() {
     expect(settings.cacheLimitBytes, defaultMediaCacheLimitBytes);
   });
 
-  test('clearOrigin clears every endpoint and preserves UI preferences', () async {
-    final preferences = SharedAppPreferences();
-    const expected = AppSettings(
-      origin: 'http://service.local',
-      lastConnectedOrigin: 'http://192.168.1.20:3124',
-      lanOrigin: 'http://192.168.1.20:3124',
-      externalOrigin: 'https://music.example.com',
-      themeMode: ThemeMode.light,
-      language: AppLanguage.en,
-      quality: PlaybackQuality.lossless,
-      keepAwake: true,
-      showLyrics: true,
-      reduceTransparency: true,
-    );
-    await preferences.write(expected);
+  test(
+    'clearOrigin clears every endpoint and preserves UI preferences',
+    () async {
+      final preferences = SharedAppPreferences();
+      const expected = AppSettings(
+        origin: 'http://service.local',
+        lastConnectedOrigin: 'http://192.168.1.20:3124',
+        lanOrigin: 'http://192.168.1.20:3124',
+        externalOrigin: 'https://music.example.com',
+        themeMode: ThemeMode.light,
+        language: AppLanguage.en,
+        quality: PlaybackQuality.lossless,
+        keepAwake: true,
+        showLyrics: true,
+        reduceTransparency: true,
+      );
+      await preferences.write(expected);
 
-    await preferences.clearOrigin();
+      await preferences.clearOrigin();
 
-    expect(
-      await preferences.read(),
-      expected.copyWith(
-        clearOrigin: true,
-        clearLastConnectedOrigin: true,
-        clearLanOrigin: true,
-        clearExternalOrigin: true,
-      ),
-    );
-  });
+      expect(
+        await preferences.read(),
+        expected.copyWith(
+          clearOrigin: true,
+          clearLastConnectedOrigin: true,
+          clearLanOrigin: true,
+          clearExternalOrigin: true,
+        ),
+      );
+    },
+  );
 
   test('playback quality maps to Service API values', () {
     expect(PlaybackQuality.low128k.apiValue, '128k');

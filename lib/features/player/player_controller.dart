@@ -4,10 +4,12 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../../api/models.dart';
+import '../../storage/app_preferences.dart';
 import '../playback_history/playback_history_repository.dart';
 import 'playback_repository.dart';
 import 'player_state.dart';
 import 'service_audio_handler.dart';
+import 'track_playback_state_store.dart';
 
 typedef _PlaybackTerminal = ({
   bool completed,
@@ -32,9 +34,35 @@ final class PlayerController extends ChangeNotifier {
     required this.resolver,
     required this.audio,
     String quality = '128k',
+    bool showLyrics = false,
     bool showTranslation = true,
+    bool showRomanization = false,
+    LyricFontSize lyricFontSize = LyricFontSize.standard,
+    LyricAlignment lyricAlignment = LyricAlignment.adaptive,
+    LyricAuxiliaryOrder lyricAuxiliaryOrder =
+        LyricAuxiliaryOrder.translationFirst,
+    bool useTraditionalLyrics = false,
+    bool emphasizeActiveLyric = true,
+    bool rememberPlaybackProgress = false,
+    bool autoSkipPlaybackErrors = false,
+    TrackPlaybackStateStore? trackStateStore,
+    void Function(Object error)? reportPersistenceError,
     PlaybackSessionPort? sessions,
-  }) : state = PlayerState(quality: quality, showTranslation: showTranslation) {
+  }) : state = PlayerState(
+         quality: quality,
+         showLyrics: showLyrics,
+         showTranslation: showTranslation,
+         showRomanization: showRomanization,
+         lyricFontSize: lyricFontSize,
+         lyricAlignment: lyricAlignment,
+         lyricAuxiliaryOrder: lyricAuxiliaryOrder,
+         useTraditionalLyrics: useTraditionalLyrics,
+         emphasizeActiveLyric: emphasizeActiveLyric,
+       ),
+       _rememberPlaybackProgress = rememberPlaybackProgress,
+       _autoSkipPlaybackErrors = autoSkipPlaybackErrors,
+       _trackStateStore = trackStateStore,
+       _reportPersistenceError = reportPersistenceError {
     _sessions = sessions;
     audio.bindQueueCallbacks(previous: previous, next: next);
     _subscription = audio.snapshots.listen(_onSnapshot);
@@ -42,6 +70,8 @@ final class PlayerController extends ChangeNotifier {
 
   final PlaybackResolver resolver;
   final AudioPort audio;
+  final TrackPlaybackStateStore? _trackStateStore;
+  final void Function(Object error)? _reportPersistenceError;
   late final PlaybackSessionPort? _sessions;
   late final StreamSubscription<AudioSnapshot> _subscription;
   PlayerState state;
@@ -56,6 +86,14 @@ final class PlayerController extends ChangeNotifier {
   ({String source, String id, int generation, Future<bool> future})?
   _artworkRefresh;
   Future<bool> Function()? _sequentialQueueEndHandler;
+  bool _rememberPlaybackProgress;
+  bool _autoSkipPlaybackErrors;
+  String? _trackStateKey;
+  int? _lastResumeWriteBucket;
+  String? _clearedResumeKey;
+  ({String key, int generation, Duration position})? _pendingResume;
+  final Set<String> _failedTrackKeys = {};
+  bool _handlingPlaybackFailure = false;
 
   void setSequentialQueueEndHandler(Future<bool> Function()? handler) {
     _sequentialQueueEndHandler = handler;
@@ -80,6 +118,8 @@ final class PlayerController extends ChangeNotifier {
         'Playback contexts must match the queue length.',
       );
     }
+    if (_rememberPlaybackProgress) await _flushResumePosition();
+    _resetPlaybackFailureChain();
     _playGeneration++;
     final endingSession = _endSession(completed: false);
     _playbackContexts = List.unmodifiable(
@@ -93,6 +133,12 @@ final class PlayerController extends ChangeNotifier {
       playbackPending: true,
       showLyrics: state.showLyrics,
       showTranslation: state.showTranslation,
+      showRomanization: state.showRomanization,
+      lyricFontSize: state.lyricFontSize,
+      lyricAlignment: state.lyricAlignment,
+      lyricAuxiliaryOrder: state.lyricAuxiliaryOrder,
+      useTraditionalLyrics: state.useTraditionalLyrics,
+      emphasizeActiveLyric: state.emphasizeActiveLyric,
       view: state.view,
       playbackMode: state.playbackMode,
       queueKind: queueKind,
@@ -206,6 +252,7 @@ final class PlayerController extends ChangeNotifier {
       return true;
     }
 
+    if (_rememberPlaybackProgress) await _flushResumePosition();
     _playGeneration++;
     final endingSession = _endSession(completed: false);
     final nextIndex = index < queue.length ? index : queue.length - 1;
@@ -230,6 +277,7 @@ final class PlayerController extends ChangeNotifier {
 
   Future<bool> clearQueue() async {
     if (state.queue.isEmpty) return false;
+    if (_rememberPlaybackProgress) await _flushResumePosition();
     _playGeneration++;
     try {
       await audio.stopPlayback();
@@ -242,7 +290,14 @@ final class PlayerController extends ChangeNotifier {
     _playbackContexts = const [];
     state = PlayerState(
       quality: state.quality,
+      showLyrics: state.showLyrics,
       showTranslation: state.showTranslation,
+      showRomanization: state.showRomanization,
+      lyricFontSize: state.lyricFontSize,
+      lyricAlignment: state.lyricAlignment,
+      lyricAuxiliaryOrder: state.lyricAuxiliaryOrder,
+      useTraditionalLyrics: state.useTraditionalLyrics,
+      emphasizeActiveLyric: state.emphasizeActiveLyric,
       view: PlayerView.artwork,
       playbackMode: state.playbackMode,
       queueKind: PlayerQueueKind.manual,
@@ -255,7 +310,13 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> playIndex(int index) async {
+    _resetPlaybackFailureChain();
+    await _playIndex(index);
+  }
+
+  Future<void> _playIndex(int index, {bool allowAutoSkip = true}) async {
     if (index < 0 || index >= state.queue.length) return;
+    if (_rememberPlaybackProgress) await _flushResumePosition();
     _playGeneration++;
     final endingSession = _endSession(completed: false);
     state = state.copyWith(
@@ -268,7 +329,7 @@ final class PlayerController extends ChangeNotifier {
     );
     notifyListeners();
     await endingSession;
-    await _playCurrent();
+    await _playCurrent(allowAutoSkip: allowAutoSkip);
   }
 
   Future<void> previous() => state.playbackMode == PlaybackMode.shuffle
@@ -404,6 +465,71 @@ final class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setShowRomanization(bool value) {
+    state = state.copyWith(showRomanization: value);
+    notifyListeners();
+  }
+
+  void setLyricFontSize(LyricFontSize value) {
+    state = state.copyWith(lyricFontSize: value);
+    notifyListeners();
+  }
+
+  void setLyricAlignment(LyricAlignment value) {
+    state = state.copyWith(lyricAlignment: value);
+    notifyListeners();
+  }
+
+  void setLyricAuxiliaryOrder(LyricAuxiliaryOrder value) {
+    state = state.copyWith(lyricAuxiliaryOrder: value);
+    notifyListeners();
+  }
+
+  void setUseTraditionalLyrics(bool value) {
+    state = state.copyWith(useTraditionalLyrics: value);
+    notifyListeners();
+  }
+
+  void setEmphasizeActiveLyric(bool value) {
+    state = state.copyWith(emphasizeActiveLyric: value);
+    notifyListeners();
+  }
+
+  void applySettings(AppSettings settings) {
+    _rememberPlaybackProgress = settings.rememberPlaybackProgress;
+    _autoSkipPlaybackErrors = settings.autoSkipPlaybackErrors;
+    if (!_rememberPlaybackProgress) _pendingResume = null;
+    if (!_autoSkipPlaybackErrors) _resetPlaybackFailureChain();
+    state = state.copyWith(
+      showLyrics: settings.showLyrics,
+      showTranslation: settings.showTranslation,
+      showRomanization: settings.showRomanization,
+      lyricFontSize: settings.lyricFontSize,
+      lyricAlignment: settings.lyricAlignment,
+      lyricAuxiliaryOrder: settings.lyricAuxiliaryOrder,
+      useTraditionalLyrics: settings.useTraditionalLyrics,
+      emphasizeActiveLyric: settings.emphasizeActiveLyric,
+    );
+    notifyListeners();
+  }
+
+  Future<void> setLyricOffset(Duration value) async {
+    final track = state.current;
+    if (track == null) return;
+    final milliseconds = value.inMilliseconds.clamp(
+      minLyricOffsetMilliseconds,
+      maxLyricOffsetMilliseconds,
+    );
+    final offset = Duration(milliseconds: milliseconds);
+    state = state.copyWith(lyricOffset: offset);
+    notifyListeners();
+    try {
+      await _trackStateStore?.writeLyricOffset(track, offset);
+    } on Object catch (error) {
+      _reportPersistenceError?.call(error);
+    }
+  }
+
   Future<void> loadLyrics(Future<Lyrics> Function(Track track) loader) async {
     final track = state.current;
     if (track == null) return;
@@ -525,10 +651,14 @@ final class PlayerController extends ChangeNotifier {
     return operation;
   }
 
-  Future<bool> _playCurrent({bool startSession = true}) async {
+  Future<bool> _playCurrent({
+    bool startSession = true,
+    bool allowAutoSkip = true,
+  }) async {
     final track = state.current;
     if (track == null) return false;
     final generation = ++_playGeneration;
+    final storedState = _loadTrackState(track, generation);
     _bundleLyricsGeneration = null;
     try {
       if (await audio.playCachedTrack(track, state.quality)) {
@@ -537,6 +667,8 @@ final class PlayerController extends ChangeNotifier {
         notifyListeners();
         unawaited(_refreshCachedLocalResources(track, generation));
         if (startSession) await _startSession(track);
+        await _scheduleResume(track, generation, storedState);
+        _resetPlaybackFailureChain();
         return true;
       }
     } on Object {
@@ -556,6 +688,8 @@ final class PlayerController extends ChangeNotifier {
         state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
         if (startSession) await _startSession(playbackTrack);
+        await _scheduleResume(playbackTrack, generation, storedState);
+        _resetPlaybackFailureChain();
         return true;
       } on PlaybackStreamExpiredException catch (error) {
         if (!_isCurrent(generation, track)) return false;
@@ -574,7 +708,156 @@ final class PlayerController extends ChangeNotifier {
       error: lastError,
     );
     notifyListeners();
+    if (_autoSkipPlaybackErrors && allowAutoSkip) {
+      return _advanceAfterPlaybackFailure(track);
+    }
     return false;
+  }
+
+  Future<TrackPlaybackState?> _loadTrackState(
+    Track track,
+    int generation,
+  ) async {
+    final store = _trackStateStore;
+    if (store == null) return null;
+    final key = _keyFor(track);
+    if (_trackStateKey != key) {
+      _trackStateKey = key;
+      _lastResumeWriteBucket = null;
+      _pendingResume = null;
+      state = state.copyWith(lyricOffset: Duration.zero);
+      notifyListeners();
+    }
+    try {
+      final stored = await store.read(track);
+      if (_isCurrent(generation, track) && stored != null) {
+        state = state.copyWith(lyricOffset: stored.lyricOffset);
+        notifyListeners();
+      }
+      return stored;
+    } on Object catch (error) {
+      _reportPersistenceError?.call(error);
+      return null;
+    }
+  }
+
+  Future<void> _scheduleResume(
+    Track track,
+    int generation,
+    Future<TrackPlaybackState?> storedState,
+  ) async {
+    if (!_rememberPlaybackProgress) return;
+    final stored = await storedState;
+    final position = stored?.resumePosition;
+    if (position == null || position <= const Duration(seconds: 5)) return;
+    if (!_isCurrent(generation, track)) return;
+    _pendingResume = (
+      key: _keyFor(track),
+      generation: generation,
+      position: position,
+    );
+    _tryRestorePendingResume();
+  }
+
+  void _tryRestorePendingResume() {
+    final pending = _pendingResume;
+    final track = state.current;
+    if (pending == null || track == null || state.duration <= Duration.zero) {
+      return;
+    }
+    if (pending.generation != _playGeneration ||
+        pending.key != _keyFor(track)) {
+      _pendingResume = null;
+      return;
+    }
+    _pendingResume = null;
+    if (state.duration - pending.position < const Duration(seconds: 10)) {
+      unawaited(_clearResumePosition(track));
+      return;
+    }
+    final position = pending.position > state.duration
+        ? state.duration
+        : pending.position;
+    unawaited(audio.seek(position).catchError((Object _) {}));
+  }
+
+  Future<bool> _advanceAfterPlaybackFailure(Track failed) async {
+    if (_handlingPlaybackFailure) return false;
+    _handlingPlaybackFailure = true;
+    try {
+      _failedTrackKeys.add(_keyFor(failed));
+      for (
+        var index = state.currentIndex + 1;
+        index < state.queue.length;
+        index++
+      ) {
+        final candidate = state.queue[index];
+        final candidateKey = _keyFor(candidate);
+        if (_failedTrackKeys.contains(candidateKey)) continue;
+        await _playIndex(index, allowAutoSkip: false);
+        if (state.processing != PlayerProcessing.error) return true;
+        _failedTrackKeys.add(candidateKey);
+      }
+      return false;
+    } finally {
+      _handlingPlaybackFailure = false;
+    }
+  }
+
+  void _resetPlaybackFailureChain() {
+    _failedTrackKeys.clear();
+  }
+
+  String _keyFor(Track track) => '${track.source}\u0000${track.id}';
+
+  Future<void> _clearResumePosition(Track track) async {
+    final key = _keyFor(track);
+    if (_clearedResumeKey == key) return;
+    _clearedResumeKey = key;
+    try {
+      await _trackStateStore?.clearResumePosition(track);
+    } on Object catch (error) {
+      if (_clearedResumeKey == key) _clearedResumeKey = null;
+      _reportPersistenceError?.call(error);
+    }
+  }
+
+  void _persistResumeFromSnapshot(Track track) {
+    if (!_rememberPlaybackProgress || _trackStateStore == null) return;
+    if (state.duration > Duration.zero &&
+        state.duration - state.position < const Duration(seconds: 10)) {
+      _lastResumeWriteBucket = null;
+      unawaited(_clearResumePosition(track));
+      return;
+    }
+    if (state.position <= const Duration(seconds: 5)) return;
+    final bucket = state.position.inSeconds ~/ 5;
+    if (_lastResumeWriteBucket == bucket) return;
+    _lastResumeWriteBucket = bucket;
+    _clearedResumeKey = null;
+    unawaited(
+      _trackStateStore
+          .writeResumePosition(track, state.position)
+          .catchError((Object error) => _reportPersistenceError?.call(error)),
+    );
+  }
+
+  Future<void> _flushResumePosition() async {
+    final track = state.current;
+    final store = _trackStateStore;
+    if (!_rememberPlaybackProgress || track == null || store == null) return;
+    if (state.duration > Duration.zero &&
+        state.duration - state.position < const Duration(seconds: 10)) {
+      await _clearResumePosition(track);
+      return;
+    }
+    if (state.position <= const Duration(seconds: 5)) return;
+    _clearedResumeKey = null;
+    try {
+      await store.writeResumePosition(track, state.position);
+    } on Object catch (error) {
+      _reportPersistenceError?.call(error);
+    }
   }
 
   Future<PlaybackSource> _resolve(Track track) {
@@ -742,6 +1025,9 @@ final class PlayerController extends ChangeNotifier {
       buffered: snapshot.buffered,
     );
     notifyListeners();
+    _tryRestorePendingResume();
+    final track = state.current;
+    if (track != null) _persistResumeFromSnapshot(track);
     if (newlyCompleted) unawaited(_handleCompletion());
   }
 
@@ -752,6 +1038,10 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _handleCompletion() async {
+    final completedTrack = state.current;
+    if (_rememberPlaybackProgress && completedTrack != null) {
+      await _clearResumePosition(completedTrack);
+    }
     await _endSession(completed: true);
     switch (state.playbackMode) {
       case PlaybackMode.repeatOne:
@@ -777,6 +1067,7 @@ final class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    unawaited(_flushResumePosition());
     _playGeneration++;
     unawaited(_endSession(completed: false));
     _subscription.cancel();

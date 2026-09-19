@@ -2199,18 +2199,125 @@ void main() {
     expect(find.textContaining('StateError'), findsNothing);
   });
 
+  testWidgets('mobile lyric settings persist display choices and tune offset', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.play(
+      Track.fromJson({'id': 'settings', 'name': 'Settings', 'source': 'kw'}),
+    );
+    bool? savedRomanization;
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+          saveLyricPreferences:
+              ({
+                required showTranslation,
+                required showRomanization,
+                required fontSize,
+                required alignment,
+                required auxiliaryOrder,
+                required useTraditional,
+                required emphasizeActive,
+              }) async {
+                savedRomanization = showRomanization;
+              },
+        ),
+      ),
+    );
+
+    expect(find.bySemanticsLabel('歌词设置'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-mobile-lyric-settings')));
+    await pumpFiniteAnimations(tester);
+    expect(find.text('显示罗马音'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const Key('lyric-control-romanization')),
+    );
+    await tester.pump();
+    await tester.tap(find.text('显示罗马音'));
+    await tester.pump();
+    expect(controller.state.showRomanization, isTrue);
+    expect(savedRomanization, isTrue);
+
+    await tester.ensureVisible(find.byKey(const Key('lyric-offset-plus')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('lyric-offset-plus')));
+    await tester.pump();
+    expect(controller.state.lyricOffset, const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const Key('lyric-offset-reset')));
+    await tester.pump();
+    expect(controller.state.lyricOffset, Duration.zero);
+  });
+
+  testWidgets('desktop lyric settings use an anchored popover', (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+    );
+    await controller.play(
+      Track.fromJson({
+        'id': 'desktop-settings',
+        'name': 'Desktop Settings',
+        'source': 'kw',
+      }),
+    );
+    await tester.pumpWidget(
+      harness(
+        PlayerScreen(
+          controller: controller,
+          lyricsLoader: (_) async => const Lyrics(original: '[00:01]Line'),
+          wakeLock: FakeWakeLock(),
+          keepAwake: false,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('歌词设置'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('player-desktop-lyric-settings')));
+    await pumpFiniteAnimations(tester);
+
+    expect(
+      find.byKey(const Key('player-desktop-lyric-settings-popover')),
+      findsOneWidget,
+    );
+    expect(find.text('歌词字号'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('lyrics error state uses the standard Lucide family', (
     tester,
   ) async {
     await tester.pumpWidget(
-      harness(const LyricsView(state: PlayerState(lyricsError: 'bad lyrics'))),
+      harness(
+        LyricsView(
+          state: const PlayerState(lyricsError: 'bad lyrics'),
+          onSeek: (_) {},
+        ),
+      ),
     );
 
     expect(find.text('歌词暂不可用'), findsOneWidget);
     expect(find.byIcon(LucideIcons.messageSquareText), findsOneWidget);
   });
 
-  for (final width in [320.0, 375.0, 414.0, 768.0]) {
+  for (final width in [320.0, 375.0, 414.0, 768.0, 1024.0, 1440.0]) {
     testWidgets('player remains overflow-free at ${width.toInt()}px', (
       tester,
     ) async {

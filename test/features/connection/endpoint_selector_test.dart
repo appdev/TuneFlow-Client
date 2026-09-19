@@ -32,6 +32,38 @@ ConnectionRepository healthyConnections() => ConnectionRepository(
 );
 
 void main() {
+  test(
+    'integrated Web stays same-origin after advertised endpoints change',
+    () async {
+      final current = origin('http://localhost:3124');
+      final visited = <String>[];
+      final selector = EndpointSelectionService(
+        probe: ServerEndpointProbe(
+          requestHealth: (candidate) async {
+            visited.add(candidate.uri.toString());
+            return {
+              'status': 'ok',
+              'lanOrigin': 'http://nas.local:3124',
+              'externalOrigin': 'https://music.example',
+            };
+          },
+        ),
+        connections: healthyConnections(),
+      );
+      final result = await selector.select(
+        catalog: EndpointCatalog(
+          bootstrapOrigin: current,
+          pinnedOrigin: current,
+        ),
+        route: NetworkRoute.lan,
+        generationIsCurrent: () => true,
+      );
+      expect(visited, ['http://localhost:3124']);
+      expect(result!.connected.origin.uri, current.uri);
+      expect(result.catalog.candidates(NetworkRoute.external), [current]);
+    },
+  );
+
   test('orders and de-duplicates candidates by network route', () {
     final catalog = EndpointCatalog(
       bootstrapOrigin: origin('https://bootstrap.example/'),

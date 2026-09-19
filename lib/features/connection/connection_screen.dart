@@ -18,10 +18,12 @@ final class ConnectionScreen extends ConsumerStatefulWidget {
   ConsumerState<ConnectionScreen> createState() => _ConnectionScreenState();
 }
 
-String defaultServiceOrigin(TargetPlatform platform) => switch (platform) {
-  TargetPlatform.android => 'http://10.0.2.2:3124',
-  _ => 'http://127.0.0.1:3124',
-};
+String defaultServiceOrigin(TargetPlatform platform) => kIsWeb
+    ? Uri.base.origin
+    : switch (platform) {
+        TargetPlatform.android => 'http://10.0.2.2:3124',
+        _ => 'http://127.0.0.1:3124',
+      };
 
 final class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   final formKey = GlobalKey<ShadFormState>();
@@ -34,11 +36,12 @@ final class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) origin.text = Uri.base.origin;
     ref.listenManual<AsyncValue<AppSettings>>(appSettingsProvider, (
       previous,
       next,
     ) {
-      final savedOrigin = next.value?.origin;
+      final savedOrigin = kIsWeb ? Uri.base.origin : next.value?.origin;
       if (savedOrigin == null || !mounted) return;
       if (!_originEdited && origin.text.isEmpty) {
         _restoringPersistedOrigin = true;
@@ -113,7 +116,10 @@ final class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                       key: const Key('service-origin-field'),
                       id: 'origin',
                       controller: origin,
-                      label: Text(strings.serviceOrigin),
+                      enabled: !kIsWeb,
+                      label: Text(
+                        kIsWeb ? '当前网页的 Service 地址' : strings.serviceOrigin,
+                      ),
                       placeholder: Text(
                         defaultServiceOrigin(defaultTargetPlatform),
                       ),

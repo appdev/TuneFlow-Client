@@ -41,7 +41,9 @@ final class RadioController extends ChangeNotifier {
     required this.repository,
     required this.player,
     RadioPreferences? preferences,
-  }) : preferences = preferences ?? RadioPreferences() {
+    DateTime Function()? clock,
+  }) : preferences = preferences ?? RadioPreferences(),
+       _clock = clock ?? DateTime.now {
     player.setSequentialQueueEndHandler(_continueAtQueueEnd);
     player.addListener(_handlePlayerChange);
     unawaited(_loadPreference());
@@ -50,8 +52,12 @@ final class RadioController extends ChangeNotifier {
   final RadioSessionPort repository;
   final PlayerController player;
   final RadioPreferences preferences;
+  final DateTime Function() _clock;
+  DateTime? _prefetchRetryAfter;
   RadioState state = const RadioState();
   int _queueGeneration = 0;
+  int _requestGeneration = 0;
+  Future<bool>? _continuationRequest;
   bool _disposed = false;
   bool _closing = false;
 
@@ -63,6 +69,7 @@ final class RadioController extends ChangeNotifier {
     if (_disposed) return;
     state = state.copyWith(autoContinuation: value);
     notifyListeners();
+    _maybePrefetch();
   }
 
   Future<void> setAutoContinuation(bool value) async {
@@ -70,6 +77,7 @@ final class RadioController extends ChangeNotifier {
     notifyListeners();
     try {
       await preferences.writeAutoContinuation(value);
+      _maybePrefetch();
     } on Object catch (error) {
       if (_disposed) return;
       state = state.copyWith(autoContinuation: !value, error: error);
@@ -78,28 +86,48 @@ final class RadioController extends ChangeNotifier {
   }
 
   Future<bool> startDedicated() async {
-    if (state.loading) return false;
-    state = state.copyWith(loading: true, error: null);
+    if (_disposed || _closing || state.loading) return false;
+    final previousSessionId = state.session?.sessionId;
+    final generation = ++_requestGeneration;
+    _prefetchRetryAfter = null;
+    state = state.copyWith(session: null, loading: true, error: null);
     notifyListeners();
     try {
-      await _closeActive();
+      await _closeSession(previousSessionId);
       final batch = await repository.create(
         mode: RadioMode.dedicated,
         queueGeneration: ++_queueGeneration,
         requestId: _requestId(),
         currentTrack: player.state.current,
-        queuedTracks: player.state.queue,
+        queuedTracks: player.state.queue.take(100).toList(growable: false),
       );
-      if (batch.items.isEmpty) throw StateError('暂时没有可播放的推荐歌曲。');
+      if (!_isCurrent(generation)) {
+        await _closeSession(batch.sessionId);
+        return false;
+      }
+      if (batch.items.isEmpty) {
+        await _closeSession(batch.sessionId);
+        throw StateError('暂时没有可播放的推荐歌曲。');
+      }
       state = state.copyWith(session: batch, loading: false, error: null);
       notifyListeners();
-      await player.playTracks(
-        batch.items.map((item) => item.track).toList(growable: false),
-        contexts: _contexts(batch),
-        queueKind: PlayerQueueKind.dedicatedRadio,
-      );
+      try {
+        await player.playTracks(
+          batch.items.map((item) => item.track).toList(growable: false),
+          contexts: _contexts(batch),
+          queueKind: PlayerQueueKind.dedicatedRadio,
+        );
+      } on Object catch (error) {
+        if (_isCurrent(generation)) {
+          await _closeSession(batch.sessionId);
+          state = state.copyWith(session: null, loading: false, error: error);
+          notifyListeners();
+        }
+        return false;
+      }
       return true;
     } on Object catch (error) {
+      if (!_isCurrent(generation)) return false;
       state = state.copyWith(loading: false, error: error);
       notifyListeners();
       return false;
@@ -109,11 +137,13 @@ final class RadioController extends ChangeNotifier {
   Future<void> stop() async {
     if (_closing) return;
     _closing = true;
-    await _closeActive();
+    _requestGeneration++;
+    final sessionId = state.session?.sessionId;
     if (!_disposed) {
       state = state.copyWith(session: null, loading: false, error: null);
       notifyListeners();
     }
+    await _closeSession(sessionId);
     _closing = false;
   }
 
@@ -127,16 +157,58 @@ final class RadioController extends ChangeNotifier {
       .toList(growable: false);
 
   Future<bool> _continueAtQueueEnd() async {
+    final pending = _continuationRequest;
+    if (pending != null) return pending;
+    if (!_canContinue()) return false;
+    return _startContinuationRequest();
+  }
+
+  bool _canContinue() {
     if (_disposed ||
+        _closing ||
         state.loading ||
-        player.state.playbackMode != PlaybackMode.sequential) {
+        player.state.playbackMode != PlaybackMode.sequential ||
+        player.state.currentIndex < 0) {
       return false;
     }
-    final active = state.session;
-    final dedicated =
+    final radioQueue =
         player.state.queueKind == PlayerQueueKind.dedicatedRadio ||
         player.state.queueKind == PlayerQueueKind.radioContinuation;
-    if (!dedicated && !state.autoContinuation) return false;
+    return (radioQueue && state.session != null) || state.autoContinuation;
+  }
+
+  int get _remainingTracks =>
+      player.state.queue.length - player.state.currentIndex - 1;
+
+  void _maybePrefetch() {
+    if (_continuationRequest != null || !_canContinue()) return;
+    final retryAfter = _prefetchRetryAfter;
+    if (retryAfter != null && _clock().isBefore(retryAfter)) return;
+    if (_remainingTracks <= 2) unawaited(_startContinuationRequest());
+  }
+
+  Future<bool> _startContinuationRequest() {
+    final pending = _continuationRequest;
+    if (pending != null) return pending;
+    final generation = _requestGeneration;
+    final queueFingerprint = _queueFingerprint();
+    final request = _fetchContinuation(generation, queueFingerprint);
+    _continuationRequest = request;
+    return request.whenComplete(() {
+      if (identical(_continuationRequest, request)) {
+        _continuationRequest = null;
+      }
+    });
+  }
+
+  Future<bool> _fetchContinuation(
+    int generation,
+    String queueFingerprint,
+  ) async {
+    final active = state.session;
+    final radioQueue =
+        player.state.queueKind == PlayerQueueKind.dedicatedRadio ||
+        player.state.queueKind == PlayerQueueKind.radioContinuation;
     state = state.copyWith(loading: true, error: null);
     notifyListeners();
     try {
@@ -146,31 +218,57 @@ final class RadioController extends ChangeNotifier {
               queueGeneration: ++_queueGeneration,
               requestId: _requestId(),
               currentTrack: player.state.current,
-              queuedTracks: const [],
+              queuedTracks: player.state.queue
+                  .skip(player.state.currentIndex + 1)
+                  .take(100)
+                  .toList(growable: false),
             )
           : await repository.next(
               sessionId: active.sessionId,
               queueGeneration: ++_queueGeneration,
               requestId: _requestId(),
               currentTrack: player.state.current,
-              queuedTracks: const [],
+              queuedTracks: player.state.queue
+                  .skip(player.state.currentIndex + 1)
+                  .take(100)
+                  .toList(growable: false),
             );
+      if (!_isCurrent(generation) ||
+          queueFingerprint != _queueFingerprint() ||
+          (!radioQueue && !state.autoContinuation) ||
+          player.state.playbackMode != PlaybackMode.sequential) {
+        if (active == null) await _closeSession(batch.sessionId);
+        if (_isCurrent(generation)) {
+          state = state.copyWith(loading: false);
+          notifyListeners();
+        }
+        return false;
+      }
       if (batch.items.isEmpty) {
-        state = state.copyWith(session: batch, loading: false);
+        _prefetchRetryAfter = _clock().add(const Duration(seconds: 30));
+        if (active == null) await _closeSession(batch.sessionId);
+        if (!_isCurrent(generation)) return false;
+        state = state.copyWith(
+          session: active == null ? null : batch,
+          loading: false,
+        );
         notifyListeners();
         return false;
       }
+      _prefetchRetryAfter = null;
       state = state.copyWith(session: batch, loading: false, error: null);
       player.enqueueTracks(
         batch.items.map((item) => item.track).toList(growable: false),
         contexts: _contexts(batch),
-        queueKind: active == null && !dedicated
+        queueKind: active == null && !radioQueue
             ? PlayerQueueKind.radioContinuation
             : player.state.queueKind,
       );
       notifyListeners();
       return true;
     } on Object catch (error) {
+      if (!_isCurrent(generation)) return false;
+      _prefetchRetryAfter = _clock().add(const Duration(seconds: 30));
       state = state.copyWith(loading: false, error: error);
       notifyListeners();
       return false;
@@ -178,15 +276,31 @@ final class RadioController extends ChangeNotifier {
   }
 
   void _handlePlayerChange() {
-    if (state.session == null || state.loading || _closing) return;
-    if (player.state.queueKind == PlayerQueueKind.manual ||
-        player.state.queue.isEmpty) {
+    if (_disposed || _closing) return;
+    if (player.state.queue.isEmpty &&
+        (state.session != null || _continuationRequest != null)) {
       unawaited(stop());
+      return;
     }
+    if (state.session != null &&
+        player.state.queueKind == PlayerQueueKind.manual) {
+      unawaited(stop());
+      return;
+    }
+    _maybePrefetch();
   }
 
-  Future<void> _closeActive() async {
-    final sessionId = state.session?.sessionId;
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _requestGeneration;
+
+  String _queueFingerprint() => player.state.queue
+      .map(
+        (track) =>
+            '${track.source.length}:${track.source}${track.id.length}:${track.id}',
+      )
+      .join('|');
+
+  Future<void> _closeSession(String? sessionId) async {
     if (sessionId == null) return;
     try {
       await repository.close(sessionId);
@@ -198,10 +312,11 @@ final class RadioController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _requestGeneration++;
     player.setSequentialQueueEndHandler(null);
     player.removeListener(_handlePlayerChange);
     final sessionId = state.session?.sessionId;
-    if (sessionId != null) unawaited(repository.close(sessionId));
+    if (sessionId != null) unawaited(_closeSession(sessionId));
     super.dispose();
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'service_settings_repository.dart';
@@ -12,6 +14,7 @@ final class ServiceFunctionSettingsState {
     this.musicBrainzTest,
     this.testingAi = false,
     this.aiTest,
+    this.externalUpdatePending = false,
     this.error,
   });
 
@@ -23,6 +26,7 @@ final class ServiceFunctionSettingsState {
   final MusicBrainzConnectionTestResult? musicBrainzTest;
   final bool testingAi;
   final AiConnectionTestResult? aiTest;
+  final bool externalUpdatePending;
   final Object? error;
 
   bool get dirty => saved != null && draft != null && saved != draft;
@@ -38,6 +42,7 @@ final class ServiceFunctionSettingsState {
     bool? testingAi,
     AiConnectionTestResult? aiTest,
     bool clearAiTest = false,
+    bool? externalUpdatePending,
     Object? error,
     bool clearError = false,
   }) => ServiceFunctionSettingsState(
@@ -51,6 +56,7 @@ final class ServiceFunctionSettingsState {
         : musicBrainzTest ?? this.musicBrainzTest,
     testingAi: testingAi ?? this.testingAi,
     aiTest: clearAiTest ? null : aiTest ?? this.aiTest,
+    externalUpdatePending: externalUpdatePending ?? this.externalUpdatePending,
     error: clearError ? null : error ?? this.error,
   );
 }
@@ -90,17 +96,38 @@ final class ServiceFunctionSettingsController extends ChangeNotifier {
   void reset() {
     final saved = state.saved;
     if (saved == null || state.saving) return;
-    state = state.copyWith(draft: saved, clearError: true);
+    state = state.copyWith(
+      draft: saved,
+      externalUpdatePending: false,
+      clearError: true,
+    );
     _notify();
+  }
+
+  void externalSettingsChanged() {
+    if (_disposed) return;
+    if (state.dirty || state.saving) {
+      state = state.copyWith(externalUpdatePending: true);
+      _notify();
+      return;
+    }
+    unawaited(load());
+  }
+
+  Future<void> reloadExternalSettings() async {
+    if (state.saving) return;
+    state = state.copyWith(externalUpdatePending: false);
+    await load();
   }
 
   Future<bool> save() async {
     final value = state.draft;
-    if (value == null || state.saving) return false;
+    final saved = state.saved;
+    if (value == null || saved == null || state.saving) return false;
     state = state.copyWith(saving: true, clearError: true);
     _notify();
     try {
-      final confirmed = await repository.updateFunctionSettings(value);
+      final confirmed = await repository.updateFunctionSettings(value, saved);
       if (_disposed) return true;
       state = ServiceFunctionSettingsState(saved: confirmed, draft: confirmed);
       _notify();

@@ -1,4 +1,5 @@
 import '../../api/models.dart';
+import '../../storage/app_preferences.dart';
 
 enum PlayerProcessing { idle, loading, buffering, ready, completed, error }
 
@@ -48,6 +49,13 @@ final class PlayerState {
     this.lyrics,
     this.showLyrics = false,
     this.showTranslation = true,
+    this.showRomanization = false,
+    this.lyricFontSize = LyricFontSize.standard,
+    this.lyricAlignment = LyricAlignment.adaptive,
+    this.lyricAuxiliaryOrder = LyricAuxiliaryOrder.translationFirst,
+    this.useTraditionalLyrics = false,
+    this.emphasizeActiveLyric = true,
+    this.lyricOffset = Duration.zero,
     this.view = PlayerView.artwork,
     this.playbackMode = PlaybackMode.sequential,
     this.queueKind = PlayerQueueKind.manual,
@@ -71,6 +79,13 @@ final class PlayerState {
   final Lyrics? lyrics;
   final bool showLyrics;
   final bool showTranslation;
+  final bool showRomanization;
+  final LyricFontSize lyricFontSize;
+  final LyricAlignment lyricAlignment;
+  final LyricAuxiliaryOrder lyricAuxiliaryOrder;
+  final bool useTraditionalLyrics;
+  final bool emphasizeActiveLyric;
+  final Duration lyricOffset;
   final PlayerView view;
   final PlaybackMode playbackMode;
   final PlayerQueueKind queueKind;
@@ -114,6 +129,13 @@ final class PlayerState {
     bool clearLyrics = false,
     bool? showLyrics,
     bool? showTranslation,
+    bool? showRomanization,
+    LyricFontSize? lyricFontSize,
+    LyricAlignment? lyricAlignment,
+    LyricAuxiliaryOrder? lyricAuxiliaryOrder,
+    bool? useTraditionalLyrics,
+    bool? emphasizeActiveLyric,
+    Duration? lyricOffset,
     PlayerView? view,
     PlaybackMode? playbackMode,
     PlayerQueueKind? queueKind,
@@ -136,6 +158,13 @@ final class PlayerState {
     lyrics: clearLyrics ? null : lyrics ?? this.lyrics,
     showLyrics: showLyrics ?? this.showLyrics,
     showTranslation: showTranslation ?? this.showTranslation,
+    showRomanization: showRomanization ?? this.showRomanization,
+    lyricFontSize: lyricFontSize ?? this.lyricFontSize,
+    lyricAlignment: lyricAlignment ?? this.lyricAlignment,
+    lyricAuxiliaryOrder: lyricAuxiliaryOrder ?? this.lyricAuxiliaryOrder,
+    useTraditionalLyrics: useTraditionalLyrics ?? this.useTraditionalLyrics,
+    emphasizeActiveLyric: emphasizeActiveLyric ?? this.emphasizeActiveLyric,
+    lyricOffset: lyricOffset ?? this.lyricOffset,
     view: view ?? this.view,
     playbackMode: playbackMode ?? this.playbackMode,
     queueKind: queueKind ?? this.queueKind,

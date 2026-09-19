@@ -47,7 +47,7 @@ void main() {
           savedPatch = Map<String, Object?>.from(
             jsonDecode(request.body) as Map,
           );
-          return data(savedPatch);
+          return data({...settingsJson(), ...savedPatch});
         }),
       ),
     );
@@ -100,5 +100,32 @@ void main() {
     );
     expect(controller.state.musicBrainzTest, same(result));
     expect(controller.state.dirty, isTrue);
+  });
+
+  test('reloads clean external updates and preserves dirty drafts', () async {
+    var current = settingsJson();
+    final repository = ServiceSettingsRepository(
+      ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((_) async => data(current)),
+      ),
+    );
+    final controller = ServiceFunctionSettingsController(repository);
+    await controller.load();
+
+    current = {...current, 'download.maxDownloadNum': 5};
+    controller.externalSettingsChanged();
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state.draft?.maxConcurrent, 5);
+
+    controller.update(controller.state.draft!.copyWith(maxConcurrent: 6));
+    current = {...current, 'download.maxDownloadNum': 2};
+    controller.externalSettingsChanged();
+    expect(controller.state.draft?.maxConcurrent, 6);
+    expect(controller.state.externalUpdatePending, isTrue);
+
+    await controller.reloadExternalSettings();
+    expect(controller.state.draft?.maxConcurrent, 2);
+    expect(controller.state.externalUpdatePending, isFalse);
   });
 }

@@ -5,25 +5,45 @@ final class TimedLyricLine {
     required this.time,
     required this.text,
     this.translation,
+    this.romanization,
   });
 
   final Duration time;
   final String text;
   final String? translation;
+  final String? romanization;
 }
 
 List<TimedLyricLine> parseLyricsTimeline(Lyrics lyrics) {
   final original = _parseLrc(lyrics.original);
   final translated = _parseLrc(lyrics.translation ?? '');
+  final romanized = _parseLrc(lyrics.romanization ?? '');
   return original.entries
       .map(
         (entry) => TimedLyricLine(
           time: Duration(milliseconds: entry.key),
           text: entry.value,
           translation: translated[entry.key],
+          romanization: romanized[entry.key],
         ),
       )
       .toList(growable: false);
+}
+
+Duration lyricTimelinePosition(Duration playbackPosition, Duration offset) {
+  final value = playbackPosition - offset;
+  return value.isNegative ? Duration.zero : value;
+}
+
+Duration lyricSeekPosition({
+  required Duration lineTime,
+  required Duration offset,
+  required Duration duration,
+}) {
+  var value = lineTime + offset;
+  if (value.isNegative) value = Duration.zero;
+  if (duration > Duration.zero && value > duration) return duration;
+  return value;
 }
 
 int activeLyricIndex(List<TimedLyricLine> lines, Duration position) {
@@ -58,7 +78,8 @@ Map<int, String> _parseLrc(String source) {
         2 => int.parse(fraction) * 10,
         _ => int.parse(fraction.padRight(3, '0').substring(0, 3)),
       };
-      result[(minutes * 60 + seconds) * 1000 + milliseconds] = text;
+      final key = (minutes * 60 + seconds) * 1000 + milliseconds;
+      if (text.isNotEmpty || !result.containsKey(key)) result[key] = text;
     }
   }
   return Map.fromEntries(

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -57,6 +58,7 @@ import '../platform/desktop_window_controller.dart';
 import '../platform/platform_window_frame.dart';
 import 'app_shell.dart';
 import 'app_navigation_history.dart';
+import 'app_providers.dart';
 
 ValueKey<String> sourceRouteKey(int version) => ValueKey('sources-$version');
 
@@ -67,6 +69,7 @@ GoRouter buildAppRouter({
   RadioController? Function()? readRadio,
   required bool Function() readKeepAwake,
   required SettingsController? Function() readSettings,
+  required ServiceSettingsUpdates serviceSettingsUpdates,
   required int Function() readSourceVersion,
   required int Function() readPlaylistVersion,
   required int Function() readDownloadVersion,
@@ -199,6 +202,7 @@ GoRouter buildAppRouter({
     controller: ServiceFunctionSettingsController(
       ServiceSettingsRepository(requireConnected().api),
     ),
+    updates: serviceSettingsUpdates,
     onBack: secondaryBack(context, fallbackLocation),
   );
 
@@ -235,6 +239,26 @@ GoRouter buildAppRouter({
         lyricsLoader: SearchRepository(connected.api).lyrics,
         playlists: PlaylistRepository(connected.api),
         keepAwake: readKeepAwake(),
+        saveLyricPreferences:
+            ({
+              required showTranslation,
+              required showRomanization,
+              required fontSize,
+              required alignment,
+              required auxiliaryOrder,
+              required useTraditional,
+              required emphasizeActive,
+            }) async {
+              await readSettings()?.setLyricPreferences(
+                showTranslation: showTranslation,
+                showRomanization: showRomanization,
+                fontSize: fontSize,
+                alignment: alignment,
+                auxiliaryOrder: auxiliaryOrder,
+                useTraditional: useTraditional,
+                emphasizeActive: emphasizeActive,
+              );
+            },
         onBack: closePlayer,
       ),
     );
@@ -544,6 +568,7 @@ GoRouter buildAppRouter({
                     name: 'more-settings',
                     builder: (context, state) => SettingsScreen(
                       controller: readSettings()!,
+                      radio: readRadio?.call(),
                       onBack: secondaryBack(context, '/more'),
                       onConnectionSettings: () =>
                           context.pushNamed('more-connection-settings'),
@@ -655,6 +680,7 @@ GoRouter buildAppRouter({
                 name: 'settings',
                 builder: (context, state) => SettingsScreen(
                   controller: readSettings()!,
+                  radio: readRadio?.call(),
                   onBack: secondaryBack(context, '/more'),
                   onConnectionSettings: () =>
                       context.pushNamed('settings-connection'),
@@ -720,6 +746,7 @@ final class _PlayerRouteCanvas extends StatefulWidget {
     required this.playlists,
     required this.keepAwake,
     required this.onBack,
+    required this.saveLyricPreferences,
   });
 
   final AppPlatform platform;
@@ -729,6 +756,7 @@ final class _PlayerRouteCanvas extends StatefulWidget {
   final PlaylistRepository playlists;
   final bool keepAwake;
   final VoidCallback onBack;
+  final SaveLyricPreferences saveLyricPreferences;
 
   @override
   State<_PlayerRouteCanvas> createState() => _PlayerRouteCanvasState();
@@ -759,8 +787,9 @@ final class _PlayerRouteCanvasState extends State<_PlayerRouteCanvas> {
         wakeLock: const SystemWakeLock(),
         keepAwake: widget.keepAwake,
         onBack: widget.onBack,
-        topChromeInset: widget.platform.isDesktop ? 38 : 0,
+        topChromeInset: !kIsWeb && widget.platform.isDesktop ? 38 : 0,
         onAccentChanged: updateAccent,
+        saveLyricPreferences: widget.saveLyricPreferences,
       ),
     ),
   );

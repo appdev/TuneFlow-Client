@@ -27,7 +27,7 @@ final class _Radio implements RadioSessionPort {
     required String requestId,
     Track? currentTrack,
     List<Track> queuedTracks = const [],
-    int limit = 3,
+    int limit = 10,
   }) => throw UnimplementedError();
   @override
   Future<RadioBatch> next({
@@ -36,7 +36,7 @@ final class _Radio implements RadioSessionPort {
     required String requestId,
     Track? currentTrack,
     List<Track> queuedTracks = const [],
-    int limit = 3,
+    int limit = 10,
   }) => throw UnimplementedError();
 }
 

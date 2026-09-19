@@ -7,6 +7,8 @@ import 'package:musicfree_service_client/features/player/playback_repository.dar
 import 'package:musicfree_service_client/features/player/player_controller.dart';
 import 'package:musicfree_service_client/features/player/player_state.dart';
 import 'package:musicfree_service_client/features/player/service_audio_handler.dart';
+import 'package:musicfree_service_client/features/player/track_playback_state_store.dart';
+import 'package:musicfree_service_client/storage/app_preferences.dart';
 
 final class FakeResolver implements PlaybackResolver {
   int calls = 0;
@@ -36,6 +38,7 @@ class FakeAudio implements AudioPort {
   final List<Duration> seekCalls = [];
   final List<Track> playedTracks = [];
   Object? playError;
+  Object? seekError;
   Object? stopPlaybackError;
   Completer<void>? playBlock;
   bool cached = false;
@@ -70,7 +73,10 @@ class FakeAudio implements AudioPort {
   @override
   Future<void> resume() async => resumeCalls++;
   @override
-  Future<void> seek(Duration position) async => seekCalls.add(position);
+  Future<void> seek(Duration position) async {
+    if (seekError case final error?) throw error;
+    seekCalls.add(position);
+  }
 
   @override
   Future<void> stopPlayback() async {
@@ -138,6 +144,90 @@ final class ErrorResolver implements PlaybackResolver {
   @override
   Future<PlaybackSource> resolve(Track track, String quality) async {
     throw StateError('resource refresh unavailable');
+  }
+}
+
+final class SelectiveResolver implements PlaybackResolver {
+  SelectiveResolver(this.failures);
+
+  final Set<String> failures;
+  final List<String> calls = [];
+
+  @override
+  Future<PlaybackSource> resolve(Track track, String quality) async {
+    calls.add(track.id);
+    if (failures.contains(track.id)) throw StateError('failed ${track.id}');
+    return bundleSource();
+  }
+}
+
+final class MemoryTrackStateStore implements TrackPlaybackStateStore {
+  final Map<String, TrackPlaybackState> values = {};
+  final List<({String id, Duration position})> resumeWrites = [];
+  final List<String> resumeClears = [];
+  final List<({String id, Duration offset})> offsetWrites = [];
+
+  String key(Track value) => '${value.source}:${value.id}';
+
+  @override
+  Future<TrackPlaybackState?> read(Track track) async => values[key(track)];
+
+  @override
+  Future<void> writeLyricOffset(Track track, Duration offset) async {
+    offsetWrites.add((id: track.id, offset: offset));
+    final previous = values[key(track)];
+    values[key(track)] = TrackPlaybackState(
+      lyricOffset: offset,
+      resumePosition: previous?.resumePosition,
+      lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+    );
+  }
+
+  @override
+  Future<void> writeResumePosition(Track track, Duration position) async {
+    resumeWrites.add((id: track.id, position: position));
+  }
+
+  @override
+  Future<void> clearResumePosition(Track track) async {
+    resumeClears.add(track.id);
+  }
+}
+
+final class DeferredTrackStateStore implements TrackPlaybackStateStore {
+  final Map<String, Completer<TrackPlaybackState?>> reads = {};
+
+  @override
+  Future<TrackPlaybackState?> read(Track track) =>
+      (reads[track.id] ??= Completer<TrackPlaybackState?>()).future;
+
+  @override
+  Future<void> writeLyricOffset(Track track, Duration offset) async {}
+
+  @override
+  Future<void> writeResumePosition(Track track, Duration position) async {}
+
+  @override
+  Future<void> clearResumePosition(Track track) async {}
+}
+
+final class FailingTrackStateStore implements TrackPlaybackStateStore {
+  @override
+  Future<TrackPlaybackState?> read(Track track) async => null;
+
+  @override
+  Future<void> writeLyricOffset(Track track, Duration offset) async {
+    throw StateError('write failed');
+  }
+
+  @override
+  Future<void> writeResumePosition(Track track, Duration position) async {
+    throw StateError('write failed');
+  }
+
+  @override
+  Future<void> clearResumePosition(Track track) async {
+    throw StateError('write failed');
   }
 }
 
@@ -247,6 +337,516 @@ final class DeferredEndSessions extends FakeSessions {
 }
 
 void main() {
+  test('initial and live settings update lyric and playback preferences', () {
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+      showLyrics: true,
+      showTranslation: false,
+      showRomanization: true,
+      lyricFontSize: LyricFontSize.large,
+      lyricAlignment: LyricAlignment.left,
+      lyricAuxiliaryOrder: LyricAuxiliaryOrder.romanizationFirst,
+      useTraditionalLyrics: true,
+      emphasizeActiveLyric: false,
+    );
+
+    expect(controller.state.showLyrics, isTrue);
+    expect(controller.state.showTranslation, isFalse);
+    expect(controller.state.showRomanization, isTrue);
+    expect(controller.state.lyricFontSize, LyricFontSize.large);
+    expect(controller.state.lyricAlignment, LyricAlignment.left);
+    expect(
+      controller.state.lyricAuxiliaryOrder,
+      LyricAuxiliaryOrder.romanizationFirst,
+    );
+    expect(controller.state.useTraditionalLyrics, isTrue);
+    expect(controller.state.emphasizeActiveLyric, isFalse);
+
+    controller.applySettings(
+      const AppSettings(
+        showLyrics: false,
+        showTranslation: true,
+        showRomanization: false,
+        lyricFontSize: LyricFontSize.small,
+        lyricAlignment: LyricAlignment.center,
+        lyricAuxiliaryOrder: LyricAuxiliaryOrder.translationFirst,
+        useTraditionalLyrics: false,
+        emphasizeActiveLyric: true,
+        rememberPlaybackProgress: true,
+        autoSkipPlaybackErrors: true,
+      ),
+    );
+
+    expect(controller.state.showLyrics, isFalse);
+    expect(controller.state.showTranslation, isTrue);
+    expect(controller.state.showRomanization, isFalse);
+    expect(controller.state.lyricFontSize, LyricFontSize.small);
+    expect(controller.state.lyricAlignment, LyricAlignment.center);
+    expect(
+      controller.state.lyricAuxiliaryOrder,
+      LyricAuxiliaryOrder.translationFirst,
+    );
+    expect(controller.state.useTraditionalLyrics, isFalse);
+    expect(controller.state.emphasizeActiveLyric, isTrue);
+  });
+
+  test('loads and persists a bounded current-track lyric offset', () async {
+    final store = MemoryTrackStateStore();
+    store.values['kw:a'] = TrackPlaybackState(
+      lyricOffset: const Duration(milliseconds: 450),
+      lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+    );
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+      trackStateStore: store,
+    );
+
+    await controller.play(track('a'));
+    expect(controller.state.lyricOffset, const Duration(milliseconds: 450));
+
+    await controller.setLyricOffset(const Duration(seconds: 20));
+    expect(
+      controller.state.lyricOffset,
+      const Duration(milliseconds: maxLyricOffsetMilliseconds),
+    );
+    expect(
+      store.offsetWrites.single.offset,
+      const Duration(milliseconds: maxLyricOffsetMilliseconds),
+    );
+  });
+
+  test('a stale offset read cannot overwrite the newer track', () async {
+    final store = DeferredTrackStateStore();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: FakeAudio(),
+      trackStateStore: store,
+    );
+
+    await controller.play(track('a'));
+    await controller.play(track('b'));
+    store.reads['b']!.complete(
+      TrackPlaybackState(
+        lyricOffset: const Duration(milliseconds: 700),
+        lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    store.reads['a']!.complete(
+      TrackPlaybackState(
+        lyricOffset: const Duration(milliseconds: 200),
+        lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.current?.id, 'b');
+    expect(controller.state.lyricOffset, const Duration(milliseconds: 700));
+  });
+
+  test(
+    'failed offset persistence keeps the session value and reports',
+    () async {
+      final errors = <Object>[];
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: FakeAudio(),
+        trackStateStore: FailingTrackStateStore(),
+        reportPersistenceError: errors.add,
+      );
+      await controller.play(track('a'));
+
+      await controller.setLyricOffset(const Duration(milliseconds: 300));
+
+      expect(controller.state.lyricOffset, const Duration(milliseconds: 300));
+      expect(errors.single, isA<StateError>());
+    },
+  );
+
+  test('restores and records playback progress only when enabled', () async {
+    final store = MemoryTrackStateStore();
+    store.values['kw:a'] = TrackPlaybackState(
+      resumePosition: const Duration(seconds: 20),
+      lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+    );
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+      rememberPlaybackProgress: true,
+    );
+
+    await controller.play(track('a'));
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 1),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(audio.seekCalls, [const Duration(seconds: 20)]);
+
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 12),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(store.resumeWrites.single.position, const Duration(seconds: 12));
+
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.completed,
+        position: Duration(seconds: 100),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(store.resumeClears, contains('a'));
+  });
+
+  test(
+    'clears near-end progress once until another position is saved',
+    () async {
+      final store = MemoryTrackStateStore();
+      final audio = FakeAudio();
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        trackStateStore: store,
+        rememberPlaybackProgress: true,
+      );
+      await controller.play(track('a'));
+      for (final second in [91, 92, 93, 94]) {
+        audio.controller.add(
+          AudioSnapshot(
+            processing: PlayerProcessing.ready,
+            position: Duration(seconds: second),
+            duration: const Duration(seconds: 100),
+          ),
+        );
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(store.resumeClears, ['a']);
+      audio.controller.add(
+        const AudioSnapshot(
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 20),
+          duration: Duration(seconds: 100),
+        ),
+      );
+      audio.controller.add(
+        const AudioSnapshot(
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 95),
+          duration: Duration(seconds: 100),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(store.resumeClears, ['a', 'a']);
+      controller.dispose();
+      await audio.controller.close();
+    },
+  );
+
+  test('progress memory stays inactive by default', () async {
+    final store = MemoryTrackStateStore();
+    store.values['kw:a'] = TrackPlaybackState(
+      resumePosition: const Duration(seconds: 20),
+      lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+    );
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+    );
+
+    await controller.play(track('a'));
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 12),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(audio.seekCalls, isEmpty);
+    expect(store.resumeWrites, isEmpty);
+  });
+
+  test('resume writes are throttled to one per five-second bucket', () async {
+    final store = MemoryTrackStateStore();
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+      rememberPlaybackProgress: true,
+    );
+    await controller.play(track('a'));
+
+    for (final seconds in [11, 14, 16]) {
+      audio.controller.add(
+        AudioSnapshot(
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: seconds),
+          duration: const Duration(seconds: 100),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    expect(store.resumeWrites, [
+      (id: 'a', position: const Duration(seconds: 11)),
+      (id: 'a', position: const Duration(seconds: 16)),
+    ]);
+  });
+
+  test('a stale resume read cannot seek the newer track', () async {
+    final store = DeferredTrackStateStore();
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+      rememberPlaybackProgress: true,
+    );
+
+    final firstPlay = controller.play(track('a'));
+    await Future<void>.delayed(Duration.zero);
+    final secondPlay = controller.play(track('b'));
+    await Future<void>.delayed(Duration.zero);
+    store.reads['b']!.complete(
+      TrackPlaybackState(
+        resumePosition: const Duration(seconds: 30),
+        lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      ),
+    );
+    await secondPlay;
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    store.reads['a']!.complete(
+      TrackPlaybackState(
+        resumePosition: const Duration(seconds: 20),
+        lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      ),
+    );
+    await firstPlay;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.current?.id, 'b');
+    expect(audio.seekCalls, [const Duration(seconds: 30)]);
+  });
+
+  test('track switching flushes the latest eligible resume position', () async {
+    final store = MemoryTrackStateStore();
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+      rememberPlaybackProgress: true,
+    );
+    await controller.playTracks([track('a'), track('b')]);
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 11),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 14),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await controller.playIndex(1);
+
+    expect(store.resumeWrites.last, (
+      id: 'a',
+      position: const Duration(seconds: 14),
+    ));
+  });
+
+  test('clearing the queue flushes the latest eligible position', () async {
+    final store = MemoryTrackStateStore();
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+      rememberPlaybackProgress: true,
+    );
+    await controller.play(track('a'));
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 14),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    await controller.clearQueue();
+
+    expect(store.resumeWrites.last, (
+      id: 'a',
+      position: const Duration(seconds: 14),
+    ));
+  });
+
+  test('disposing flushes the latest eligible position', () async {
+    final store = MemoryTrackStateStore();
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: FakeResolver(),
+      audio: audio,
+      trackStateStore: store,
+      rememberPlaybackProgress: true,
+    );
+    await controller.play(track('a'));
+    audio.controller.add(
+      const AudioSnapshot(
+        processing: PlayerProcessing.ready,
+        position: Duration(seconds: 14),
+        duration: Duration(seconds: 100),
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    controller.dispose();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(store.resumeWrites.last, (
+      id: 'a',
+      position: const Duration(seconds: 14),
+    ));
+  });
+
+  test(
+    'near-end progress is cleared and failed restore seek stays playable',
+    () async {
+      final store = MemoryTrackStateStore();
+      store.values['kw:a'] = TrackPlaybackState(
+        resumePosition: const Duration(seconds: 20),
+        lastAccessedAt: DateTime.fromMillisecondsSinceEpoch(1),
+      );
+      final audio = FakeAudio()..seekError = StateError('seek unavailable');
+      final controller = PlayerController(
+        resolver: FakeResolver(),
+        audio: audio,
+        trackStateStore: store,
+        rememberPlaybackProgress: true,
+      );
+      await controller.play(track('a'));
+      audio.controller.add(
+        const AudioSnapshot(
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 1),
+          duration: Duration(seconds: 100),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.error, isNull);
+      expect(controller.state.processing, PlayerProcessing.ready);
+
+      audio.controller.add(
+        const AudioSnapshot(
+          processing: PlayerProcessing.ready,
+          position: Duration(seconds: 95),
+          duration: Duration(seconds: 100),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(store.resumeClears, contains('a'));
+    },
+  );
+
+  test('auto skip advances through playback startup failures', () async {
+    final resolver = SelectiveResolver({'a'});
+    final audio = FakeAudio();
+    final controller = PlayerController(
+      resolver: resolver,
+      audio: audio,
+      autoSkipPlaybackErrors: true,
+    );
+
+    await controller.playTracks([track('a'), track('b')]);
+
+    expect(resolver.calls, ['a', 'b']);
+    expect(controller.state.current?.id, 'b');
+    expect(controller.state.error, isNull);
+    expect(audio.playedTracks.single.id, 'b');
+  });
+
+  test('auto skip stops after every remaining queue item fails', () async {
+    final resolver = SelectiveResolver({'a', 'b', 'c'});
+    final controller = PlayerController(
+      resolver: resolver,
+      audio: FakeAudio(),
+      autoSkipPlaybackErrors: true,
+    );
+
+    await controller.playTracks([track('a'), track('b'), track('c')]);
+
+    expect(resolver.calls, ['a', 'b', 'c']);
+    expect(controller.state.current?.id, 'c');
+    expect(controller.state.processing, PlayerProcessing.error);
+    expect(controller.state.error, isA<StateError>());
+  });
+
+  test('auto skip is disabled by default', () async {
+    final resolver = SelectiveResolver({'a'});
+    final controller = PlayerController(resolver: resolver, audio: FakeAudio());
+
+    await controller.playTracks([track('a'), track('b')]);
+
+    expect(resolver.calls, ['a']);
+    expect(controller.state.current?.id, 'a');
+    expect(controller.state.processing, PlayerProcessing.error);
+  });
+
+  test(
+    'repeat-one startup errors still advance and manual selection resets',
+    () async {
+      final resolver = SelectiveResolver({'a', 'b'});
+      final controller = PlayerController(
+        resolver: resolver,
+        audio: FakeAudio(),
+        autoSkipPlaybackErrors: true,
+      );
+      controller.cyclePlaybackMode();
+
+      await controller.playTracks([track('a'), track('b')]);
+      expect(resolver.calls, ['a', 'b']);
+      expect(controller.state.current?.id, 'b');
+
+      resolver.failures.remove('a');
+      await controller.playIndex(0);
+      expect(controller.state.current?.id, 'a');
+      expect(controller.state.error, isNull);
+      expect(resolver.calls.where((id) => id == 'a'), hasLength(2));
+    },
+  );
+
   test(
     'applies embedded bundle lyrics and artwork before audio starts',
     () async {

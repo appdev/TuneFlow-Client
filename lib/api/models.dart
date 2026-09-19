@@ -594,28 +594,42 @@ final class CollectionSearchPage {
 }
 
 final class Lyrics {
-  const Lyrics({required this.original, this.translation});
+  const Lyrics({
+    required this.original,
+    this.translation,
+    this.romanization,
+    this.verbatim,
+  });
 
   factory Lyrics.fromJson(Object? value) {
     final json = jsonObject(value, 'lyrics');
-    final translation = json['tlyric'];
-    if (translation != null && translation is! String) {
-      _invalid('lyrics.tlyric');
-    }
     final original = jsonString(
       json['lyric'],
       'lyrics.lyric',
       allowEmpty: true,
     );
-    if (original.contains('\uFFFD') ||
-        (translation is String && translation.contains('\uFFFD'))) {
+    if (original.contains('\uFFFD')) {
       _invalid('lyrics.encoding');
     }
-    return Lyrics(original: original, translation: translation as String?);
+    return Lyrics(
+      original: original,
+      translation: _optionalLyricTrack(json['tlyric']),
+      romanization: _optionalLyricTrack(json['rlyric']),
+      verbatim: _optionalLyricTrack(json['verbatimLyric']),
+    );
   }
 
   final String original;
   final String? translation;
+  final String? romanization;
+  final String? verbatim;
+}
+
+String? _optionalLyricTrack(Object? value) {
+  if (value is! String || value.trim().isEmpty || value.contains('\uFFFD')) {
+    return null;
+  }
+  return value;
 }
 
 class PlaylistSummary {

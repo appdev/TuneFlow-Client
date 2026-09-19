@@ -166,4 +166,35 @@ void main() {
       expect(resources[1].$3, {'picture'});
     },
   );
+
+  test('forwards fresh settings patches', () {
+    final patches = <Map<String, Object?>>[];
+    final coordinator = EventCoordinator(
+      invalidateSources: () {},
+      invalidatePlaylists: () {},
+      invalidateDownloads: () {},
+      invalidateLibrary: () {},
+      invalidatePlaylistDetail: (_) {},
+      settingsUpdated: patches.add,
+    );
+
+    coordinator.accept(
+      const DomainEvent(
+        type: 'settings.updated',
+        data: {'download.enable': false, 'download.maxDownloadNum': 4},
+        sequence: 1,
+      ),
+    );
+    coordinator.accept(
+      const DomainEvent(
+        type: 'settings.updated',
+        data: {'download.enable': true},
+        sequence: 1,
+      ),
+    );
+
+    expect(patches, [
+      {'download.enable': false, 'download.maxDownloadNum': 4},
+    ]);
+  });
 }

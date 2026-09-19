@@ -10,12 +10,17 @@ final class EndpointCatalog {
     this.lastConnectedOrigin,
     this.lanOrigin,
     this.externalOrigin,
+    this.pinnedOrigin,
   });
 
   final ServiceOrigin? bootstrapOrigin;
   final ServiceOrigin? lastConnectedOrigin;
   final ServiceOrigin? lanOrigin;
   final ServiceOrigin? externalOrigin;
+
+  /// Integrated Web must stay on its serving origin, even when the Service
+  /// advertises native-client LAN or external endpoints.
+  final ServiceOrigin? pinnedOrigin;
 
   List<(EndpointRole, ServiceOrigin?)> _ordered(NetworkRoute route) =>
       switch (route) {
@@ -32,6 +37,8 @@ final class EndpointCatalog {
       };
 
   List<ServiceOrigin> candidates(NetworkRoute route) {
+    if (route == NetworkRoute.offline) return const [];
+    if (pinnedOrigin case final origin?) return [origin];
     final seen = <String>{};
     return [
       for (final (_, candidate) in _ordered(route))
@@ -53,6 +60,7 @@ final class EndpointCatalog {
       lastConnectedOrigin: lastConnectedOrigin,
       lanOrigin: health.lanOrigin ?? lanOrigin,
       externalOrigin: health.externalOrigin ?? externalOrigin,
+      pinnedOrigin: pinnedOrigin,
     );
   }
 }

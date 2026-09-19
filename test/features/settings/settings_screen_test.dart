@@ -128,6 +128,7 @@ void main() {
 
       await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
       expect(find.text('减少透明效果'), findsOneWidget);
+      await tester.ensureVisible(find.text('减少透明效果'));
       await tester.tap(find.text('减少透明效果'));
       await tester.pump();
 
@@ -155,6 +156,7 @@ void main() {
     await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byType(ShadSelect<ThemeMode>));
     await tester.tap(find.byType(ShadSelect<ThemeMode>));
     await tester.pumpAndSettle();
     expect(find.text('跟随系统'), findsWidgets);
@@ -164,6 +166,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved.themeMode, ThemeMode.light);
 
+    await tester.ensureVisible(find.byType(ShadSelect<AppLanguage>));
     await tester.tap(find.byType(ShadSelect<AppLanguage>));
     await tester.pumpAndSettle();
     expect(find.text('简体中文'), findsOneWidget);
@@ -172,6 +175,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved.language, AppLanguage.en);
 
+    await tester.ensureVisible(find.byType(ShadSelect<PlaybackQuality>));
     await tester.tap(find.byType(ShadSelect<PlaybackQuality>));
     await tester.pumpAndSettle();
     expect(find.text('128k'), findsWidgets);
@@ -291,6 +295,87 @@ void main() {
       find.byKey(const Key('settings-auto-download-on-play')),
       findsOneWidget,
     );
+  });
+
+  for (final width in [390.0, 1200.0]) {
+    testWidgets('local lyric and playback settings are visible at $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = SettingsController(
+        settings: const AppSettings(origin: 'http://service.local'),
+        save: (_) async {},
+        connect: (_) async {},
+        disconnect: () async {},
+        setPlayerQuality: (_) async {},
+      );
+
+      await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+      await tester.pump();
+
+      for (final label in const [
+        '默认显示歌词',
+        '默认显示翻译',
+        '默认显示罗马音',
+        '歌词字号',
+        '歌词对齐',
+        '辅助歌词顺序',
+        '歌词转换为繁体中文',
+        '放大当前歌词',
+        '记忆播放进度',
+        '播放错误时自动跳过',
+      ]) {
+        expect(find.text(label), findsOneWidget);
+      }
+      expect(find.textContaining('仅保存在此设备'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('mobile local settings persist selected lyric behavior', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var saved = const AppSettings(origin: 'http://service.local');
+    final controller = SettingsController(
+      settings: saved,
+      save: (value) async => saved = value,
+      connect: (_) async {},
+      disconnect: () async {},
+      setPlayerQuality: (_) async {},
+    );
+
+    await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+    await tester.ensureVisible(
+      find.byKey(const Key('settings-show-romanization')),
+    );
+    await tester.pump();
+    await tester.tap(find.text('默认显示罗马音'));
+    await tester.pump();
+    expect(saved.showRomanization, isTrue);
+
+    await tester.ensureVisible(find.byType(ShadSelect<LyricFontSize>));
+    await tester.pump();
+    await tester.tap(find.byType(ShadSelect<LyricFontSize>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('大'));
+    await tester.pumpAndSettle();
+    expect(saved.lyricFontSize, LyricFontSize.large);
+
+    await tester.ensureVisible(
+      find.byKey(const Key('settings-remember-progress')),
+    );
+    await tester.pump();
+    await tester.tap(find.text('记忆播放进度'));
+    await tester.pump();
+    expect(saved.rememberPlaybackProgress, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('failed Service setting load is visible and disables switch', (

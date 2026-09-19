@@ -9,6 +9,7 @@ final class EventCoordinator {
     required this.invalidatePlaylistDetail,
     this.invalidateRecommendations,
     this.trackResourcesUpdated,
+    this.settingsUpdated,
   });
 
   final void Function() invalidateSources;
@@ -19,6 +20,7 @@ final class EventCoordinator {
   final void Function()? invalidateRecommendations;
   final void Function(String source, String trackId, Set<String> resources)?
   trackResourcesUpdated;
+  final void Function(Map<String, Object?> patch)? settingsUpdated;
   int sequence = 0;
 
   bool accept(DomainEvent event) {
@@ -30,6 +32,13 @@ final class EventCoordinator {
     if (event.type.startsWith('library.')) invalidateLibrary();
     if (event.type.startsWith('recommendations.')) {
       invalidateRecommendations?.call();
+    }
+    if (event.type == 'settings.updated' && event.data is Map) {
+      final patch = <String, Object?>{};
+      for (final entry in (event.data! as Map).entries) {
+        if (entry.key is String) patch[entry.key! as String] = entry.value;
+      }
+      if (patch.isNotEmpty) settingsUpdated?.call(patch);
     }
     if (event.type == 'track.resources.updated') {
       final data = event.data;

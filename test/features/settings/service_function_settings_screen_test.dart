@@ -77,7 +77,7 @@ void main() {
             savedPatch = Map<String, Object?>.from(
               jsonDecode(request.body) as Map,
             );
-            return data(savedPatch);
+            return data({...settingsJson(), ...savedPatch});
           }),
         ),
       ),
@@ -103,5 +103,48 @@ void main() {
 
     expect(savedPatch['recommendation.musicBrainzBaseUrl'], isEmpty);
     await tester.pump(const Duration(seconds: 4));
+  });
+
+  testWidgets('disables dependent lyric options with their parent', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final json = {
+      ...settingsJson(),
+      'download.isDownloadLrc': false,
+      'download.isEmbedLyric': false,
+    };
+    final controller = ServiceFunctionSettingsController(
+      ServiceSettingsRepository(
+        ServiceApi(
+          ServiceOrigin.parse('http://service.local'),
+          client: MockClient((_) async => data(json)),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(harness(controller));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('service-download-translated-lyrics')),
+      500,
+    );
+
+    ShadSwitch toggle(String key) => tester.widget<ShadSwitch>(
+      find.descendant(
+        of: find.byKey(Key(key)),
+        matching: find.byType(ShadSwitch),
+      ),
+    );
+
+    expect(toggle('service-download-translated-lyrics').enabled, isFalse);
+    expect(toggle('service-download-romanized-lyrics').enabled, isFalse);
+    expect(toggle('service-download-verbatim-lyrics').enabled, isFalse);
+    expect(toggle('service-embed-translated-lyrics').enabled, isFalse);
+    expect(toggle('service-embed-romanized-lyrics').enabled, isFalse);
+    expect(toggle('service-embed-verbatim-lyrics').enabled, isFalse);
   });
 }

@@ -7,6 +7,7 @@ import '../../design/design_tokens.dart';
 import 'artwork_palette.dart';
 import 'desktop_orbit_vinyl.dart';
 import 'lyrics_view.dart';
+import 'lyric_controls.dart';
 import 'player_state.dart';
 
 final class DesktopPlayerStage extends StatelessWidget {
@@ -16,12 +17,16 @@ final class DesktopPlayerStage extends StatelessWidget {
     required this.artworkSource,
     required this.palette,
     required this.onRetryLyrics,
+    required this.onSeek,
+    required this.lyricControls,
   });
 
   final PlayerState state;
   final AppArtworkSource artworkSource;
   final ArtworkPalette palette;
   final VoidCallback onRetryLyrics;
+  final ValueChanged<Duration> onSeek;
+  final Widget lyricControls;
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +122,13 @@ final class DesktopPlayerStage extends StatelessWidget {
                             color: palette.foreground.withValues(alpha: .62),
                           ),
                         ),
-                        const SizedBox(height: 52),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: DesktopLyricSettingsPopover(
+                            child: lyricControls,
+                          ),
+                        ),
                         Expanded(
                           child: LayoutBuilder(
                             builder: (context, lyricsConstraints) => Align(
@@ -133,6 +144,7 @@ final class DesktopPlayerStage extends StatelessWidget {
                                   state: state,
                                   onRetry: onRetryLyrics,
                                   foreground: palette.foreground,
+                                  onSeek: onSeek,
                                 ),
                               ),
                             ),
@@ -156,11 +168,13 @@ final class _DesktopLyrics extends StatelessWidget {
     required this.state,
     required this.onRetry,
     required this.foreground,
+    required this.onSeek,
   });
 
   final PlayerState state;
   final VoidCallback onRetry;
   final Color foreground;
+  final ValueChanged<Duration> onSeek;
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +210,7 @@ final class _DesktopLyrics extends StatelessWidget {
     }
     return LyricsView(
       state: state,
+      onSeek: onSeek,
       verticalPadding: 48,
       edgeFade: true,
       horizontalPadding: 0,

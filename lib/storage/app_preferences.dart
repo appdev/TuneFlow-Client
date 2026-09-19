@@ -3,6 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum AppLanguage { system, zh, en }
 
+enum LyricFontSize { small, standard, large }
+
+enum LyricAlignment { adaptive, left, center, right }
+
+enum LyricAuxiliaryOrder { translationFirst, romanizationFirst }
+
 const bytesPerGiB = 1024 * 1024 * 1024;
 const defaultMediaCacheLimitBytes = 5 * bytesPerGiB;
 const mediaCacheLimitOptionsBytes = <int>[
@@ -34,6 +40,14 @@ final class AppSettings {
     this.keepAwake = false,
     this.showLyrics = false,
     this.showTranslation = true,
+    this.showRomanization = false,
+    this.lyricFontSize = LyricFontSize.standard,
+    this.lyricAlignment = LyricAlignment.adaptive,
+    this.lyricAuxiliaryOrder = LyricAuxiliaryOrder.translationFirst,
+    this.useTraditionalLyrics = false,
+    this.emphasizeActiveLyric = true,
+    this.rememberPlaybackProgress = false,
+    this.autoSkipPlaybackErrors = false,
     this.reduceTransparency = false,
     this.cacheLimitBytes = defaultMediaCacheLimitBytes,
   });
@@ -48,6 +62,14 @@ final class AppSettings {
   final bool keepAwake;
   final bool showLyrics;
   final bool showTranslation;
+  final bool showRomanization;
+  final LyricFontSize lyricFontSize;
+  final LyricAlignment lyricAlignment;
+  final LyricAuxiliaryOrder lyricAuxiliaryOrder;
+  final bool useTraditionalLyrics;
+  final bool emphasizeActiveLyric;
+  final bool rememberPlaybackProgress;
+  final bool autoSkipPlaybackErrors;
   final bool reduceTransparency;
   final int cacheLimitBytes;
 
@@ -66,6 +88,14 @@ final class AppSettings {
     bool? keepAwake,
     bool? showLyrics,
     bool? showTranslation,
+    bool? showRomanization,
+    LyricFontSize? lyricFontSize,
+    LyricAlignment? lyricAlignment,
+    LyricAuxiliaryOrder? lyricAuxiliaryOrder,
+    bool? useTraditionalLyrics,
+    bool? emphasizeActiveLyric,
+    bool? rememberPlaybackProgress,
+    bool? autoSkipPlaybackErrors,
     bool? reduceTransparency,
     int? cacheLimitBytes,
   }) => AppSettings(
@@ -83,6 +113,16 @@ final class AppSettings {
     keepAwake: keepAwake ?? this.keepAwake,
     showLyrics: showLyrics ?? this.showLyrics,
     showTranslation: showTranslation ?? this.showTranslation,
+    showRomanization: showRomanization ?? this.showRomanization,
+    lyricFontSize: lyricFontSize ?? this.lyricFontSize,
+    lyricAlignment: lyricAlignment ?? this.lyricAlignment,
+    lyricAuxiliaryOrder: lyricAuxiliaryOrder ?? this.lyricAuxiliaryOrder,
+    useTraditionalLyrics: useTraditionalLyrics ?? this.useTraditionalLyrics,
+    emphasizeActiveLyric: emphasizeActiveLyric ?? this.emphasizeActiveLyric,
+    rememberPlaybackProgress:
+        rememberPlaybackProgress ?? this.rememberPlaybackProgress,
+    autoSkipPlaybackErrors:
+        autoSkipPlaybackErrors ?? this.autoSkipPlaybackErrors,
     reduceTransparency: reduceTransparency ?? this.reduceTransparency,
     cacheLimitBytes: cacheLimitBytes ?? this.cacheLimitBytes,
   );
@@ -100,6 +140,14 @@ final class AppSettings {
       other.keepAwake == keepAwake &&
       other.showLyrics == showLyrics &&
       other.showTranslation == showTranslation &&
+      other.showRomanization == showRomanization &&
+      other.lyricFontSize == lyricFontSize &&
+      other.lyricAlignment == lyricAlignment &&
+      other.lyricAuxiliaryOrder == lyricAuxiliaryOrder &&
+      other.useTraditionalLyrics == useTraditionalLyrics &&
+      other.emphasizeActiveLyric == emphasizeActiveLyric &&
+      other.rememberPlaybackProgress == rememberPlaybackProgress &&
+      other.autoSkipPlaybackErrors == autoSkipPlaybackErrors &&
       other.reduceTransparency == reduceTransparency &&
       other.cacheLimitBytes == cacheLimitBytes;
 
@@ -115,6 +163,14 @@ final class AppSettings {
     keepAwake,
     showLyrics,
     showTranslation,
+    showRomanization,
+    lyricFontSize,
+    lyricAlignment,
+    lyricAuxiliaryOrder,
+    useTraditionalLyrics,
+    emphasizeActiveLyric,
+    rememberPlaybackProgress,
+    autoSkipPlaybackErrors,
     reduceTransparency,
     cacheLimitBytes,
   );
@@ -140,6 +196,14 @@ final class SharedAppPreferences implements AppPreferences {
   static const _keepAwakeKey = 'keep_awake';
   static const _showLyricsKey = 'show_lyrics';
   static const _showTranslationKey = 'show_translation';
+  static const _showRomanizationKey = 'show_romanization';
+  static const _lyricFontSizeKey = 'lyric_font_size';
+  static const _lyricAlignmentKey = 'lyric_alignment';
+  static const _lyricAuxiliaryOrderKey = 'lyric_auxiliary_order';
+  static const _useTraditionalLyricsKey = 'use_traditional_lyrics';
+  static const _emphasizeActiveLyricKey = 'emphasize_active_lyric';
+  static const _rememberPlaybackProgressKey = 'remember_playback_progress';
+  static const _autoSkipPlaybackErrorsKey = 'auto_skip_playback_errors';
   static const _reduceTransparencyKey = 'reduce_transparency';
   static const _cacheLimitKey = 'media_cache_limit_bytes';
 
@@ -172,6 +236,31 @@ final class SharedAppPreferences implements AppPreferences {
       keepAwake: await _preferences.getBool(_keepAwakeKey) ?? false,
       showLyrics: await _preferences.getBool(_showLyricsKey) ?? false,
       showTranslation: await _preferences.getBool(_showTranslationKey) ?? true,
+      showRomanization:
+          await _preferences.getBool(_showRomanizationKey) ?? false,
+      lyricFontSize: _enumValue(
+        LyricFontSize.values,
+        await _preferences.getString(_lyricFontSizeKey),
+        LyricFontSize.standard,
+      ),
+      lyricAlignment: _enumValue(
+        LyricAlignment.values,
+        await _preferences.getString(_lyricAlignmentKey),
+        LyricAlignment.adaptive,
+      ),
+      lyricAuxiliaryOrder: _enumValue(
+        LyricAuxiliaryOrder.values,
+        await _preferences.getString(_lyricAuxiliaryOrderKey),
+        LyricAuxiliaryOrder.translationFirst,
+      ),
+      useTraditionalLyrics:
+          await _preferences.getBool(_useTraditionalLyricsKey) ?? false,
+      emphasizeActiveLyric:
+          await _preferences.getBool(_emphasizeActiveLyricKey) ?? true,
+      rememberPlaybackProgress:
+          await _preferences.getBool(_rememberPlaybackProgressKey) ?? false,
+      autoSkipPlaybackErrors:
+          await _preferences.getBool(_autoSkipPlaybackErrorsKey) ?? false,
       reduceTransparency:
           await _preferences.getBool(_reduceTransparencyKey) ?? false,
       cacheLimitBytes: _cacheLimitOrDefault(
@@ -195,6 +284,35 @@ final class SharedAppPreferences implements AppPreferences {
     await _preferences.setBool(_keepAwakeKey, settings.keepAwake);
     await _preferences.setBool(_showLyricsKey, settings.showLyrics);
     await _preferences.setBool(_showTranslationKey, settings.showTranslation);
+    await _preferences.setBool(_showRomanizationKey, settings.showRomanization);
+    await _preferences.setString(
+      _lyricFontSizeKey,
+      settings.lyricFontSize.name,
+    );
+    await _preferences.setString(
+      _lyricAlignmentKey,
+      settings.lyricAlignment.name,
+    );
+    await _preferences.setString(
+      _lyricAuxiliaryOrderKey,
+      settings.lyricAuxiliaryOrder.name,
+    );
+    await _preferences.setBool(
+      _useTraditionalLyricsKey,
+      settings.useTraditionalLyrics,
+    );
+    await _preferences.setBool(
+      _emphasizeActiveLyricKey,
+      settings.emphasizeActiveLyric,
+    );
+    await _preferences.setBool(
+      _rememberPlaybackProgressKey,
+      settings.rememberPlaybackProgress,
+    );
+    await _preferences.setBool(
+      _autoSkipPlaybackErrorsKey,
+      settings.autoSkipPlaybackErrors,
+    );
     await _preferences.setBool(
       _reduceTransparencyKey,
       settings.reduceTransparency,

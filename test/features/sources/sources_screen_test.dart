@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -50,6 +52,133 @@ Widget harness(Widget child) => ShadApp.custom(
 );
 
 void main() {
+  testWidgets('imports a local script and refreshes without an install form', (
+    tester,
+  ) async {
+    Object? submitted;
+    var imported = false;
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.method == 'POST') {
+          expect(request.url.path, '/api/v1/sources');
+          submitted = jsonDecode(request.body);
+          imported = true;
+          return ok(source('local', enabled: false));
+        }
+        return ok([if (imported) source('local', enabled: false)]);
+      }),
+    );
+    await tester.pumpWidget(
+      harness(
+        SourcesScreen(
+          controller: SourcesController(SourceRepository(api)),
+          pickSourceFile: () async => XFile.fromData(
+            utf8.encode('\uFEFF  const source = {};  '),
+            name: 'source.js',
+            path: 'source.js',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('安装脚本'), findsNothing);
+    expect(find.byKey(const Key('source-script-input')), findsNothing);
+    expect(find.text('从 URL 导入'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('source-import-local')));
+    await tester.pumpAndSettle();
+    expect(submitted, {'script': 'const source = {};'});
+    expect(find.text('音源 local'), findsOneWidget);
+    expect(find.text('尚未导入音源'), findsNothing);
+  });
+
+  for (final scenario in ['cancel', 'empty', 'extension', 'encoding', 'read']) {
+    testWidgets('local import handles $scenario without submitting', (
+      tester,
+    ) async {
+      var posts = 0;
+      final api = ServiceApi(
+        ServiceOrigin.parse('http://service.local'),
+        client: MockClient((request) async {
+          if (request.method == 'POST') posts++;
+          return ok([]);
+        }),
+      );
+      await tester.pumpWidget(
+        harness(
+          SourcesScreen(
+            controller: SourcesController(SourceRepository(api)),
+            pickSourceFile: () async {
+              if (scenario == 'cancel') return null;
+              if (scenario == 'read') throw StateError('File unavailable');
+              return XFile.fromData(
+                scenario == 'encoding'
+                    ? Uint8List.fromList([0xff])
+                    : utf8.encode('  '),
+                name: scenario == 'extension' ? 'source.txt' : 'source.js',
+                path: scenario == 'extension' ? 'source.txt' : 'source.js',
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('source-import-local')));
+      await tester.pumpAndSettle();
+      expect(posts, 0);
+      expect(find.text('从本地导入'), findsOneWidget);
+      if (scenario == 'cancel') {
+        expect(find.text('音源操作失败'), findsNothing);
+      } else {
+        expect(find.text('音源操作失败'), findsOneWidget);
+        expect(
+          find.text(switch (scenario) {
+            'empty' => '音源文件为空，请选择包含脚本的 .js 文件。',
+            'extension' => '请选择 .js 格式的音源文件。',
+            _ => '无法读取音源文件，请确认文件可访问且使用 UTF-8 编码后重试。',
+          }),
+          findsOneWidget,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('local import reports service failure and allows retry', (
+    tester,
+  ) async {
+    var posts = 0;
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((request) async {
+        if (request.method == 'POST') {
+          posts++;
+          return http.Response('Service unavailable', 503);
+        }
+        return ok([]);
+      }),
+    );
+    await tester.pumpWidget(
+      harness(
+        SourcesScreen(
+          controller: SourcesController(SourceRepository(api)),
+          pickSourceFile: () async => XFile.fromData(
+            utf8.encode('const source = {};'),
+            name: 'source.js',
+            path: 'source.js',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('source-import-local')));
+    await tester.pumpAndSettle();
+    expect(find.text('音源操作失败'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('source-import-local')));
+    await tester.pumpAndSettle();
+    expect(posts, 2);
+  });
+
   test('source version label never duplicates the v prefix', () {
     expect(sourceVersionLabel('1.2.0'), 'v1.2.0');
     expect(sourceVersionLabel('v1.2.0'), 'v1.2.0');

@@ -13,6 +13,7 @@ import '../features/playlists/playlist_repository.dart';
 import '../features/radio/radio_controller.dart';
 import '../features/radio/radio_repository.dart';
 import '../storage/app_settings_controller.dart';
+import '../storage/app_preferences.dart';
 import 'app_providers.dart';
 
 final playerControllerProvider = Provider<PlayerController?>((ref) {
@@ -24,16 +25,33 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
       ref.read(appSettingsProvider).value?.quality.apiValue ?? '128k';
   final showTranslation =
       ref.read(appSettingsProvider).value?.showTranslation ?? true;
+  final settings = ref.read(appSettingsProvider).value ?? const AppSettings();
   final controller = PlayerController(
     resolver: PlaybackRepository(api),
     audio: ref.read(audioPortProvider),
     quality: quality,
     showTranslation: showTranslation,
+    showLyrics: settings.showLyrics,
+    showRomanization: settings.showRomanization,
+    lyricFontSize: settings.lyricFontSize,
+    lyricAlignment: settings.lyricAlignment,
+    lyricAuxiliaryOrder: settings.lyricAuxiliaryOrder,
+    useTraditionalLyrics: settings.useTraditionalLyrics,
+    emphasizeActiveLyric: settings.emphasizeActiveLyric,
+    rememberPlaybackProgress: settings.rememberPlaybackProgress,
+    autoSkipPlaybackErrors: settings.autoSkipPlaybackErrors,
+    trackStateStore: ref.read(trackPlaybackStateStoreProvider),
+    reportPersistenceError: (_) =>
+        ref.read(appMessageCenterProvider).enqueue('本地播放设置保存失败', '当前会话仍会保留更改。'),
     sessions: PlaybackHistoryRepository(
       api,
       platform: currentPlaybackPlatform(),
     ),
   );
+  ref.listen(appSettingsProvider, (previous, next) {
+    final value = next.value;
+    if (value != null) controller.applySettings(value);
+  });
   ref.onDispose(controller.dispose);
   return controller;
 });

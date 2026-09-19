@@ -31,10 +31,9 @@ void main() {
     expect(await api.request('POST', '/api/v1/test', body: {'value': 1}), {
       'ok': true,
     });
-    expect(logs, hasLength(4));
-    expect(logs[1], '[HTTP] Request: {"value":1}');
+    expect(logs, hasLength(3));
+    expect(logs[1], '[HTTP] Request body omitted (11 chars)');
     expect(logs[2], contains('status=201'));
-    expect(logs[3], '[HTTP] Response: {"data":{"ok":true}}');
   });
 
   test('maps the service error envelope', () async {
@@ -64,9 +63,9 @@ void main() {
             .having((e) => e.status, 'status', 503),
       ),
     );
-    expect(logs, hasLength(3));
+    expect(logs, hasLength(2));
     expect(logs[1], contains('status=503'));
-    expect(logs[2], contains('"code":"SOURCE_UNAVAILABLE"'));
+    expect(logs[1], contains('bytes='));
   });
 
   test('rejects redirects and malformed success envelopes', () async {
@@ -129,7 +128,7 @@ void main() {
     ]);
   });
 
-  test('logs HTTP query parameters and response body in debug mode', () async {
+  test('redacts HTTP query values and response bodies in debug logs', () async {
     final logs = <String>[];
     final api = ServiceApi(
       ServiceOrigin.parse('http://service.local'),
@@ -144,20 +143,22 @@ void main() {
       '/api/v1/search?keyword=private%20query&source=secret',
     );
 
-    expect(logs, hasLength(3));
+    expect(logs, hasLength(2));
     expect(
       logs.first,
       '[HTTP] --> GET '
-      'http://service.local/api/v1/search?keyword=private%20query&source=secret',
+      'http://service.local/api/v1/search?keyword=%3Credacted%3E&source=%3Credacted%3E',
     );
     expect(logs[1], contains('[HTTP] <-- GET'));
     expect(logs[1], contains('status=200'));
     expect(logs[1], contains('duration='));
-    expect(logs.last, '[HTTP] Response: {"data":null}');
+    expect(logs[1], contains('bytes=13'));
+    expect(logs.join('\n'), isNot(contains('private query')));
+    expect(logs.join('\n'), isNot(contains('{"data":null}')));
   });
 
   test(
-    'logs HTTP network failures with request details in debug mode',
+    'logs HTTP network failures without private request details',
     () async {
       final logs = <String>[];
       final api = ServiceApi(
@@ -179,8 +180,9 @@ void main() {
 
       expect(logs, hasLength(2));
       expect(logs.last, contains('[HTTP] xx> GET'));
-      expect(logs.last, contains('token=secret'));
-      expect(logs.last, contains('error=Bad state: private details'));
+      expect(logs.last, contains('token=%3Credacted%3E'));
+      expect(logs.last, contains('error=StateError'));
+      expect(logs.last, isNot(contains('private details')));
     },
   );
 }

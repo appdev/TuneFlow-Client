@@ -16,6 +16,8 @@ enum RadioRankingSource {
   familiarFallback,
 }
 
+const radioBatchSize = 10;
+
 final class RadioItem {
   const RadioItem({
     required this.recommendationItemId,
@@ -85,7 +87,7 @@ final class RadioBatch {
       json['items'],
       'radio.items',
     ).map(RadioItem.fromJson).toList(growable: false);
-    if (items.length > 3 ||
+    if (items.length > radioBatchSize ||
         items.any((item) => item.radioSessionId != sessionId) ||
         items.map((item) => item.recommendationItemId).toSet().length !=
             items.length) {

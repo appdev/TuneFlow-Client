@@ -9,7 +9,7 @@ abstract interface class RadioSessionPort {
     required String requestId,
     Track? currentTrack,
     List<Track> queuedTracks = const [],
-    int limit = 3,
+    int limit = radioBatchSize,
   });
   Future<RadioBatch> next({
     required String sessionId,
@@ -17,7 +17,7 @@ abstract interface class RadioSessionPort {
     required String requestId,
     Track? currentTrack,
     List<Track> queuedTracks = const [],
-    int limit = 3,
+    int limit = radioBatchSize,
   });
   Future<void> close(String sessionId);
 }
@@ -49,7 +49,7 @@ final class RadioRepository implements RadioSessionPort {
     required String requestId,
     Track? currentTrack,
     List<Track> queuedTracks = const [],
-    int limit = 3,
+    int limit = radioBatchSize,
   }) async => RadioBatch.fromJson(
     await api.request(
       'POST',
@@ -76,7 +76,7 @@ final class RadioRepository implements RadioSessionPort {
     required String requestId,
     Track? currentTrack,
     List<Track> queuedTracks = const [],
-    int limit = 3,
+    int limit = radioBatchSize,
   }) async => RadioBatch.fromJson(
     await api.request(
       'POST',

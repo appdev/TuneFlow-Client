@@ -62,6 +62,7 @@ final _appRouterReadsProvider = Provider((ref) {
     radio: () => ref.read(radioControllerProvider),
     keepAwake: () => ref.read(appSettingsProvider).value?.keepAwake ?? false,
     settings: () => ref.read(settingsControllerProvider),
+    serviceSettingsUpdates: ref.read(serviceSettingsUpdatesProvider),
   );
 });
 
@@ -97,6 +98,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     readRadio: reads.radio,
     readKeepAwake: reads.keepAwake,
     readSettings: reads.settings,
+    serviceSettingsUpdates: reads.serviceSettingsUpdates,
     readSourceVersion: () => invalidation.sourcesVersion,
     readPlaylistVersion: () => invalidation.playlistsVersion,
     readDownloadVersion: () => invalidation.downloadsVersion,

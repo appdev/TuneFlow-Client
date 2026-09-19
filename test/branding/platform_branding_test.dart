@@ -111,11 +111,10 @@ void main() {
     expect(File('linux/runner/resources/tuneflow.png').existsSync(), isTrue);
   });
 
-  test('exactly the five supported platform directories are present', () {
-    for (final name in ['android', 'ios', 'macos', 'windows', 'linux']) {
+  test('exactly the six supported platform directories are present', () {
+    for (final name in ['android', 'ios', 'macos', 'windows', 'linux', 'web']) {
       expect(Directory(name).existsSync(), isTrue, reason: '$name is required');
     }
-    expect(Directory('web').existsSync(), isFalse);
   });
 
   test('AppIcon catalogs reference existing files', () {

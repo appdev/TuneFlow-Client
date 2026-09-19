@@ -14,30 +14,32 @@ http.Response data(Object? value) => http.Response(
   200,
   headers: {'content-type': 'application/json'},
 );
-Map<String, Object?> batchJson({String sessionId = 'radio-1'}) => {
-  'sessionId': sessionId,
-  'mode': 'dedicated',
-  'status': 'active',
-  'aiStatus': 'enhanced',
-  'profileId': 'profile-1',
-  'items': [
+Map<String, Object?> batchJson({String sessionId = 'radio-1', int count = 1}) =>
     {
-      'recommendationItemId': 'item-1',
-      'radioSessionId': sessionId,
-      'canonicalTrackId': 'track-1',
-      'track': {
-        'id': 'track-1',
-        'source': 'kw',
-        'name': 'Track',
-        'singer': 'Artist',
-      },
-      'rankingSource': 'ai',
-      'bucket': 'new',
-      'reason': {'type': 'exploration', 'labels': <String>[]},
-      'feedback': {'interested': false, 'interestedFeedbackId': null},
-    },
-  ],
-};
+      'sessionId': sessionId,
+      'mode': 'dedicated',
+      'status': 'active',
+      'aiStatus': 'enhanced',
+      'profileId': 'profile-1',
+      'items': List.generate(
+        count,
+        (index) => {
+          'recommendationItemId': 'item-$index',
+          'radioSessionId': sessionId,
+          'canonicalTrackId': 'track-$index',
+          'track': {
+            'id': 'track-$index',
+            'source': 'kw',
+            'name': 'Track $index',
+            'singer': 'Artist',
+          },
+          'rankingSource': 'ai',
+          'bucket': 'new',
+          'reason': {'type': 'exploration', 'labels': <String>[]},
+          'feedback': {'interested': false, 'interestedFeedbackId': null},
+        },
+      ),
+    };
 
 void main() {
   test(
@@ -67,9 +69,10 @@ void main() {
       final body = jsonDecode(call.body) as Map;
       expect(call.url.path, '/api/v1/radio/sessions');
       expect(body, containsPair('queueGeneration', 4));
+      expect(body, containsPair('limit', 10));
       expect(body.toString(), isNot(contains('apiKey')));
       expect(result.aiStatus, RadioAiStatus.enhanced);
-      expect(result.items.single.track.id, 'track-1');
+      expect(result.items.single.track.id, 'track-0');
     },
   );
 
@@ -80,5 +83,13 @@ void main() {
           ..['radioSessionId'] = 'other',
       ];
     expect(() => RadioBatch.fromJson(invalid), throwsA(isA<Exception>()));
+  });
+
+  test('accepts ten items and rejects a larger batch', () {
+    expect(RadioBatch.fromJson(batchJson(count: 10)).items, hasLength(10));
+    expect(
+      () => RadioBatch.fromJson(batchJson(count: 11)),
+      throwsA(isA<Exception>()),
+    );
   });
 }

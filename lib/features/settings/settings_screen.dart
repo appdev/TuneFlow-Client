@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -13,6 +14,7 @@ import '../../design/components/status_badge.dart';
 import '../../design/design_tokens.dart';
 import '../../storage/app_preferences.dart';
 import '../connection/connection_repository.dart';
+import '../radio/radio_controller.dart';
 import 'settings_controller.dart';
 
 final class SettingsScreen extends StatefulWidget {
@@ -22,11 +24,13 @@ final class SettingsScreen extends StatefulWidget {
     this.onBack,
     this.onConnectionSettings,
     this.onServiceSettings,
+    this.radio,
   });
   final SettingsController controller;
   final VoidCallback? onBack;
   final VoidCallback? onConnectionSettings;
   final VoidCallback? onServiceSettings;
+  final RadioController? radio;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -56,77 +60,105 @@ final class _SettingsScreenState extends State<SettingsScreen> {
         final mobile =
             classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
         final settings = widget.controller.state;
+        final twoColumns = constraints.maxWidth >= 1000;
+        final playback = _PlaybackSettings(
+          controller: widget.controller,
+          settings: settings,
+          radio: widget.radio,
+        );
+        final lyrics = _LocalPlaybackAndLyricsSettings(
+          controller: widget.controller,
+          settings: settings,
+        );
+        final general = _GeneralSettings(
+          controller: widget.controller,
+          settings: settings,
+        );
+        final service = _SettingsSection(
+          title: 'Service 与连接',
+          description: '管理服务连接与服务端功能',
+          children: [
+            _ConnectionCard(
+              controller: widget.controller,
+              onPressed: widget.onConnectionSettings,
+            ),
+            _ServiceSettingsEntry(onPressed: widget.onServiceSettings),
+            _AutoDownloadOnPlaySetting(controller: widget.controller),
+          ],
+        );
+        final cache = _CacheCard(controller: widget.controller);
         return ColoredBox(
           key: Key(mobile ? 'settings-mobile-layout' : 'settings-wide-layout'),
           color: AppTokens.of(context).background,
           child: SingleChildScrollView(
             key: const Key('settings-route'),
             padding: EdgeInsets.fromLTRB(
-              mobile ? 16 : 38,
-              mobile ? 20 : 34,
-              mobile ? 16 : 38,
+              mobile ? 16 : 32,
+              mobile ? 20 : 32,
+              mobile ? 16 : 32,
               40,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (mobile)
-                  AppMobilePageHeader(
-                    title: '设置',
-                    eyebrow: '偏好与连接',
-                    onBack: widget.onBack,
-                  )
-                else ...[
-                  const Text('偏好与连接', style: AppTypography.metadata),
-                  const SizedBox(height: 3),
-                  const Text('设置', style: AppTypography.display),
-                ],
-                const SizedBox(height: AppSpacing.lg),
-                if (mobile) ...[
-                  _ConnectionCard(
-                    controller: widget.controller,
-                    onPressed: widget.onConnectionSettings,
-                    compact: true,
-                  ),
-                  const SizedBox(height: 12),
-                  _ServiceSettingsEntry(onPressed: widget.onServiceSettings),
-                  const SizedBox(height: 12),
-                  _MobilePreferences(
-                    controller: widget.controller,
-                    settings: settings,
-                  ),
-                ] else
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 280,
-                        child: Column(
-                          children: [
-                            _ConnectionCard(
-                              controller: widget.controller,
-                              onPressed: widget.onConnectionSettings,
-                              compact: true,
-                            ),
-                            const SizedBox(height: 12),
-                            _ServiceSettingsEntry(
-                              onPressed: widget.onServiceSettings,
-                            ),
-                          ],
-                        ),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (mobile)
+                      AppMobilePageHeader(title: '设置', onBack: widget.onBack)
+                    else
+                      const Text('设置', style: AppTypography.display),
+                    const SizedBox(height: 8),
+                    Text(
+                      '播放、歌词与连接偏好',
+                      style: AppTypography.body.copyWith(
+                        color: AppTokens.of(context).muted,
                       ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _DesktopPreferences(
-                          controller: widget.controller,
-                          settings: settings,
-                        ),
-                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    if (twoColumns)
+                      Row(
+                        key: const Key('settings-two-columns'),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                playback,
+                                const SizedBox(height: 24),
+                                service,
+                                const SizedBox(height: 24),
+                                cache,
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                lyrics,
+                                const SizedBox(height: 24),
+                                general,
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      playback,
+                      const SizedBox(height: 24),
+                      lyrics,
+                      const SizedBox(height: 24),
+                      general,
+                      const SizedBox(height: 24),
+                      service,
+                      const SizedBox(height: 24),
+                      cache,
                     ],
-                  ),
-                const SizedBox(height: AppSpacing.md),
-                _CacheCard(controller: widget.controller),
-              ],
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -144,16 +176,15 @@ final class _ServiceSettingsEntry extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final width = constraints.hasBoundedWidth ? constraints.maxWidth : 280.0;
-      return ShadButton.outline(
+      return ShadButton.ghost(
         key: const Key('settings-service-functions-entry'),
+        foregroundColor: AppTokens.of(context).foreground,
         width: width,
-        height: 76,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 80 * MediaQuery.textScalerOf(context).scale(1),
+        padding: EdgeInsets.zero,
         onPressed: onPressed,
         child: SizedBox(
-          // ShadButton reserves one logical pixel per side for its outline in
-          // addition to the configured horizontal padding.
-          width: width - 34,
+          width: width - 2,
           child: const Row(
             children: [
               Icon(LucideIcons.slidersHorizontal, size: 20),
@@ -227,6 +258,15 @@ final class _CacheCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final usage = controller.cacheUsage;
+    if (kIsWeb) {
+      return const _SettingsSection(
+        title: '浏览器存储',
+        description: 'Web 端不使用原生音频文件缓存。',
+        children: [
+          Text('页面资源缓存由浏览器管理，可通过浏览器的站点设置清理。歌曲下载保存在 Service，不会保存到此设备。'),
+        ],
+      );
+    }
     final limitSelect = IgnorePointer(
       ignoring: controller.cacheBusy,
       child: KeyedSubtree(
@@ -250,14 +290,11 @@ final class _CacheCard extends StatelessWidget {
       onPressed: () => unawaited(_clear(context)),
       child: const Text('清理缓存'),
     );
-    return ShadCard(
-      padding: const EdgeInsets.all(18),
-      radius: BorderRadius.circular(AppRadii.panel),
-      title: const Text('本机缓存'),
-      description: const Text('只管理当前设备，不会影响 Service 端下载内容。'),
-      child: Padding(
-        padding: const EdgeInsets.only(top: AppSpacing.lg),
-        child: Column(
+    return _SettingsSection(
+      title: '本机缓存',
+      description: '只管理当前设备，不会影响 Service 端下载内容。',
+      children: [
+        Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
@@ -304,36 +341,31 @@ final class _CacheCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
 
 final class _ConnectionCard extends StatelessWidget {
-  const _ConnectionCard({
-    required this.controller,
-    required this.onPressed,
-    this.compact = false,
-  });
+  const _ConnectionCard({required this.controller, required this.onPressed});
 
   final SettingsController controller;
   final VoidCallback? onPressed;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final diagnostics = controller.connection;
     final connected = diagnostics?.connected ?? false;
-    final horizontalPadding = compact ? 16.0 : 20.0;
     return LayoutBuilder(
-      builder: (context, constraints) => ShadButton.outline(
+      builder: (context, constraints) => ShadButton.ghost(
         key: const Key('settings-connection-entry'),
+        foregroundColor: AppTokens.of(context).foreground,
         width: constraints.maxWidth,
-        height: 88,
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+        height: 88 * MediaQuery.textScalerOf(context).scale(1),
+        padding: EdgeInsets.zero,
         onPressed: onPressed,
         child: SizedBox(
-          width: constraints.maxWidth - horizontalPadding * 2 - 2,
+          width: constraints.maxWidth - 2,
           child: Row(
             children: [
               const Icon(LucideIcons.server, size: 20),
@@ -377,161 +409,339 @@ String _connectionLabel(ConnectionDiagnostics? diagnostics) {
   };
 }
 
-final class _MobilePreferences extends StatelessWidget {
-  const _MobilePreferences({required this.controller, required this.settings});
+/// A single quiet surface per group; rows use space instead of nested cards.
+final class _SettingsSection extends StatelessWidget {
+  const _SettingsSection({
+    required this.title,
+    required this.children,
+    this.description,
+  });
+
+  final String title;
+  final String? description;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: BorderRadius.circular(AppRadii.panel),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: AppTypography.section),
+          if (description != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              description!,
+              style: AppTypography.metadata.copyWith(color: tokens.muted),
+            ),
+          ],
+          const SizedBox(height: 16),
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0)
+              Divider(height: 1, thickness: 1, color: tokens.borderSoft),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+final class _GeneralSettings extends StatelessWidget {
+  const _GeneralSettings({required this.controller, required this.settings});
 
   final SettingsController controller;
   final AppSettings settings;
 
   @override
-  Widget build(BuildContext context) => ShadCard(
-    padding: const EdgeInsets.all(18),
-    radius: BorderRadius.circular(AppRadii.panel),
-    child: Column(
-      children: [
-        _PreferenceSelect<ThemeMode>(
-          label: '主题',
-          value: _themeLabel(settings.themeMode),
-          selected: settings.themeMode,
-          options: const [
-            ShadOption(value: ThemeMode.system, child: Text('跟随系统')),
-            ShadOption(value: ThemeMode.light, child: Text('浅色')),
-            ShadOption(value: ThemeMode.dark, child: Text('深色')),
-          ],
-          onChanged: controller.setThemeMode,
-        ),
-        const SizedBox(height: 12),
-        _PreferenceRow(
-          label: '减少透明效果',
-          value: settings.reduceTransparency ? '开启' : '关闭',
-          onTap: () =>
-              controller.setReduceTransparency(!settings.reduceTransparency),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '使用不透明表面替代模糊，界面布局保持不变。',
-              style: AppTypography.metadata.copyWith(
-                color: AppTokens.of(context).muted,
-              ),
-            ),
+  Widget build(BuildContext context) => _SettingsSection(
+    title: '通用',
+    description: '此设备的界面偏好',
+    children: [
+      _LabeledSelect<ThemeMode>(
+        label: '主题',
+        value: settings.themeMode,
+        options: const [
+          ShadOption(value: ThemeMode.system, child: Text('跟随系统')),
+          ShadOption(value: ThemeMode.light, child: Text('浅色')),
+          ShadOption(value: ThemeMode.dark, child: Text('深色')),
+        ],
+        labelFor: _themeLabel,
+        onChanged: controller.setThemeMode,
+      ),
+      _LabeledSelect<AppLanguage>(
+        label: '语言',
+        value: settings.language,
+        options: const [
+          ShadOption(value: AppLanguage.system, child: Text('跟随系统')),
+          ShadOption(value: AppLanguage.zh, child: Text('简体中文')),
+          ShadOption(value: AppLanguage.en, child: Text('English')),
+        ],
+        labelFor: _languageLabel,
+        onChanged: controller.setLanguage,
+      ),
+      _SwitchPreference(
+        key: const Key('settings-reduce-transparency'),
+        value: settings.reduceTransparency,
+        onChanged: controller.setReduceTransparency,
+        label: '减少透明效果',
+        description: '使用不透明表面替代模糊，界面布局保持不变。',
+      ),
+    ],
+  );
+}
+
+final class _PlaybackSettings extends StatelessWidget {
+  const _PlaybackSettings({
+    required this.controller,
+    required this.settings,
+    this.radio,
+  });
+
+  final SettingsController controller;
+  final AppSettings settings;
+  final RadioController? radio;
+
+  @override
+  Widget build(BuildContext context) => _SettingsSection(
+    title: '播放',
+    description: '音质、进度与连续播放',
+    children: [
+      _LabeledSelect<PlaybackQuality>(
+        label: '默认音质',
+        value: settings.quality,
+        options: const [
+          ShadOption(value: PlaybackQuality.low128k, child: Text('128k')),
+          ShadOption(value: PlaybackQuality.high320k, child: Text('320k')),
+          ShadOption(value: PlaybackQuality.lossless, child: Text('无损')),
+        ],
+        labelFor: _qualityLabel,
+        onChanged: controller.setQuality,
+      ),
+
+      _SwitchPreference(
+        key: const Key('settings-keep-awake'),
+        value: settings.keepAwake,
+        onChanged: controller.setKeepAwake,
+        label: '保持屏幕常亮',
+      ),
+      _SwitchPreference(
+        key: const Key('settings-remember-progress'),
+        value: settings.rememberPlaybackProgress,
+        onChanged: controller.setRememberPlaybackProgress,
+        label: '记忆播放进度',
+        description: '仅保存在此设备，接近歌曲结尾时自动清除。',
+      ),
+      _SwitchPreference(
+        key: const Key('settings-auto-skip-errors'),
+        value: settings.autoSkipPlaybackErrors,
+        onChanged: controller.setAutoSkipPlaybackErrors,
+        label: '播放错误时自动跳过',
+        description: '仅尝试队列中尚未失败的下一首歌曲。',
+      ),
+      if (radio != null) _AutoRadioContinuationSetting(controller: radio!),
+    ],
+  );
+}
+
+final class _LocalPlaybackAndLyricsSettings extends StatelessWidget {
+  const _LocalPlaybackAndLyricsSettings({
+    required this.controller,
+    required this.settings,
+  });
+
+  final SettingsController controller;
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) => _SettingsSection(
+    title: '歌词',
+    description: '显示内容与阅读方式',
+    children: [
+      _SwitchPreference(
+        key: const Key('settings-show-lyrics'),
+        value: settings.showLyrics,
+        onChanged: controller.setShowLyrics,
+        label: '默认显示歌词',
+      ),
+      _SwitchPreference(
+        key: const Key('settings-show-translation'),
+        value: settings.showTranslation,
+        onChanged: controller.setShowTranslation,
+        label: '默认显示翻译',
+      ),
+      _SwitchPreference(
+        key: const Key('settings-show-romanization'),
+        value: settings.showRomanization,
+        onChanged: controller.setShowRomanization,
+        label: '默认显示罗马音',
+      ),
+      _PreferenceSelect<LyricFontSize>(
+        label: '歌词字号',
+        value: _lyricFontSizeLabel(settings.lyricFontSize),
+        selected: settings.lyricFontSize,
+        options: const [
+          ShadOption(value: LyricFontSize.small, child: Text('小')),
+          ShadOption(value: LyricFontSize.standard, child: Text('标准')),
+          ShadOption(value: LyricFontSize.large, child: Text('大')),
+        ],
+        onChanged: controller.setLyricFontSize,
+      ),
+      _PreferenceSelect<LyricAlignment>(
+        label: '歌词对齐',
+        value: _lyricAlignmentLabel(settings.lyricAlignment),
+        selected: settings.lyricAlignment,
+        options: const [
+          ShadOption(value: LyricAlignment.adaptive, child: Text('跟随布局')),
+          ShadOption(value: LyricAlignment.left, child: Text('居左')),
+          ShadOption(value: LyricAlignment.center, child: Text('居中')),
+          ShadOption(value: LyricAlignment.right, child: Text('居右')),
+        ],
+        onChanged: controller.setLyricAlignment,
+      ),
+      _PreferenceSelect<LyricAuxiliaryOrder>(
+        label: '辅助歌词顺序',
+        value: _lyricAuxiliaryOrderLabel(settings.lyricAuxiliaryOrder),
+        selected: settings.lyricAuxiliaryOrder,
+        options: const [
+          ShadOption(
+            value: LyricAuxiliaryOrder.translationFirst,
+            child: Text('翻译优先'),
           ),
-        ),
-        const SizedBox(height: 6),
-        _PreferenceSelect<AppLanguage>(
-          label: '语言',
-          value: _languageLabel(settings.language),
-          selected: settings.language,
-          options: const [
-            ShadOption(value: AppLanguage.system, child: Text('跟随系统')),
-            ShadOption(value: AppLanguage.zh, child: Text('简体中文')),
-            ShadOption(value: AppLanguage.en, child: Text('English')),
-          ],
-          onChanged: controller.setLanguage,
-        ),
-        const SizedBox(height: 12),
-        _PreferenceSelect<PlaybackQuality>(
-          label: '默认音质',
-          value: _qualityLabel(settings.quality),
-          selected: settings.quality,
-          options: const [
-            ShadOption(value: PlaybackQuality.low128k, child: Text('128k')),
-            ShadOption(value: PlaybackQuality.high320k, child: Text('320k')),
-            ShadOption(value: PlaybackQuality.lossless, child: Text('无损')),
-          ],
-          onChanged: controller.setQuality,
-        ),
-        const SizedBox(height: 12),
-        _AutoDownloadOnPlaySetting(controller: controller),
-        const SizedBox(height: 12),
-        _PreferenceRow(
-          label: '歌词翻译',
-          value: settings.showTranslation ? '开启' : '关闭',
-          onTap: () => controller.setShowTranslation(!settings.showTranslation),
-        ),
-        Offstage(
-          child: Column(
-            children: [
-              const Text('外观'),
-              ShadSwitch(
-                value: settings.keepAwake,
-                onChanged: controller.setKeepAwake,
-                label: const Text('保持屏幕常亮'),
-              ),
-              ShadSwitch(
-                value: settings.showLyrics,
-                onChanged: controller.setShowLyrics,
-                label: const Text('默认显示歌词'),
-              ),
-            ],
+          ShadOption(
+            value: LyricAuxiliaryOrder.romanizationFirst,
+            child: Text('罗马音优先'),
           ),
-        ),
-      ],
+        ],
+        onChanged: controller.setLyricAuxiliaryOrder,
+      ),
+      _SwitchPreference(
+        key: const Key('settings-traditional-lyrics'),
+        value: settings.useTraditionalLyrics,
+        onChanged: controller.setUseTraditionalLyrics,
+        label: '歌词转换为繁体中文',
+      ),
+      _SwitchPreference(
+        key: const Key('settings-emphasize-active-lyric'),
+        value: settings.emphasizeActiveLyric,
+        onChanged: controller.setEmphasizeActiveLyric,
+        label: '放大当前歌词',
+      ),
+    ],
+  );
+}
+
+final class _AutoRadioContinuationSetting extends StatelessWidget {
+  const _AutoRadioContinuationSetting({required this.controller});
+
+  final RadioController controller;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, _) => _SwitchPreference(
+      key: const Key('settings-auto-radio-continuation'),
+      value: controller.state.autoContinuation,
+      onChanged: (value) => unawaited(controller.setAutoContinuation(value)),
+      label: '随心听自动续播',
+      description: '播放队列接近末尾时自动补充推荐歌曲。',
     ),
   );
 }
 
-final class _DesktopPreferences extends StatelessWidget {
-  const _DesktopPreferences({required this.controller, required this.settings});
+final class _SwitchPreference extends StatelessWidget {
+  const _SwitchPreference({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.label,
+    this.description,
+  });
 
-  final SettingsController controller;
-  final AppSettings settings;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String label;
+  final String? description;
 
   @override
-  Widget build(BuildContext context) => ShadCard(
-    padding: const EdgeInsets.all(18),
-    radius: BorderRadius.circular(AppRadii.panel),
-    child: Column(
-      children: [
-        _LabeledSelect<ThemeMode>(
-          label: '主题',
-          value: settings.themeMode,
-          options: const [
-            ShadOption(value: ThemeMode.system, child: Text('跟随系统')),
-            ShadOption(value: ThemeMode.light, child: Text('浅色')),
-            ShadOption(value: ThemeMode.dark, child: Text('深色')),
-          ],
-          labelFor: _themeLabel,
-          onChanged: controller.setThemeMode,
-        ),
-        const SizedBox(height: 14),
-        _LabeledSelect<PlaybackQuality>(
-          label: '默认音质',
-          value: settings.quality,
-          options: const [
-            ShadOption(value: PlaybackQuality.low128k, child: Text('128k')),
-            ShadOption(value: PlaybackQuality.high320k, child: Text('320k')),
-            ShadOption(value: PlaybackQuality.lossless, child: Text('无损')),
-          ],
-          labelFor: _qualityLabel,
-          onChanged: controller.setQuality,
-        ),
-        const SizedBox(height: 14),
-        _AutoDownloadOnPlaySetting(controller: controller),
-        const SizedBox(height: 14),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          decoration: BoxDecoration(
-            color: AppTokens.of(context).surfaceWarm,
-            border: Border.all(color: AppTokens.of(context).border),
-            borderRadius: BorderRadius.circular(AppRadii.control),
-          ),
-          child: const Text('默认显示歌词与翻译 · 播放时保持唤醒'),
-        ),
-        Offstage(
-          child: Column(
+  Widget build(BuildContext context) => _ToggleRow(
+    value: value,
+    onChanged: onChanged,
+    label: label,
+    description: description,
+  );
+}
+
+/// The entire row is a pointer target; the native switch retains keyboard focus.
+final class _ToggleRow extends StatelessWidget {
+  const _ToggleRow({
+    required this.value,
+    required this.onChanged,
+    required this.label,
+    this.description,
+    this.enabled = true,
+    this.switchKey,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String label;
+  final String? description;
+  final bool enabled;
+  final Key? switchKey;
+
+  @override
+  Widget build(BuildContext context) => MergeSemantics(
+    child: MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? () => onChanged(!value) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
             children: [
-              const Text('外观'),
-              const Text('语言'),
-              const Text('保持屏幕常亮'),
-              const Text('默认显示歌词'),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: AppTypography.body),
+                    if (description != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        description!,
+                        style: AppTypography.metadata.copyWith(
+                          color: AppTokens.of(context).muted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 48,
+                height: 44,
+                child: Center(
+                  child: ShadSwitch(
+                    key: switchKey,
+                    value: value,
+                    enabled: enabled,
+                    onChanged: onChanged,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
-      ],
+      ),
     ),
   );
 }
@@ -548,24 +758,19 @@ final class _AutoDownloadOnPlaySetting extends StatelessWidget {
     final error = controller.serviceSettingsError;
     final enabled =
         available && !controller.serviceSettingsBusy && value != null;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppTokens.of(context).border),
-        borderRadius: BorderRadius.circular(AppRadii.control),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ShadSwitch(
-            key: const Key('settings-auto-download-on-play'),
+          _ToggleRow(
+            switchKey: const Key('settings-auto-download-on-play'),
             value: value ?? false,
             enabled: enabled,
             onChanged: (next) =>
                 unawaited(controller.setAutoDownloadOnPlay(next)),
-            label: const Text('边听边存'),
-            sublabel: const Text('播放在线音乐时，按 Service 的下载设置自动保存。'),
+            label: '边听边存',
+            description: '播放在线音乐时，按 Service 的下载设置自动保存。',
           ),
           if (!available) ...[
             const SizedBox(height: AppSpacing.sm),
@@ -603,36 +808,6 @@ final class _AutoDownloadOnPlaySetting extends StatelessWidget {
   }
 }
 
-final class _PreferenceRow extends StatelessWidget {
-  const _PreferenceRow({required this.label, required this.value, this.onTap});
-  final String label;
-  final String value;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadii.control),
-      child: Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        decoration: BoxDecoration(
-          border: Border.all(color: AppTokens.of(context).border),
-          borderRadius: BorderRadius.circular(AppRadii.control),
-        ),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: AppTypography.title)),
-            Text(value, style: AppTypography.title),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
 final class _PreferenceSelect<T> extends StatelessWidget {
   const _PreferenceSelect({
     required this.label,
@@ -649,21 +824,45 @@ final class _PreferenceSelect<T> extends StatelessWidget {
   final ValueChanged<T> onChanged;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    height: 56,
-    child: ShadSelect<T>(
-      initialValue: selected,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-      options: options,
-      selectedOptionBuilder: (context, _) => Row(
-        children: [
-          Expanded(child: Text(label, style: AppTypography.title)),
-          Text(value, style: AppTypography.title),
-        ],
-      ),
-      onChanged: (next) {
-        if (next != null) onChanged(next);
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            constraints.maxWidth < 280 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        final control = Semantics(
+          label: label,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: ShadSelect<T>(
+              initialValue: selected,
+              minWidth: stacked ? constraints.maxWidth : 140,
+              options: options,
+              selectedOptionBuilder: (context, _) => Text(value),
+              onChanged: (next) {
+                if (next != null) onChanged(next);
+              },
+            ),
+          ),
+        );
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(label, style: AppTypography.body),
+              const SizedBox(height: 8),
+              control,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: Text(label, style: AppTypography.body)),
+            const SizedBox(width: 12),
+            control,
+          ],
+        );
       },
     ),
   );
@@ -684,20 +883,12 @@ final class _LabeledSelect<T> extends StatelessWidget {
   final ValueChanged<T> onChanged;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(label, style: AppTypography.title),
-      const SizedBox(height: 6),
-      ShadSelect<T>(
-        initialValue: value,
-        options: options,
-        selectedOptionBuilder: (context, selected) => Text(labelFor(selected)),
-        onChanged: (next) {
-          if (next != null) onChanged(next);
-        },
-      ),
-    ],
+  Widget build(BuildContext context) => _PreferenceSelect<T>(
+    label: label,
+    value: labelFor(value),
+    selected: value,
+    options: options,
+    onChanged: onChanged,
   );
 }
 
@@ -716,6 +907,24 @@ String _languageLabel(AppLanguage value) => switch (value) {
 String _qualityLabel(PlaybackQuality value) => switch (value) {
   PlaybackQuality.lossless => '无损',
   _ => value.apiValue,
+};
+
+String _lyricFontSizeLabel(LyricFontSize value) => switch (value) {
+  LyricFontSize.small => '小',
+  LyricFontSize.standard => '标准',
+  LyricFontSize.large => '大',
+};
+
+String _lyricAlignmentLabel(LyricAlignment value) => switch (value) {
+  LyricAlignment.adaptive => '跟随布局',
+  LyricAlignment.left => '居左',
+  LyricAlignment.center => '居中',
+  LyricAlignment.right => '居右',
+};
+
+String _lyricAuxiliaryOrderLabel(LyricAuxiliaryOrder value) => switch (value) {
+  LyricAuxiliaryOrder.translationFirst => '翻译优先',
+  LyricAuxiliaryOrder.romanizationFirst => '罗马音优先',
 };
 
 String _cacheLimitLabel(int bytes) => '${bytes ~/ bytesPerGiB} GB';

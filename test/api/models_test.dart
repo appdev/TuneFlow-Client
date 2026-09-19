@@ -226,11 +226,18 @@ void main() {
     );
   });
 
-  test('Lyrics requires original text and accepts translation', () {
-    final lyrics = Lyrics.fromJson({'lyric': 'line', 'tlyric': 'translated'});
+  test('Lyrics parses every Service track and requires original text', () {
+    final lyrics = Lyrics.fromJson({
+      'lyric': 'line',
+      'tlyric': 'translated',
+      'rlyric': 'romanized',
+      'verbatimLyric': 'word timed',
+    });
 
     expect(lyrics.original, 'line');
     expect(lyrics.translation, 'translated');
+    expect(lyrics.romanization, 'romanized');
+    expect(lyrics.verbatim, 'word timed');
     expect(
       () => Lyrics.fromJson({'lyric': 1}),
       throwsA(isA<ServiceException>()),
@@ -239,6 +246,29 @@ void main() {
       () => Lyrics.fromJson({'lyric': '[00:01]���� - ������'}),
       throwsA(isA<ServiceException>()),
     );
+  });
+
+  test('Lyrics discards malformed auxiliary tracks', () {
+    final lyrics = Lyrics.fromJson({
+      'lyric': 'line',
+      'tlyric': 1,
+      'rlyric': '',
+      'verbatimLyric': 'bad \uFFFD text',
+    });
+
+    expect(lyrics.original, 'line');
+    expect(lyrics.translation, isNull);
+    expect(lyrics.romanization, isNull);
+    expect(lyrics.verbatim, isNull);
+  });
+
+  test('Lyrics accepts an original-only response', () {
+    final lyrics = Lyrics.fromJson({'lyric': 'line'});
+
+    expect(lyrics.original, 'line');
+    expect(lyrics.translation, isNull);
+    expect(lyrics.romanization, isNull);
+    expect(lyrics.verbatim, isNull);
   });
 
   test('resolved playback bundles parse optional resources compatibly', () {

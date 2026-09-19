@@ -371,6 +371,14 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
     AppSettings settings, {
     ServiceOrigin? bootstrapOrigin,
   }) {
+    if (kIsWeb) {
+      final origin = ServiceOrigin.parse(Uri.base.origin);
+      return EndpointCatalog(
+        bootstrapOrigin: origin,
+        lastConnectedOrigin: origin,
+        pinnedOrigin: origin,
+      );
+    }
     return EndpointCatalog(
       bootstrapOrigin: bootstrapOrigin ?? _tryOrigin(settings.origin),
       lastConnectedOrigin: _tryOrigin(settings.lastConnectedOrigin),

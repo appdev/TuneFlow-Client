@@ -47,10 +47,12 @@ void main() {
       'recommendation.musicBrainzBaseUrl': officialMusicBrainzBaseUrl,
     };
     late Map<String, Object?> patch;
+    var patchRequests = 0;
     final repository = repositoryFor((request) async {
       if (request.method == 'GET') return data(initial);
+      patchRequests++;
       patch = Map<String, Object?>.from(jsonDecode(request.body) as Map);
-      return data(patch);
+      return data({...initial, ...patch});
     });
 
     final loaded = await repository.getFunctionSettings();
@@ -58,13 +60,22 @@ void main() {
       maxConcurrent: 5,
       recommendationTimeZone: 'Asia/Shanghai',
     );
-    final confirmed = await repository.updateFunctionSettings(updated);
+    final confirmed = await repository.updateFunctionSettings(updated, loaded);
 
-    expect(patch, updated.toPatch());
+    expect(patch, {
+      'download.maxDownloadNum': 5,
+      'recommendation.timeZone': 'Asia/Shanghai',
+    });
     expect(confirmed, updated);
     expect(confirmed.maxConcurrent, 5);
     expect(confirmed.recommendationTimeZone, 'Asia/Shanghai');
     expect(confirmed.musicBrainzBaseUrl, officialMusicBrainzBaseUrl);
+
+    expect(
+      await repository.updateFunctionSettings(confirmed, confirmed),
+      confirmed,
+    );
+    expect(patchRequests, 1);
   });
 
   test('preserves an explicitly empty MusicBrainz address', () async {

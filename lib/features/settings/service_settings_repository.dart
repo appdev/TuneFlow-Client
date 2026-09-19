@@ -203,6 +203,13 @@ final class ServiceFunctionSettings {
     'recommendation.ai.model': recommendationAiModel,
   };
 
+  Map<String, Object?> changesFrom(ServiceFunctionSettings previous) {
+    final before = previous.toPatch();
+    return Map.fromEntries(
+      toPatch().entries.where((entry) => before[entry.key] != entry.value),
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       other is ServiceFunctionSettings &&
@@ -313,9 +320,14 @@ final class ServiceSettingsRepository {
 
   Future<ServiceFunctionSettings> updateFunctionSettings(
     ServiceFunctionSettings value,
-  ) async => ServiceFunctionSettings.fromJson(
-    await api.request('PATCH', '/api/v1/settings', body: value.toPatch()),
-  );
+    ServiceFunctionSettings previous,
+  ) async {
+    final patch = value.changesFrom(previous);
+    if (patch.isEmpty) return value;
+    return ServiceFunctionSettings.fromJson(
+      await api.request('PATCH', '/api/v1/settings', body: patch),
+    );
+  }
 
   Future<MusicBrainzConnectionTestResult> testMusicBrainzConnection(
     String baseUrl,

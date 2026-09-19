@@ -13,6 +13,19 @@ void _defaultServiceHttpLog(String message) {
   developer.log(message, name: 'TuneFlow.HTTP');
 }
 
+String _safeUri(Uri uri) {
+  if (uri.queryParameters.isEmpty) return uri.toString();
+  final redacted = <String, String>{
+    for (final key in uri.queryParameters.keys) key: '<redacted>',
+  };
+  return uri.replace(queryParameters: redacted).toString();
+}
+
+String _safeError(Object error) => switch (error) {
+  ServiceException(:final code) => code,
+  _ => error.runtimeType.toString(),
+};
+
 final class ServiceApi {
   ServiceApi(ServiceOrigin origin, {http.Client? client, ServiceHttpLog? log})
     : _origin = origin,
@@ -47,9 +60,9 @@ final class ServiceApi {
       request.body = jsonEncode(body);
     }
     if (kDebugMode) {
-      _log('[HTTP] --> $method $uri');
+      _log('[HTTP] --> $method ${_safeUri(uri)}');
       if (request.body.isNotEmpty) {
-        _log('[HTTP] Request: ${request.body}');
+        _log('[HTTP] Request body omitted (${request.body.length} chars)');
       }
     }
 
@@ -61,16 +74,16 @@ final class ServiceApi {
     } on ServiceException catch (error) {
       if (kDebugMode) {
         _log(
-          '[HTTP] xx> $method $uri '
-          'error=$error duration=${stopwatch!.elapsedMilliseconds}ms',
+          '[HTTP] xx> $method ${_safeUri(uri)} '
+          'error=${_safeError(error)} duration=${stopwatch!.elapsedMilliseconds}ms',
         );
       }
       rethrow;
     } on Object catch (error) {
       if (kDebugMode) {
         _log(
-          '[HTTP] xx> $method $uri '
-          'error=$error duration=${stopwatch!.elapsedMilliseconds}ms',
+          '[HTTP] xx> $method ${_safeUri(uri)} '
+          'error=${_safeError(error)} duration=${stopwatch!.elapsedMilliseconds}ms',
         );
       }
       throw ServiceException(
@@ -82,12 +95,10 @@ final class ServiceApi {
 
     if (kDebugMode) {
       _log(
-        '[HTTP] <-- $method $uri '
+        '[HTTP] <-- $method ${_safeUri(uri)} '
         'status=${streamed.statusCode} '
-        'duration=${stopwatch!.elapsedMilliseconds}ms',
-      );
-      _log(
-        '[HTTP] Response: ${responseBody.isEmpty ? '<empty>' : responseBody}',
+        'duration=${stopwatch!.elapsedMilliseconds}ms '
+        'bytes=${responseBody.length}',
       );
     }
     if (streamed.statusCode >= 300 && streamed.statusCode < 400) {

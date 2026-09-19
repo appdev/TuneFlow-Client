@@ -21,6 +21,9 @@ migration:
     - platform: windows
       create_revision: 05db9689081f091050f01aed79f04dce0c750154
       base_revision: 05db9689081f091050f01aed79f04dce0c750154
+    - platform: web
+      create_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+      base_revision: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
 
   # User provided section
 

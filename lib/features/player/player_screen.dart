@@ -17,6 +17,7 @@ import '../../design/components/artwork.dart';
 import '../../design/components/queue_panel.dart';
 import '../../design/design_tokens.dart';
 import '../../storage/app_image_cache_scope.dart';
+import '../../storage/app_preferences.dart';
 import '../downloads/redownload_confirmation.dart';
 import '../playlists/playlist_repository.dart';
 import 'artwork_palette.dart';
@@ -26,6 +27,7 @@ import 'desktop_dynamic_player_backdrop.dart';
 import 'desktop_player_controls.dart';
 import 'desktop_player_stage.dart';
 import 'lyrics_view.dart';
+import 'lyric_controls.dart';
 import 'mobile_player_controls.dart';
 import 'mobile_queue_sheet.dart';
 import 'mobile_vinyl_record.dart';
@@ -35,6 +37,17 @@ import 'player_state.dart';
 import 'wake_lock_port.dart';
 
 enum _PlayerAction { favorite, playlist, download }
+
+typedef SaveLyricPreferences =
+    Future<void> Function({
+      required bool showTranslation,
+      required bool showRomanization,
+      required LyricFontSize fontSize,
+      required LyricAlignment alignment,
+      required LyricAuxiliaryOrder auxiliaryOrder,
+      required bool useTraditional,
+      required bool emphasizeActive,
+    });
 
 final class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
@@ -49,6 +62,7 @@ final class PlayerScreen extends StatefulWidget {
     this.topChromeInset = 0,
     this.paletteController,
     this.onAccentChanged,
+    this.saveLyricPreferences,
   });
 
   final PlayerController controller;
@@ -61,6 +75,7 @@ final class PlayerScreen extends StatefulWidget {
   final double topChromeInset;
   final ArtworkPaletteController? paletteController;
   final ValueChanged<Color>? onAccentChanged;
+  final SaveLyricPreferences? saveLyricPreferences;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -192,6 +207,73 @@ final class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+
+  LyricControls _lyricControls() => LyricControls(
+    state: widget.controller.state,
+    onShowTranslation: (value) {
+      widget.controller.setShowTranslation(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onShowRomanization: (value) {
+      widget.controller.setShowRomanization(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onFontSize: (value) {
+      widget.controller.setLyricFontSize(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onAlignment: (value) {
+      widget.controller.setLyricAlignment(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onAuxiliaryOrder: (value) {
+      widget.controller.setLyricAuxiliaryOrder(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onUseTraditional: (value) {
+      widget.controller.setUseTraditionalLyrics(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onEmphasizeActive: (value) {
+      widget.controller.setEmphasizeActiveLyric(value);
+      unawaited(_persistLyricPreferences());
+    },
+    onOffset: (value) => unawaited(widget.controller.setLyricOffset(value)),
+  );
+
+  Future<void> _persistLyricPreferences() async {
+    final save = widget.saveLyricPreferences;
+    if (save == null) return;
+    final state = widget.controller.state;
+    try {
+      await save(
+        showTranslation: state.showTranslation,
+        showRomanization: state.showRomanization,
+        fontSize: state.lyricFontSize,
+        alignment: state.lyricAlignment,
+        auxiliaryOrder: state.lyricAuxiliaryOrder,
+        useTraditional: state.useTraditionalLyrics,
+        emphasizeActive: state.emphasizeActiveLyric,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      showAppMessage(
+        context,
+        title: '歌词设置保存失败',
+        message: appErrorMessage(error, fallback: '当前会话仍会保留这些设置。'),
+        destructive: true,
+      );
+    }
+  }
+
+  Future<void> _showMobileLyricSettings() => AppBottomSheet.showContent<void>(
+    context,
+    title: '歌词设置',
+    child: ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) => _lyricControls(),
+    ),
+  );
 
   Future<void> _run(
     Future<void> Function() operation, {
@@ -362,6 +444,8 @@ final class _PlayerScreenState extends State<PlayerScreen> {
                         () => unawaited(Navigator.of(context).maybePop()),
                     topChromeInset: widget.topChromeInset,
                     actions: widget.actions,
+                    onLyricSettings: () =>
+                        unawaited(_showMobileLyricSettings()),
                   )
                 : Stack(
                     key: const Key('player-wide-layout'),
@@ -373,6 +457,8 @@ final class _PlayerScreenState extends State<PlayerScreen> {
                         palette: palette,
                         onRetryLyrics: () =>
                             widget.controller.loadLyrics(widget.lyricsLoader),
+                        onSeek: widget.controller.seek,
+                        lyricControls: _lyricControls(),
                       ),
                       Positioned(
                         left: 0,
@@ -511,6 +597,7 @@ final class _MobilePlayer extends StatefulWidget {
     required this.onBack,
     required this.topChromeInset,
     required this.actions,
+    required this.onLyricSettings,
   });
 
   final PlayerController controller;
@@ -523,6 +610,7 @@ final class _MobilePlayer extends StatefulWidget {
   final VoidCallback onBack;
   final double topChromeInset;
   final CurrentTrackActionsController? actions;
+  final VoidCallback onLyricSettings;
 
   @override
   State<_MobilePlayer> createState() => _MobilePlayerState();
@@ -576,6 +664,13 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
                   ),
                 ),
               ),
+              _MobileGlassIconButton(
+                key: const Key('player-mobile-lyric-settings'),
+                label: '歌词设置',
+                icon: LucideIcons.settings2,
+                onPressed: widget.onLyricSettings,
+              ),
+              const SizedBox(width: 4),
               _MobileGlassIconButton(
                 key: const Key('player-mobile-more'),
                 label: '更多操作',
@@ -640,6 +735,7 @@ final class _MobilePlayerState extends State<_MobilePlayer> {
                         )
                       : LyricsView(
                           state: state,
+                          onSeek: controller.seek,
                           verticalPadding: 28,
                           edgeFade: true,
                         ),

@@ -146,6 +146,7 @@ final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
   final player = ref.watch(playerControllerProvider);
   final search = SearchRepository(api);
   final lyricsLoader = search.lyrics;
+  final serviceSettingsUpdates = ref.read(serviceSettingsUpdatesProvider);
   final coordinator = EventCoordinator(
     invalidateSources: invalidation.sources,
     invalidatePlaylists: invalidation.playlists,
@@ -153,6 +154,10 @@ final eventSubscriptionProvider = Provider<StreamSubscription<DomainEvent>?>((
     invalidateLibrary: invalidation.library,
     invalidateRecommendations: invalidation.recommendations,
     invalidatePlaylistDetail: invalidation.playlistDetail,
+    settingsUpdated: (_) {
+      serviceSettingsUpdates.changed();
+      unawaited(ref.read(settingsControllerProvider)?.refreshServiceSettings());
+    },
     trackResourcesUpdated: (source, trackId, resources) {
       if (resources.contains('lyrics')) {
         unawaited(

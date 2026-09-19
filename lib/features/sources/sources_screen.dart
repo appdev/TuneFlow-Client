@@ -1,3 +1,4 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -19,16 +20,21 @@ final class SourcesScreen extends StatefulWidget {
     required this.controller,
     this.onBack,
     this.onExport,
+    this.pickSourceFile,
   });
   final SourcesController controller;
   final VoidCallback? onBack;
   final Future<void> Function(Uri uri)? onExport;
+  final Future<XFile?> Function()? pickSourceFile;
 
   @override
   State<SourcesScreen> createState() => _SourcesScreenState();
 }
 
 final class _SourcesScreenState extends State<SourcesScreen> {
+  bool _importing = false;
+  String? _fileError;
+
   @override
   void initState() {
     super.initState();
@@ -55,22 +61,50 @@ final class _SourcesScreenState extends State<SourcesScreen> {
     await widget.controller.toggle(source.id, enabled);
   }
 
-  Future<void> _installScript() async {
-    final script = await AppBottomSheet.showContent<String>(
-      context,
-      title: '安装音源脚本',
-      message: '粘贴完整的 JavaScript 音源脚本。Service 会校验脚本大小和元数据。',
-      child: const _SourceTextForm(
-        placeholder: '在这里粘贴音源脚本…',
-        submitLabel: '安装',
-        multiline: true,
-      ),
-    );
-    if (!mounted || script == null || script.trim().isEmpty) return;
-    await widget.controller.installScript(script);
+  Future<void> _importLocal() async {
+    if (_importing || widget.controller.state.saving) return;
+    setState(() {
+      _importing = true;
+      _fileError = null;
+    });
+    try {
+      final file =
+          await (widget.pickSourceFile?.call() ??
+              openFile(
+                acceptedTypeGroups: const [
+                  XTypeGroup(
+                    label: 'JavaScript 音源',
+                    extensions: ['js'],
+                    uniformTypeIdentifiers: ['com.netscape.javascript-source'],
+                  ),
+                ],
+                confirmButtonText: '导入',
+              ));
+      if (!mounted || file == null) return;
+      if (!file.name.toLowerCase().endsWith('.js')) {
+        setState(() => _fileError = '请选择 .js 格式的音源文件。');
+        return;
+      }
+      final script = (await file.readAsString())
+          .replaceFirst(RegExp(r'^\uFEFF'), '')
+          .trim();
+      if (!mounted) return;
+      if (script.isEmpty) {
+        setState(() => _fileError = '音源文件为空，请选择包含脚本的 .js 文件。');
+        return;
+      }
+      await widget.controller.installScript(script);
+    } on Object {
+      if (mounted) {
+        setState(() => _fileError = '无法读取音源文件，请确认文件可访问且使用 UTF-8 编码后重试。');
+      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
   }
 
   Future<void> _importUrl() async {
+    setState(() => _fileError = null);
     final url = await AppBottomSheet.showContent<String>(
       context,
       title: '从 URL 导入',
@@ -117,6 +151,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
     listenable: widget.controller,
     builder: (context, _) {
       final state = widget.controller.state;
+      final busy = state.saving || _importing;
       final mobile =
           classifyLayout(MediaQuery.sizeOf(context)) == AppLayoutClass.mobile;
       return ColoredBox(
@@ -147,15 +182,15 @@ final class _SourcesScreenState extends State<SourcesScreen> {
               runSpacing: 8,
               children: [
                 AppButton(
-                  key: const Key('source-install-script'),
-                  onPressed: state.saving ? null : _installScript,
+                  key: const Key('source-import-local'),
+                  onPressed: busy ? null : _importLocal,
                   leading: const Icon(LucideIcons.filePlus2, size: 16),
-                  child: const Text('安装脚本'),
+                  child: Text(_importing ? '正在导入…' : '从本地导入'),
                 ),
                 AppButton(
                   key: const Key('source-import-url'),
                   variant: ShadButtonVariant.outline,
-                  onPressed: state.saving ? null : _importUrl,
+                  onPressed: busy ? null : _importUrl,
                   leading: const Icon(LucideIcons.link, size: 16),
                   child: const Text('从 URL 导入'),
                 ),
@@ -163,7 +198,9 @@ final class _SourcesScreenState extends State<SourcesScreen> {
                   AppButton(
                     key: const Key('source-export'),
                     variant: ShadButtonVariant.outline,
-                    onPressed: state.saving ? null : _export,
+                    onPressed: busy || state.loading || state.items.isEmpty
+                        ? null
+                        : _export,
                     leading: const Icon(LucideIcons.archive, size: 16),
                     child: const Text('导出全部'),
                   ),
@@ -173,14 +210,16 @@ final class _SourcesScreenState extends State<SourcesScreen> {
               const SizedBox(height: 18),
               const LinearProgressIndicator(minHeight: 2),
             ],
-            if (state.error != null) ...[
+            if (_fileError != null || state.error != null) ...[
               const SizedBox(height: 18),
               AppNotice.error(
                 title: '音源操作失败',
-                message: appErrorMessage(
-                  state.error!,
-                  fallback: '音源列表暂时无法加载，请稍后重试。',
-                ),
+                message:
+                    _fileError ??
+                    appErrorMessage(
+                      state.error!,
+                      fallback: '音源操作失败，请检查音源文件或地址后重试。',
+                    ),
               ),
             ],
             const SizedBox(height: 24),
@@ -196,9 +235,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
                   buildDefaultDragHandles: false,
                   proxyDecorator: (child, _, _) => child,
                   itemCount: state.enabledSources.length,
-                  onReorderItem: state.saving
-                      ? (_, _) {}
-                      : widget.controller.reorder,
+                  onReorderItem: busy ? (_, _) {} : widget.controller.reorder,
                   itemBuilder: (context, index) {
                     final source = state.enabledSources[index];
                     return Padding(
@@ -208,12 +245,12 @@ final class _SourcesScreenState extends State<SourcesScreen> {
                         source: source,
                         mobile: mobile,
                         label: index == 0 ? '首选' : '备用 $index',
-                        saving: state.saving,
+                        saving: busy,
                         onToggle: (value) => _toggle(source, value),
                         onDelete: () => _delete(source),
                         dragHandle: ReorderableDragStartListener(
                           index: index,
-                          enabled: !state.saving,
+                          enabled: !busy,
                           child: const Padding(
                             padding: EdgeInsets.all(8),
                             child: Icon(LucideIcons.gripVertical, size: 18),
@@ -236,7 +273,7 @@ final class _SourcesScreenState extends State<SourcesScreen> {
                       source: source,
                       mobile: mobile,
                       label: '未启用',
-                      saving: state.saving,
+                      saving: busy,
                       onToggle: (value) => _toggle(source, value),
                       onDelete: () => _delete(source),
                     ),
@@ -297,7 +334,7 @@ final class _SourceCard extends StatelessWidget {
               ),
               Text(
                 '${sourceVersionLabel(source.version)} · '
-                '${source.enabled ? label : '已安装 · 未启用'}',
+                '${source.enabled ? label : '已导入 · 未启用'}',
                 style: AppTypography.metadata.copyWith(
                   color: AppTokens.of(context).foregroundSecondary,
                 ),
@@ -352,15 +389,10 @@ final class _SourceCard extends StatelessWidget {
 }
 
 final class _SourceTextForm extends StatefulWidget {
-  const _SourceTextForm({
-    required this.placeholder,
-    required this.submitLabel,
-    this.multiline = false,
-  });
+  const _SourceTextForm({required this.placeholder, required this.submitLabel});
 
   final String placeholder;
   final String submitLabel;
-  final bool multiline;
 
   @override
   State<_SourceTextForm> createState() => _SourceTextFormState();
@@ -386,25 +418,14 @@ final class _SourceTextFormState extends State<_SourceTextForm> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (widget.multiline)
-        TextField(
-          key: const Key('source-script-input'),
-          controller: controller,
-          minLines: 8,
-          maxLines: 16,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(hintText: widget.placeholder),
-        )
-      else
-        AppTextField(
-          key: const Key('source-url-input'),
-          controller: controller,
-          placeholder: widget.placeholder,
-          keyboardType: TextInputType.url,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => _submit(),
-        ),
+      AppTextField(
+        key: const Key('source-url-input'),
+        controller: controller,
+        placeholder: widget.placeholder,
+        keyboardType: TextInputType.url,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+      ),
       const SizedBox(height: 16),
       AppButton(
         key: const Key('source-form-submit'),
@@ -435,10 +456,10 @@ final class _EmptySources extends StatelessWidget {
           color: AppTokens.of(context).muted,
         ),
         const SizedBox(height: 12),
-        const Text('尚未安装音源', style: AppTypography.section),
+        const Text('尚未导入音源', style: AppTypography.section),
         const SizedBox(height: 6),
         Text(
-          '请先在 Service 管理端安装音源脚本。',
+          '从本地选择 .js 音源文件，或通过 URL 导入。',
           style: AppTypography.body.copyWith(
             color: AppTokens.of(context).muted,
           ),

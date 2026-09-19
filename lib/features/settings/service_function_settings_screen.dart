@@ -19,10 +19,12 @@ final class ServiceFunctionSettingsScreen extends StatefulWidget {
     super.key,
     required this.controller,
     this.onBack,
+    this.updates,
   });
 
   final ServiceFunctionSettingsController controller;
   final VoidCallback? onBack;
+  final Listenable? updates;
 
   @override
   State<ServiceFunctionSettingsScreen> createState() =>
@@ -40,7 +42,27 @@ final class _ServiceFunctionSettingsScreenState
   void initState() {
     super.initState();
     widget.controller.addListener(_syncTextFields);
+    widget.updates?.addListener(_handleExternalSettingsUpdate);
     unawaited(widget.controller.load());
+  }
+
+  void _handleExternalSettingsUpdate() {
+    widget.controller.externalSettingsChanged();
+  }
+
+  @override
+  void didUpdateWidget(covariant ServiceFunctionSettingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.removeListener(_syncTextFields);
+      oldWidget.controller.dispose();
+      widget.controller.addListener(_syncTextFields);
+      unawaited(widget.controller.load());
+    }
+    if (!identical(oldWidget.updates, widget.updates)) {
+      oldWidget.updates?.removeListener(_handleExternalSettingsUpdate);
+      widget.updates?.addListener(_handleExternalSettingsUpdate);
+    }
   }
 
   void _syncTextFields() {
@@ -110,6 +132,7 @@ final class _ServiceFunctionSettingsScreenState
   @override
   void dispose() {
     widget.controller.removeListener(_syncTextFields);
+    widget.updates?.removeListener(_handleExternalSettingsUpdate);
     widget.controller.dispose();
     timeZone.dispose();
     musicBrainzBaseUrl.dispose();
@@ -173,6 +196,24 @@ final class _ServiceFunctionSettingsScreenState
               AppNotice.error(
                 title: '设置操作失败',
                 message: appErrorMessage(error, fallback: 'Service 设置未更新。'),
+              ),
+            ],
+            if (state.externalUpdatePending) ...[
+              const SizedBox(height: 14),
+              AppNotice(
+                title: 'Service 设置已在其他位置更新',
+                message: '当前草稿尚未覆盖。重新加载后可查看最新设置。',
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AppButton(
+                  key: const Key('service-settings-reload-external'),
+                  variant: ShadButtonVariant.outline,
+                  onPressed: widget.controller.reloadExternalSettings,
+                  leading: const Icon(LucideIcons.refreshCw, size: 18),
+                  child: const Text('重新加载'),
+                ),
               ),
             ],
             const SizedBox(height: 18),
@@ -279,6 +320,7 @@ final class _ServiceFunctionSettingsScreenState
               description: '分别控制旁挂歌词文件和写入音频文件的元数据。',
               children: [
                 _SwitchRow(
+                  key: const Key('service-download-lyrics'),
                   label: '下载原文歌词文件',
                   value: draft.downloadLyrics,
                   onChanged: (value) => widget.controller.update(
@@ -286,22 +328,28 @@ final class _ServiceFunctionSettingsScreenState
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-download-translated-lyrics'),
                   label: '下载翻译歌词文件',
                   value: draft.downloadTranslatedLyrics,
+                  enabled: draft.downloadLyrics,
                   onChanged: (value) => widget.controller.update(
                     draft.copyWith(downloadTranslatedLyrics: value),
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-download-romanized-lyrics'),
                   label: '下载罗马音歌词文件',
                   value: draft.downloadRomanizedLyrics,
+                  enabled: draft.downloadLyrics,
                   onChanged: (value) => widget.controller.update(
                     draft.copyWith(downloadRomanizedLyrics: value),
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-download-verbatim-lyrics'),
                   label: '下载逐字歌词文件',
                   value: draft.downloadVerbatimLyrics,
+                  enabled: draft.downloadLyrics,
                   onChanged: (value) => widget.controller.update(
                     draft.copyWith(downloadVerbatimLyrics: value),
                   ),
@@ -314,6 +362,7 @@ final class _ServiceFunctionSettingsScreenState
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-embed-lyrics'),
                   label: '嵌入原文歌词',
                   value: draft.embedLyrics,
                   onChanged: (value) => widget.controller.update(
@@ -321,22 +370,28 @@ final class _ServiceFunctionSettingsScreenState
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-embed-translated-lyrics'),
                   label: '嵌入翻译歌词',
                   value: draft.embedTranslatedLyrics,
+                  enabled: draft.embedLyrics,
                   onChanged: (value) => widget.controller.update(
                     draft.copyWith(embedTranslatedLyrics: value),
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-embed-romanized-lyrics'),
                   label: '嵌入罗马音歌词',
                   value: draft.embedRomanizedLyrics,
+                  enabled: draft.embedLyrics,
                   onChanged: (value) => widget.controller.update(
                     draft.copyWith(embedRomanizedLyrics: value),
                   ),
                 ),
                 _SwitchRow(
+                  key: const Key('service-embed-verbatim-lyrics'),
                   label: '嵌入逐字歌词',
                   value: draft.embedVerbatimLyrics,
+                  enabled: draft.embedLyrics,
                   onChanged: (value) => widget.controller.update(
                     draft.copyWith(embedVerbatimLyrics: value),
                   ),
@@ -597,18 +652,26 @@ final class _SettingsCard extends StatelessWidget {
 
 final class _SwitchRow extends StatelessWidget {
   const _SwitchRow({
+    super.key,
     required this.label,
     required this.value,
     required this.onChanged,
+    this.enabled = true,
   });
 
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
-    child: ShadSwitch(value: value, onChanged: onChanged, label: Text(label)),
+    child: ShadSwitch(
+      value: value,
+      enabled: enabled,
+      onChanged: onChanged,
+      label: Text(label),
+    ),
   );
 }

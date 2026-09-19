@@ -24,6 +24,17 @@ Future<void> main() async {
   } on Object catch (error) {
     debugPrint('Liquid glass shader warm-up skipped: $error');
   }
+  // Browsers use web audio and browser storage, never native directories or
+  // window/menu channels. Keep this boundary before all native initialization.
+  if (kIsWeb) {
+    final audio = await initializeAudio(
+      Uri.base.resolve('assets/assets/artwork/default_track_artwork.png'),
+    );
+    runApp(
+      MusicFreeServiceApp(preferences: SharedAppPreferences(), audio: audio),
+    );
+    return;
+  }
   final appPlatform = resolveAppPlatform(defaultTargetPlatform);
   await initializeDesktopWindow(appPlatform);
   final preferences = SharedAppPreferences();
@@ -87,20 +98,9 @@ Future<void> main() async {
       imageCacheCandidate = null;
     }
   }
-  final languageCode = PlatformDispatcher.instance.locale.languageCode;
-  final playbackChannelName = languageCode == 'zh'
-      ? '音流播放'
-      : 'TuneFlow Playback';
-  final audio = await AudioService.init<ServiceAudioHandler>(
-    builder: () => ServiceAudioHandler(
-      fallbackArtUri: notificationPlaceholder,
-      cache: mediaCache,
-    ),
-    config: AudioServiceConfig(
-      androidNotificationChannelId: 'com.musicfree.serviceclient.playback',
-      androidNotificationChannelName: playbackChannelName,
-      androidNotificationOngoing: true,
-    ),
+  final audio = await initializeAudio(
+    notificationPlaceholder,
+    cache: mediaCache,
   );
   runApp(
     MusicFreeServiceApp(
@@ -109,6 +109,27 @@ Future<void> main() async {
       mediaCache: mediaCache,
       imageCache: imageCache,
       macOSMenuBar: Platform.isMacOS ? MethodChannelMacOSMenuBarPort() : null,
+    ),
+  );
+}
+
+Future<ServiceAudioHandler> initializeAudio(
+  Uri notificationPlaceholder, {
+  MediaCache? cache,
+}) async {
+  final languageCode = PlatformDispatcher.instance.locale.languageCode;
+  final playbackChannelName = languageCode == 'zh'
+      ? '音流播放'
+      : 'TuneFlow Playback';
+  return AudioService.init<ServiceAudioHandler>(
+    builder: () => ServiceAudioHandler(
+      fallbackArtUri: notificationPlaceholder,
+      cache: cache,
+    ),
+    config: AudioServiceConfig(
+      androidNotificationChannelId: 'com.musicfree.serviceclient.playback',
+      androidNotificationChannelName: playbackChannelName,
+      androidNotificationOngoing: true,
     ),
   );
 }

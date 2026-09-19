@@ -220,6 +220,42 @@ final class SettingsController extends ChangeNotifier {
       _persist(state.copyWith(showLyrics: value));
   Future<void> setShowTranslation(bool value) =>
       _persist(state.copyWith(showTranslation: value));
+  Future<void> setShowRomanization(bool value) =>
+      _persist(state.copyWith(showRomanization: value));
+  Future<void> setLyricFontSize(LyricFontSize value) =>
+      _persist(state.copyWith(lyricFontSize: value));
+  Future<void> setLyricAlignment(LyricAlignment value) =>
+      _persist(state.copyWith(lyricAlignment: value));
+  Future<void> setLyricAuxiliaryOrder(LyricAuxiliaryOrder value) =>
+      _persist(state.copyWith(lyricAuxiliaryOrder: value));
+  Future<void> setUseTraditionalLyrics(bool value) =>
+      _persist(state.copyWith(useTraditionalLyrics: value));
+  Future<void> setEmphasizeActiveLyric(bool value) =>
+      _persist(state.copyWith(emphasizeActiveLyric: value));
+  Future<void> setRememberPlaybackProgress(bool value) =>
+      _persist(state.copyWith(rememberPlaybackProgress: value));
+  Future<void> setAutoSkipPlaybackErrors(bool value) =>
+      _persist(state.copyWith(autoSkipPlaybackErrors: value));
+
+  Future<void> setLyricPreferences({
+    required bool showTranslation,
+    required bool showRomanization,
+    required LyricFontSize fontSize,
+    required LyricAlignment alignment,
+    required LyricAuxiliaryOrder auxiliaryOrder,
+    required bool useTraditional,
+    required bool emphasizeActive,
+  }) => _persist(
+    state.copyWith(
+      showTranslation: showTranslation,
+      showRomanization: showRomanization,
+      lyricFontSize: fontSize,
+      lyricAlignment: alignment,
+      lyricAuxiliaryOrder: auxiliaryOrder,
+      useTraditionalLyrics: useTraditional,
+      emphasizeActiveLyric: emphasizeActive,
+    ),
+  );
   Future<void> setReduceTransparency(bool value) =>
       _persist(state.copyWith(reduceTransparency: value));
 
