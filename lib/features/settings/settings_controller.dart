@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/service_origin.dart';
+import '../../diagnostics/app_logger.dart';
 import '../../diagnostics/diagnostic_reporter.dart';
 import '../../storage/app_image_cache.dart';
 import '../../storage/app_preferences.dart';
@@ -293,7 +294,14 @@ final class SettingsController extends ChangeNotifier {
         rethrow;
       }
       state = next;
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.cacheMaintenanceFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'cache'},
+        error: error,
+        stackTrace: stackTrace,
+      );
       cacheError = error;
       rethrow;
     } finally {
@@ -322,6 +330,14 @@ final class SettingsController extends ChangeNotifier {
       await attempt(_mediaCache?.reconcile);
       await attempt(_imageCache?.refreshUsage);
       if (!_disposed) cacheError = firstError;
+      if (firstError case final error?) {
+        AppLogger.instance.record(
+          AppLogEvent.cacheMaintenanceFailed,
+          level: AppLogLevel.warning,
+          fields: {'operation': 'cache'},
+          error: error,
+        );
+      }
     } finally {
       cacheBusy = false;
       _notifyIfActive();
@@ -357,7 +373,14 @@ final class SettingsController extends ChangeNotifier {
       if (firstError case final error?) {
         Error.throwWithStackTrace(error, firstStackTrace!);
       }
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.cacheMaintenanceFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'cache'},
+        error: error,
+        stackTrace: stackTrace,
+      );
       cacheError = error;
       rethrow;
     } finally {

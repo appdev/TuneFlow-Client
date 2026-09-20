@@ -14,6 +14,7 @@ enum AppLogLevel { debug, info, warning, error }
 enum AppLogEvent {
   appStarted,
   appLifecycle,
+  networkChanged,
   frameworkError,
   asyncError,
   startupFailed,
@@ -26,18 +27,29 @@ enum AppLogEvent {
   menuBarUpdateFailed,
   menuBarCommandFailed,
   httpCompleted,
+  httpPending,
   httpFailed,
+  httpTimedOut,
   serviceConnected,
   serviceConnectionFailed,
   serviceDisconnected,
   eventStreamConnected,
   eventStreamFailed,
+  eventStreamDisconnected,
+  endpointProbeFailed,
   playbackStarted,
+  playbackStateChanged,
+  playbackCompleted,
   playbackFailed,
   playbackCacheFailed,
   playbackStateFailed,
+  playbackHistoryFailed,
+  playbackControlFailed,
   lyricsFailed,
   radioFailed,
+  searchFailed,
+  downloadFailed,
+  cacheMaintenanceFailed,
   uploadAccepted,
   uploadFailed,
 }
@@ -49,6 +61,7 @@ abstract interface class DiagnosticLogStore {
 
 /// Bounded, local-only logging. No network client is constructed here.
 final class AppLogger {
+  static final Random _operationRandom = Random();
   AppLogger({
     this.maxEntries = 500,
     this.maxBytes = 512 * 1024,
@@ -79,6 +92,12 @@ final class AppLogger {
 
   int get count => _lines.length;
   int get byteCount => _bytes;
+
+  /// Correlates one local operation; it is not an identifier or credential.
+  static String newOperationId() => List.generate(
+    8,
+    (_) => _operationRandom.nextInt(256).toRadixString(16).padLeft(2, '0'),
+  ).join();
 
   void record(
     AppLogEvent event, {
@@ -220,6 +239,10 @@ final class AppLogger {
       'response_bytes',
       'attempt',
       'queue_length',
+      'event_count',
+      'position_ms',
+      'buffered_ms',
+      'generation',
     ]) {
       final value = fields[key];
       if (value is int && value >= 0 && value <= 1 << 40) result[key] = value;
@@ -227,7 +250,43 @@ final class AppLogger {
     for (final entry in const {
       'method': {'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'},
       'quality': {'128k', '320k', 'flac', 'flac24bit'},
-      'state': {'resumed', 'inactive', 'hidden', 'paused', 'detached'},
+      'state': {
+        'resumed',
+        'inactive',
+        'hidden',
+        'paused',
+        'detached',
+        'playing',
+        'stopped',
+      },
+      'processing': {'idle', 'loading', 'buffering', 'ready', 'completed'},
+      'transport': {
+        'wifi',
+        'ethernet',
+        'mobile',
+        'vpn',
+        'bluetooth',
+        'other',
+        'none',
+      },
+      'reason': {
+        'timeout',
+        'network',
+        'server',
+        'parse',
+        'cache',
+        'cancelled',
+        'completed',
+      },
+      'operation': {
+        'connect',
+        'probe',
+        'search',
+        'download',
+        'playback',
+        'lyrics',
+        'cache',
+      },
       'endpoint_role': {'lan', 'external', 'bootstrap'},
       'network': {'lan', 'external', 'offline'},
     }.entries) {
@@ -249,6 +308,11 @@ final class AppLogger {
     if (route is String) result['route'] = safeRoute(route);
     final stack = fields['stack'];
     if (stack is String) result['stack'] = safeStack(stack);
+    final operationId = fields['operation_id'];
+    if (operationId is String &&
+        RegExp(r'^[a-f0-9]{8,32}$').hasMatch(operationId)) {
+      result['operation_id'] = operationId;
+    }
     return result;
   }
 

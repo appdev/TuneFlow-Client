@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -55,8 +56,16 @@ final class ServiceApi {
     Map<String, String>? headers,
   }) async {
     final stopwatch = Stopwatch()..start();
+    final operationId = AppLogger.newOperationId();
     int? status;
     int? bytes;
+    final pendingTimer = Timer(const Duration(seconds: 5), () {
+      _diagnostics.record(
+        AppLogEvent.httpPending,
+        level: AppLogLevel.warning,
+        fields: {'method': method, 'route': path, 'operation_id': operationId},
+      );
+    });
     try {
       final result = await _request(
         method,
@@ -76,12 +85,15 @@ final class ServiceApi {
           'status': status,
           'duration_ms': stopwatch.elapsedMilliseconds,
           'response_bytes': bytes,
+          'operation_id': operationId,
         },
       );
       return result;
     } on Object catch (error, stack) {
       _diagnostics.record(
-        AppLogEvent.httpFailed,
+        error is ServiceException && error.code == 'NETWORK_TIMEOUT'
+            ? AppLogEvent.httpTimedOut
+            : AppLogEvent.httpFailed,
         level: AppLogLevel.warning,
         fields: {
           'method': method,
@@ -89,11 +101,14 @@ final class ServiceApi {
           'status': status,
           'duration_ms': stopwatch.elapsedMilliseconds,
           'response_bytes': bytes,
+          'operation_id': operationId,
         },
         error: error,
         stackTrace: stack,
       );
       rethrow;
+    } finally {
+      pendingTimer.cancel();
     }
   }
 
@@ -124,8 +139,12 @@ final class ServiceApi {
     late http.StreamedResponse streamed;
     late String responseBody;
     try {
-      streamed = await _client.send(request);
-      responseBody = await streamed.stream.bytesToString();
+      streamed = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
+      responseBody = await streamed.stream.bytesToString().timeout(
+        const Duration(seconds: 20),
+      );
       received(streamed.statusCode, responseBody.length);
     } on ServiceException catch (error) {
       if (kDebugMode) {
@@ -135,6 +154,11 @@ final class ServiceApi {
         );
       }
       rethrow;
+    } on TimeoutException {
+      throw const ServiceException(
+        'NETWORK_TIMEOUT',
+        'The Service did not respond in time.',
+      );
     } on Object catch (error) {
       if (kDebugMode) {
         _log(
@@ -143,9 +167,8 @@ final class ServiceApi {
         );
       }
       throw ServiceException(
-        'NETWORK_ERROR',
+        _networkErrorCode(error),
         'Unable to reach the Service.',
-        details: error.toString(),
       );
     }
 
@@ -211,5 +234,16 @@ final class ServiceApi {
 
   void close() {
     if (_ownsClient) _client.close();
+  }
+
+  static String _networkErrorCode(Object error) {
+    final type = error.runtimeType.toString().toLowerCase();
+    if (type.contains('handshake') || type.contains('certificate')) {
+      return 'NETWORK_TLS';
+    }
+    if (type.contains('socket') || type.contains('connection')) {
+      return 'NETWORK_CONNECTION';
+    }
+    return 'NETWORK_ERROR';
   }
 }

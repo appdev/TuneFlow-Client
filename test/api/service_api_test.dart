@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:musicfree_service_client/api/service_api.dart';
 import 'package:musicfree_service_client/api/service_exception.dart';
 import 'package:musicfree_service_client/api/service_origin.dart';
+import 'package:musicfree_service_client/diagnostics/app_logger.dart';
 
 void main() {
   test('decodes the success envelope and sends JSON', () async {
@@ -157,32 +158,48 @@ void main() {
     expect(logs.join('\n'), isNot(contains('{"data":null}')));
   });
 
-  test(
-    'logs HTTP network failures without private request details',
-    () async {
-      final logs = <String>[];
-      final api = ServiceApi(
-        ServiceOrigin.parse('http://service.local'),
-        client: MockClient((_) async => throw StateError('private details')),
-        log: logs.add,
-      );
-
-      await expectLater(
-        api.request('GET', '/api/v1/test?token=secret'),
-        throwsA(
-          isA<ServiceException>().having(
-            (e) => e.code,
-            'code',
-            'NETWORK_ERROR',
-          ),
+  test('adds one safe operation id to the completed HTTP diagnostic', () async {
+    final diagnostics = AppLogger(includeDebug: false);
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      diagnostics: diagnostics,
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': {'ok': true},
+          }),
+          200,
         ),
-      );
+      ),
+    );
 
-      expect(logs, hasLength(2));
-      expect(logs.last, contains('[HTTP] xx> GET'));
-      expect(logs.last, contains('token=%3Credacted%3E'));
-      expect(logs.last, contains('error=StateError'));
-      expect(logs.last, isNot(contains('private details')));
-    },
-  );
+    await api.request('GET', '/api/v1/test');
+
+    final fields = (jsonDecode(diagnostics.snapshot().single)['fields'] as Map);
+    expect(fields['operation_id'], matches(RegExp(r'^[a-f0-9]{16}$')));
+    expect(fields['route'], '/api/v1/:id');
+    expect(fields.containsKey('body'), isFalse);
+  });
+
+  test('logs HTTP network failures without private request details', () async {
+    final logs = <String>[];
+    final api = ServiceApi(
+      ServiceOrigin.parse('http://service.local'),
+      client: MockClient((_) async => throw StateError('private details')),
+      log: logs.add,
+    );
+
+    await expectLater(
+      api.request('GET', '/api/v1/test?token=secret'),
+      throwsA(
+        isA<ServiceException>().having((e) => e.code, 'code', 'NETWORK_ERROR'),
+      ),
+    );
+
+    expect(logs, hasLength(2));
+    expect(logs.last, contains('[HTTP] xx> GET'));
+    expect(logs.last, contains('token=%3Credacted%3E'));
+    expect(logs.last, contains('error=StateError'));
+    expect(logs.last, isNot(contains('private details')));
+  });
 }

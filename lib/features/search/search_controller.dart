@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../api/models.dart';
+import '../../diagnostics/app_logger.dart';
 import 'search_repository.dart';
 import 'search_state.dart';
 import 'search_track_metadata.dart';
@@ -51,7 +52,14 @@ final class SearchController extends ChangeNotifier {
         providers: capabilities.providers,
         capabilitiesLoading: false,
       );
-    } on Object {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.searchFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'search'},
+        error: error,
+        stackTrace: stackTrace,
+      );
       state = _copy(capabilitiesLoading: false);
     }
     notifyListeners();
@@ -243,7 +251,14 @@ final class SearchController extends ChangeNotifier {
         ),
         providerStatuses: result.statuses,
       );
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.searchFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'search', 'generation': generation},
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (generation != _generation) return;
       state = _copy(
         trackSection: SearchSection(
@@ -297,7 +312,14 @@ final class SearchController extends ChangeNotifier {
           phase: items.isEmpty ? SearchPhase.empty : SearchPhase.results,
         ),
       );
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.searchFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'search', 'generation': generation},
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (generation != _generation) return;
       state = _withSection(
         kind,

@@ -48,6 +48,10 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
     final transports = _normalizeTransports(await monitor.current());
     _lastTransports = transports;
     _route = classifyNetwork(transports);
+    AppLogger.instance.record(
+      AppLogEvent.networkChanged,
+      fields: {'network': _route.name},
+    );
 
     if (_route == NetworkRoute.offline) return null;
 
@@ -257,6 +261,10 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
     }
     _lastTransports = normalized;
     _route = classifyNetwork(normalized);
+    AppLogger.instance.record(
+      AppLogEvent.networkChanged,
+      fields: {'network': _route.name},
+    );
     _generation++;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(

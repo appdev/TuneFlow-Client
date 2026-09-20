@@ -1,5 +1,6 @@
 import '../../api/service_exception.dart';
 import '../../api/service_origin.dart';
+import '../../diagnostics/app_logger.dart';
 
 typedef HealthRequest = Future<Object?> Function(ServiceOrigin origin);
 typedef ProbeDelay = Future<void> Function(Duration duration);
@@ -45,6 +46,7 @@ final class ServerEndpointProbe {
     final origin = ServiceOrigin.parse(value);
     Object? lastError;
     StackTrace? lastStackTrace;
+    final operationId = AppLogger.newOperationId();
 
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       _throwIfCancelled(cancelled);
@@ -72,6 +74,18 @@ final class ServerEndpointProbe {
         stopwatch.stop();
         lastError = error;
         lastStackTrace = stackTrace;
+        AppLogger.instance.record(
+          AppLogEvent.endpointProbeFailed,
+          level: AppLogLevel.warning,
+          fields: {
+            'attempt': attempt,
+            'duration_ms': stopwatch.elapsedMilliseconds,
+            'operation': 'probe',
+            'operation_id': operationId,
+          },
+          error: error,
+          stackTrace: stackTrace,
+        );
       }
 
       if (attempt + 1 < maxAttempts) {

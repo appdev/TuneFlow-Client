@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../api/models.dart';
+import '../../diagnostics/app_logger.dart';
 import '../../storage/media_cache.dart';
 import 'player_state.dart';
 
@@ -111,6 +112,8 @@ final class ServiceAudioHandler extends BaseAudioHandler
   late final List<StreamSubscription<dynamic>> _subscriptions;
   MediaCacheLease? _audioLease;
   StreamSubscription<double>? _cacheProgress;
+  PlayerProcessing? _lastLoggedProcessing;
+  bool? _lastLoggedPlaying;
   Future<void> Function() _previous = _nothing;
   Future<void> Function() _next = _nothing;
 
@@ -142,7 +145,13 @@ final class ServiceAudioHandler extends BaseAudioHandler
         trackId: track.id,
         quality: quality,
       );
-    } on Object {
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackCacheFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'cache'},
+        error: error,
+      );
       return false;
     }
     if (!await lease.file.exists()) {
@@ -188,7 +197,13 @@ final class ServiceAudioHandler extends BaseAudioHandler
             .where((value) => value >= 1)
             .take(1)
             .listen((_) => unawaited(cache.reconcile().catchError((_) {})));
-      } on Object {
+      } on Object catch (error) {
+        AppLogger.instance.record(
+          AppLogEvent.playbackCacheFailed,
+          level: AppLogLevel.warning,
+          fields: {'operation': 'cache'},
+          error: error,
+        );
         await progress?.cancel();
         await lease?.release();
         lease = null;
@@ -259,6 +274,19 @@ final class ServiceAudioHandler extends BaseAudioHandler
       duration: _player.duration ?? Duration.zero,
       buffered: _player.bufferedPosition,
     );
+    if (_lastLoggedProcessing != processing || _lastLoggedPlaying != playing) {
+      _lastLoggedProcessing = processing;
+      _lastLoggedPlaying = playing;
+      AppLogger.instance.record(
+        AppLogEvent.playbackStateChanged,
+        fields: {
+          'processing': processing.name,
+          'state': playing ? 'playing' : 'paused',
+          'position_ms': currentPosition.inMilliseconds,
+          'buffered_ms': _player.bufferedPosition.inMilliseconds,
+        },
+      );
+    }
     _snapshots.add(_last);
     if (!publishPlaybackState) return;
     playbackState.add(

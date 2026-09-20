@@ -90,7 +90,10 @@ final class ConnectionRepository {
           'This client requires Service API v1, received ${capabilities.apiVersion}.',
         );
       }
-      AppLogger.instance.record(AppLogEvent.serviceConnected);
+      AppLogger.instance.record(
+        AppLogEvent.serviceConnected,
+        fields: {'duration_ms': health.latency.inMilliseconds},
+      );
       return ConnectedService(api: api, capabilities: capabilities);
     } on Object catch (error, stack) {
       AppLogger.instance.record(

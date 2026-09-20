@@ -112,18 +112,31 @@ final class SseTransport {
             status: response.statusCode,
           );
         }
+        final connectionAttempt = attempt;
         attempt = 0;
-        AppLogger.instance.record(AppLogEvent.eventStreamConnected);
+        AppLogger.instance.record(
+          AppLogEvent.eventStreamConnected,
+          fields: {'attempt': connectionAttempt, 'operation': 'connect'},
+        );
         try {
           await _onConnected?.call();
         } on Object {
           // State revalidation is best-effort and must not tear down SSE.
         }
+        var eventCount = 0;
         await for (final chunk in response.stream) {
           if (_closed) break;
           for (final event in parser.add(chunk)) {
+            eventCount++;
             yield event;
           }
+        }
+        if (!_closed) {
+          AppLogger.instance.record(
+            AppLogEvent.eventStreamDisconnected,
+            level: AppLogLevel.warning,
+            fields: {'event_count': eventCount, 'reason': 'network'},
+          );
         }
       } on Object catch (error) {
         if (_closed) break;

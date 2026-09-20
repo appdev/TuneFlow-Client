@@ -22,6 +22,11 @@ void main() {
         'title': 'private-song',
         'body': {'nested': 'private-body'},
         'status': 401,
+        'operation_id': '0123456789abcdef',
+        'operation': 'search',
+        'network': 'offline',
+        'processing': 'buffering',
+        'position_ms': 1200,
       },
       error: const ServiceException(
         'NETWORK_ERROR',
@@ -39,6 +44,11 @@ void main() {
       'method': 'GET',
       'error_type': 'ServiceException',
       'code': 'NETWORK_ERROR',
+      'operation_id': '0123456789abcdef',
+      'operation': 'search',
+      'network': 'offline',
+      'processing': 'buffering',
+      'position_ms': 1200,
       'route': '/api/v1/tracks/:id',
       'stack': 'package:musicfree_service_client/api/service_api.dart:99:1',
     });

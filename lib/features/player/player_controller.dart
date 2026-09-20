@@ -283,6 +283,12 @@ final class PlayerController extends ChangeNotifier {
     try {
       await audio.stopPlayback();
     } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'playback'},
+        error: error,
+      );
       state = state.copyWith(error: error);
       notifyListeners();
       return false;
@@ -363,7 +369,13 @@ final class PlayerController extends ChangeNotifier {
     try {
       await (controls as AudioControlPort).setVolume(normalized);
       return true;
-    } on Object {
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'playback'},
+        error: error,
+      );
       state = previous;
       notifyListeners();
       return false;
@@ -381,7 +393,13 @@ final class PlayerController extends ChangeNotifier {
         value ? 0 : state.volume.clamp(.01, 1),
       );
       return true;
-    } on Object {
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'playback'},
+        error: error,
+      );
       state = previous;
       notifyListeners();
       return false;
@@ -399,36 +417,80 @@ final class PlayerController extends ChangeNotifier {
     try {
       await (controls as AudioControlPort).setSpeed(value);
       return true;
-    } on Object {
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'playback'},
+        error: error,
+      );
       state = previous;
       notifyListeners();
       return false;
     }
   }
 
-  Future<void> pause() => audio.pause();
-  Future<void> resume() async {
-    if (state.current == null) {
-      await audio.resume();
-      return;
-    }
-    if (state.processing == PlayerProcessing.error || state.error != null) {
-      state = state.copyWith(
-        processing: PlayerProcessing.loading,
-        playbackPending: true,
-        error: null,
+  Future<void> pause() async {
+    try {
+      await audio.pause();
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'playback'},
+        error: error,
       );
-      notifyListeners();
-      await _playCurrent();
-      return;
+      rethrow;
     }
-    if (state.processing == PlayerProcessing.completed) {
-      await audio.seek(Duration.zero);
-    }
-    await audio.resume();
   }
 
-  Future<void> seek(Duration position) => audio.seek(position);
+  Future<void> resume() async {
+    try {
+      if (state.current == null) {
+        await audio.resume();
+        return;
+      }
+      if (state.processing == PlayerProcessing.error || state.error != null) {
+        state = state.copyWith(
+          processing: PlayerProcessing.loading,
+          playbackPending: true,
+          error: null,
+        );
+        notifyListeners();
+        await _playCurrent();
+        return;
+      }
+      if (state.processing == PlayerProcessing.completed) {
+        await audio.seek(Duration.zero);
+      }
+      await audio.resume();
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'playback'},
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> seek(Duration position) async {
+    try {
+      await audio.seek(position);
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackControlFailed,
+        level: AppLogLevel.warning,
+        fields: {
+          'operation': 'playback',
+          'position_ms': position.inMilliseconds,
+        },
+        error: error,
+      );
+      rethrow;
+    }
+  }
 
   Future<bool> setQuality(String quality) async {
     if (quality == state.quality) return true;
@@ -664,6 +726,7 @@ final class PlayerController extends ChangeNotifier {
     final track = state.current;
     if (track == null) return false;
     final generation = ++_playGeneration;
+    final operationId = AppLogger.newOperationId();
     final storedState = _loadTrackState(track, generation);
     _bundleLyricsGeneration = null;
     try {
@@ -671,7 +734,11 @@ final class PlayerController extends ChangeNotifier {
         if (!_isCurrent(generation, track)) return false;
         AppLogger.instance.record(
           AppLogEvent.playbackStarted,
-          fields: {'quality': state.quality},
+          fields: {
+            'quality': state.quality,
+            'generation': generation,
+            'operation_id': operationId,
+          },
         );
         state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
@@ -687,6 +754,7 @@ final class PlayerController extends ChangeNotifier {
         AppLogEvent.playbackCacheFailed,
         level: AppLogLevel.warning,
         error: error,
+        fields: {'generation': generation, 'operation_id': operationId},
       );
     }
     Object? lastError;
@@ -702,7 +770,11 @@ final class PlayerController extends ChangeNotifier {
         if (!_isCurrent(generation, playbackTrack)) return false;
         AppLogger.instance.record(
           AppLogEvent.playbackStarted,
-          fields: {'quality': state.quality},
+          fields: {
+            'quality': state.quality,
+            'generation': generation,
+            'operation_id': operationId,
+          },
         );
         state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
@@ -715,7 +787,11 @@ final class PlayerController extends ChangeNotifier {
         AppLogger.instance.record(
           AppLogEvent.playbackFailed,
           level: AppLogLevel.warning,
-          fields: {'attempt': attempt},
+          fields: {
+            'attempt': attempt,
+            'generation': generation,
+            'operation_id': operationId,
+          },
           error: error,
         );
         lastError = error;
@@ -725,7 +801,11 @@ final class PlayerController extends ChangeNotifier {
         AppLogger.instance.record(
           AppLogEvent.playbackFailed,
           level: AppLogLevel.error,
-          fields: {'attempt': attempt},
+          fields: {
+            'attempt': attempt,
+            'generation': generation,
+            'operation_id': operationId,
+          },
           error: error,
         );
         lastError = error;
@@ -928,7 +1008,13 @@ final class PlayerController extends ChangeNotifier {
       final source = await _resolve(track);
       if (!_isCurrent(generation, track)) return;
       _applyResolvedResources(source, generation: generation);
-    } on Object {
+    } on Object catch (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackCacheFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'cache'},
+        error: error,
+      );
       // Optional resource refresh must not make cached audio unavailable.
     }
   }
@@ -1003,8 +1089,14 @@ final class PlayerController extends ChangeNotifier {
       }
       final terminal = entry.terminal;
       if (terminal != null) await _reportSessionEnd(entry, terminal);
-    } on Object {
+    } on Object catch (error, stackTrace) {
       if (_activeSession == entry) _activeSession = null;
+      AppLogger.instance.record(
+        AppLogEvent.playbackHistoryFailed,
+        level: AppLogLevel.warning,
+        error: error,
+        stackTrace: stackTrace,
+      );
       // Playback history is best-effort and must not alter player state.
     }
   }
@@ -1036,7 +1128,13 @@ final class PlayerController extends ChangeNotifier {
         position: terminal.position,
         duration: terminal.duration,
       );
-    } on Object {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackHistoryFailed,
+        level: AppLogLevel.warning,
+        error: error,
+        stackTrace: stackTrace,
+      );
       // Playback history is best-effort and must not alter player state.
     }
   }
@@ -1060,6 +1158,15 @@ final class PlayerController extends ChangeNotifier {
     final track = state.current;
     if (track != null) _persistResumeFromSnapshot(track);
     if (newlyCompleted) unawaited(_handleCompletion());
+    if (newlyCompleted) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackCompleted,
+        fields: {
+          'position_ms': snapshot.position.inMilliseconds,
+          'duration_ms': snapshot.duration.inMilliseconds,
+        },
+      );
+    }
   }
 
   int _randomQueueIndex() {

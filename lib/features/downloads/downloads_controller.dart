@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../api/models.dart';
+import '../../diagnostics/app_logger.dart';
 import 'download_repository.dart';
 
 final class DownloadsState {
@@ -79,7 +80,14 @@ final class DownloadsController extends ChangeNotifier {
         bytesPerSecond: speeds,
         clearingHistory: state.clearingHistory,
       );
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.downloadFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'download'},
+        error: error,
+        stackTrace: stackTrace,
+      );
       state = DownloadsState(
         jobs: state.jobs,
         stale: true,
@@ -184,8 +192,19 @@ final class DownloadsController extends ChangeNotifier {
   }
 
   Future<void> _mutate(Future<Object?> Function() action) async {
-    await action();
-    await refresh();
+    try {
+      await action();
+      await refresh();
+    } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.downloadFailed,
+        level: AppLogLevel.warning,
+        fields: {'operation': 'download'},
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   void invalidate() {
