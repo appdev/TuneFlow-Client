@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/service_origin.dart';
+import '../../diagnostics/diagnostic_reporter.dart';
 import '../../storage/app_image_cache.dart';
 import '../../storage/app_preferences.dart';
 import '../../storage/media_cache.dart';
@@ -35,6 +36,7 @@ final class SettingsController extends ChangeNotifier {
     UpdateServiceAccessOrigins? updateServiceAccessOrigins,
     ApplyServiceEndpoints? applyServiceEndpoints,
     ConnectionDiagnostics? initialDiagnostics,
+    this.diagnostics,
   }) : state = settings,
        _save = save,
        _connect = connect,
@@ -57,6 +59,7 @@ final class SettingsController extends ChangeNotifier {
   }
 
   final SaveSettings _save;
+  final DiagnosticReporter? diagnostics;
   final Future<void> Function(String origin) _connect;
   final Future<void> Function() _disconnect;
   final Future<void> Function(String quality) _setPlayerQuality;

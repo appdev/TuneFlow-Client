@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../diagnostics/app_logger.dart';
+
 import 'package:flutter/foundation.dart';
 
 import '../api/models.dart';
@@ -113,7 +115,11 @@ final class MacOSMenuBarCoordinator {
     _lastSnapshot = snapshot;
     unawaited(
       _menuBar.updateState(snapshot).catchError((Object error) {
-        debugPrint('macOS menu bar state update failed: $error');
+        AppLogger.instance.record(
+          AppLogEvent.menuBarUpdateFailed,
+          level: AppLogLevel.warning,
+          error: error,
+        );
       }),
     );
   }
@@ -121,7 +127,11 @@ final class MacOSMenuBarCoordinator {
   void _enqueueCommand(MacOSMenuBarCommand command) {
     _commandTail = _commandTail.then((_) => _handleCommand(command)).catchError(
       (Object error) {
-        debugPrint('macOS menu bar command failed: $error');
+        AppLogger.instance.record(
+          AppLogEvent.menuBarCommandFailed,
+          level: AppLogLevel.warning,
+          error: error,
+        );
       },
     );
   }

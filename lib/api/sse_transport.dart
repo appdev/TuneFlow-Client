@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'service_api.dart';
 import 'service_exception.dart';
+import '../diagnostics/app_logger.dart';
 
 final class SseParser {
   SseParser({int initialSequence = 0}) : sequence = initialSequence;
@@ -112,6 +113,7 @@ final class SseTransport {
           );
         }
         attempt = 0;
+        AppLogger.instance.record(AppLogEvent.eventStreamConnected);
         try {
           await _onConnected?.call();
         } on Object {
@@ -123,8 +125,14 @@ final class SseTransport {
             yield event;
           }
         }
-      } on Object {
+      } on Object catch (error) {
         if (_closed) break;
+        AppLogger.instance.record(
+          AppLogEvent.eventStreamFailed,
+          level: AppLogLevel.warning,
+          fields: {'attempt': attempt},
+          error: error,
+        );
       }
       final milliseconds = attempt < 4 ? 250 * (1 << attempt) : 5000;
       attempt++;

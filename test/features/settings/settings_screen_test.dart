@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:musicfree_service_client/design/app_theme.dart';
+import 'package:musicfree_service_client/design/components/app_button.dart';
 import 'package:musicfree_service_client/features/connection/connection_repository.dart';
 import 'package:musicfree_service_client/features/connection/network_type_monitor.dart';
 import 'package:musicfree_service_client/features/settings/settings_controller.dart';
@@ -109,6 +110,31 @@ void main() {
     expect(find.textContaining('文件权限'), findsNothing);
     expect(find.byKey(const Key('settings-wide-layout')), findsOneWidget);
   });
+
+  testWidgets(
+    'shows disabled diagnostics upload when Sentry is not configured',
+    (tester) async {
+      final controller = SettingsController(
+        settings: const AppSettings(origin: 'http://service.local'),
+        save: (_) async {},
+        connect: (_) async {},
+        disconnect: () async {},
+        setPlayerQuality: (_) async {},
+      );
+      addTearDown(controller.dispose);
+
+      await tester.pumpWidget(harness(SettingsScreen(controller: controller)));
+      await tester.pump();
+      await tester.ensureVisible(find.byKey(const Key('settings-diagnostics')));
+
+      expect(find.text('帮助与诊断'), findsOneWidget);
+      expect(find.byKey(const Key('diagnostics-unavailable')), findsOneWidget);
+      final upload = tester.widget<AppButton>(
+        find.byKey(const Key('diagnostics-upload')),
+      );
+      expect(upload.onPressed, isNull);
+    },
+  );
 
   testWidgets(
     'mobile settings can reduce transparency without changing theme',

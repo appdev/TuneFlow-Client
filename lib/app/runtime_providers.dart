@@ -2,10 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../api/models.dart';
 import '../api/sse_transport.dart';
 import '../events/event_coordinator.dart';
+import '../diagnostics/app_logger.dart';
+import '../diagnostics/diagnostic_reporter.dart';
+import '../diagnostics/sentry_diagnostic_uploader.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/settings/settings_controller.dart';
 import '../features/playlists/playlist_repository.dart';
@@ -15,6 +19,19 @@ import '../features/search/search_repository.dart';
 import '../storage/app_settings_controller.dart';
 import 'app_providers.dart';
 import 'player_providers.dart';
+
+final diagnosticReporterProvider = Provider<DiagnosticReporter>((ref) {
+  final reporter = DiagnosticReporter(
+    logger: AppLogger.instance,
+    uploader: SentryDiagnosticUploader(),
+    loadVersion: () async {
+      final package = await PackageInfo.fromPlatform();
+      return '${package.version}+${package.buildNumber}';
+    },
+  );
+  ref.onDispose(reporter.dispose);
+  return reporter;
+});
 
 final macOSMenuBarCoordinatorProvider = Provider<MacOSMenuBarCoordinator>((
   ref,
@@ -50,6 +67,7 @@ final settingsControllerProvider = Provider<SettingsController?>((ref) {
   final diagnostics = ref.read(connectionProvider).value?.diagnostics;
   final serviceSettings = api == null ? null : ServiceSettingsRepository(api);
   final controller = SettingsController(
+    diagnostics: ref.watch(diagnosticReporterProvider),
     settings: settings,
     save: ref.read(appSettingsProvider.notifier).saveSettings,
     connect: ref.read(connectionProvider.notifier).connect,

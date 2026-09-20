@@ -1,17 +1,16 @@
 import 'dart:convert';
-import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'service_exception.dart';
 import 'service_origin.dart';
+import '../diagnostics/app_logger.dart';
 
 typedef ServiceHttpLog = void Function(String message);
 
-void _defaultServiceHttpLog(String message) {
-  developer.log(message, name: 'TuneFlow.HTTP');
-}
+// Legacy debug callback is opt-in; production diagnostics use structured fields.
+void _defaultServiceHttpLog(String message) {}
 
 String _safeUri(Uri uri) {
   if (uri.queryParameters.isEmpty) return uri.toString();
@@ -27,16 +26,22 @@ String _safeError(Object error) => switch (error) {
 };
 
 final class ServiceApi {
-  ServiceApi(ServiceOrigin origin, {http.Client? client, ServiceHttpLog? log})
-    : _origin = origin,
-      _client = client ?? http.Client(),
-      _log = log ?? _defaultServiceHttpLog,
-      _ownsClient = client == null;
+  ServiceApi(
+    ServiceOrigin origin, {
+    http.Client? client,
+    ServiceHttpLog? log,
+    AppLogger? diagnostics,
+  }) : _origin = origin,
+       _client = client ?? http.Client(),
+       _log = log ?? _defaultServiceHttpLog,
+       _diagnostics = diagnostics ?? AppLogger.instance,
+       _ownsClient = client == null;
 
   ServiceOrigin _origin;
   ServiceOrigin get origin => _origin;
   final http.Client _client;
   final ServiceHttpLog _log;
+  final AppLogger _diagnostics;
   final bool _ownsClient;
 
   void switchOrigin(ServiceOrigin next) {
@@ -48,6 +53,56 @@ final class ServiceApi {
     String path, {
     Object? body,
     Map<String, String>? headers,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    int? status;
+    int? bytes;
+    try {
+      final result = await _request(
+        method,
+        path,
+        body: body,
+        headers: headers,
+        received: (code, length) {
+          status = code;
+          bytes = length;
+        },
+      );
+      _diagnostics.record(
+        AppLogEvent.httpCompleted,
+        fields: {
+          'method': method,
+          'route': path,
+          'status': status,
+          'duration_ms': stopwatch.elapsedMilliseconds,
+          'response_bytes': bytes,
+        },
+      );
+      return result;
+    } on Object catch (error, stack) {
+      _diagnostics.record(
+        AppLogEvent.httpFailed,
+        level: AppLogLevel.warning,
+        fields: {
+          'method': method,
+          'route': path,
+          'status': status,
+          'duration_ms': stopwatch.elapsedMilliseconds,
+          'response_bytes': bytes,
+        },
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    }
+  }
+
+  Future<Object?> _request(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+    required void Function(int, int) received,
   }) async {
     final uri = origin.resolve(path);
     final stopwatch = kDebugMode ? (Stopwatch()..start()) : null;
@@ -71,6 +126,7 @@ final class ServiceApi {
     try {
       streamed = await _client.send(request);
       responseBody = await streamed.stream.bytesToString();
+      received(streamed.statusCode, responseBody.length);
     } on ServiceException catch (error) {
       if (kDebugMode) {
         _log(

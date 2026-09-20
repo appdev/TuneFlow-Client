@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../diagnostics/app_logger.dart';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -128,6 +129,11 @@ final class RadioController extends ChangeNotifier {
       return true;
     } on Object catch (error) {
       if (!_isCurrent(generation)) return false;
+      AppLogger.instance.record(
+        AppLogEvent.radioFailed,
+        level: AppLogLevel.warning,
+        error: error,
+      );
       state = state.copyWith(loading: false, error: error);
       notifyListeners();
       return false;
@@ -268,6 +274,11 @@ final class RadioController extends ChangeNotifier {
       return true;
     } on Object catch (error) {
       if (!_isCurrent(generation)) return false;
+      AppLogger.instance.record(
+        AppLogEvent.radioFailed,
+        level: AppLogLevel.warning,
+        error: error,
+      );
       _prefetchRetryAfter = _clock().add(const Duration(seconds: 30));
       state = state.copyWith(loading: false, error: error);
       notifyListeners();

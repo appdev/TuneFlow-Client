@@ -16,6 +16,7 @@ import '../../storage/app_preferences.dart';
 import '../connection/connection_repository.dart';
 import '../radio/radio_controller.dart';
 import 'settings_controller.dart';
+import 'diagnostics_card.dart';
 
 final class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -87,6 +88,11 @@ final class _SettingsScreenState extends State<SettingsScreen> {
           ],
         );
         final cache = _CacheCard(controller: widget.controller);
+        final diagnostics = DiagnosticsCard(
+          reporter: widget.controller.diagnostics,
+          serviceOrigin:
+              widget.controller.connection?.origin ?? settings.origin,
+        );
         return ColoredBox(
           key: Key(mobile ? 'settings-mobile-layout' : 'settings-wide-layout'),
           color: AppTokens.of(context).background,
@@ -140,6 +146,10 @@ final class _SettingsScreenState extends State<SettingsScreen> {
                                 lyrics,
                                 const SizedBox(height: 24),
                                 general,
+                                if (!kIsWeb) ...[
+                                  const SizedBox(height: 24),
+                                  diagnostics,
+                                ],
                               ],
                             ),
                           ),
@@ -155,6 +165,7 @@ final class _SettingsScreenState extends State<SettingsScreen> {
                       service,
                       const SizedBox(height: 24),
                       cache,
+                      if (!kIsWeb) ...[const SizedBox(height: 24), diagnostics],
                     ],
                   ],
                 ),

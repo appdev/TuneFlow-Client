@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../diagnostics/app_logger.dart';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -553,6 +554,11 @@ final class PlayerController extends ChangeNotifier {
           _bundleLyricsGeneration == generation) {
         return;
       }
+      AppLogger.instance.record(
+        AppLogEvent.lyricsFailed,
+        level: AppLogLevel.warning,
+        error: error,
+      );
       state = state.copyWith(clearLyrics: true, lyricsError: error);
     }
     notifyListeners();
@@ -663,6 +669,10 @@ final class PlayerController extends ChangeNotifier {
     try {
       if (await audio.playCachedTrack(track, state.quality)) {
         if (!_isCurrent(generation, track)) return false;
+        AppLogger.instance.record(
+          AppLogEvent.playbackStarted,
+          fields: {'quality': state.quality},
+        );
         state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
         unawaited(_refreshCachedLocalResources(track, generation));
@@ -671,8 +681,13 @@ final class PlayerController extends ChangeNotifier {
         _resetPlaybackFailureChain();
         return true;
       }
-    } on Object {
+    } on Object catch (error) {
       // A stale or undecodable cache must not prevent a fresh Service resolve.
+      AppLogger.instance.record(
+        AppLogEvent.playbackCacheFailed,
+        level: AppLogLevel.warning,
+        error: error,
+      );
     }
     Object? lastError;
     for (var attempt = 0; attempt < 2; attempt++) {
@@ -685,6 +700,10 @@ final class PlayerController extends ChangeNotifier {
         );
         await audio.playTrack(playbackTrack, source.streamUri, state.quality);
         if (!_isCurrent(generation, playbackTrack)) return false;
+        AppLogger.instance.record(
+          AppLogEvent.playbackStarted,
+          fields: {'quality': state.quality},
+        );
         state = state.copyWith(playbackPending: false, error: null);
         notifyListeners();
         if (startSession) await _startSession(playbackTrack);
@@ -693,10 +712,22 @@ final class PlayerController extends ChangeNotifier {
         return true;
       } on PlaybackStreamExpiredException catch (error) {
         if (!_isCurrent(generation, track)) return false;
+        AppLogger.instance.record(
+          AppLogEvent.playbackFailed,
+          level: AppLogLevel.warning,
+          fields: {'attempt': attempt},
+          error: error,
+        );
         lastError = error;
         if (attempt == 0) continue;
       } on Object catch (error) {
         if (!_isCurrent(generation, track)) return false;
+        AppLogger.instance.record(
+          AppLogEvent.playbackFailed,
+          level: AppLogLevel.error,
+          fields: {'attempt': attempt},
+          error: error,
+        );
         lastError = error;
         break;
       }

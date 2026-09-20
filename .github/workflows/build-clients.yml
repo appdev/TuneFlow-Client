@@ -14,6 +14,7 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.47.0
+  SENTRY_DSN: ${{ vars.SENTRY_DSN }}
 
 jobs:
   android:
@@ -49,10 +50,10 @@ jobs:
         run: flutter pub get
       - name: Build validation APK
         if: ${{ !inputs.publish_release }}
-        run: flutter build apk --debug
+        run: flutter build apk --debug --dart-define="SENTRY_DSN=$SENTRY_DSN"
       - name: Build signed Release APK
         if: ${{ inputs.publish_release }}
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define="SENTRY_DSN=$SENTRY_DSN"
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
@@ -72,7 +73,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Build unsigned iOS app
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --dart-define="SENTRY_DSN=$SENTRY_DSN"
       - name: Remove iOS ad-hoc signatures
         shell: bash
         run: |
@@ -123,7 +124,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Build ad-hoc signed macOS app
-        run: flutter build macos --release
+        run: flutter build macos --release --dart-define="SENTRY_DSN=$SENTRY_DSN"
       - name: Verify macOS ad-hoc signature
         shell: bash
         run: |
@@ -157,7 +158,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --dart-define="SENTRY_DSN=$env:SENTRY_DSN"
       - name: Package Windows app
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath tuneflow-windows.zip
@@ -183,7 +184,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build linux --release --verbose
+      - run: flutter build linux --release --verbose --dart-define="SENTRY_DSN=$SENTRY_DSN"
       - name: Package Linux app
         run: tar -C build/linux/x64/release -czf tuneflow-linux.tar.gz bundle
       - name: Upload Linux app

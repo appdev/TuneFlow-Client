@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/service_exception.dart';
 import '../../api/service_origin.dart';
 import '../../app/app_providers.dart';
+import '../../diagnostics/app_logger.dart';
 import '../../storage/app_preferences.dart';
 import '../../storage/app_settings_controller.dart';
 import 'connection_repository.dart';
@@ -77,6 +78,12 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
       } on Object catch (error, stackTrace) {
         lastFailure = error;
         lastStackTrace = stackTrace;
+        AppLogger.instance.record(
+          AppLogEvent.serviceConnectionFailed,
+          level: AppLogLevel.warning,
+          error: error,
+          stackTrace: stackTrace,
+        );
       }
     }
 
@@ -150,6 +157,12 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
         ),
       );
     } on Object catch (error, stackTrace) {
+      AppLogger.instance.record(
+        AppLogEvent.serviceConnectionFailed,
+        level: AppLogLevel.warning,
+        error: error,
+        stackTrace: stackTrace,
+      );
       if (previous == null) {
         state = AsyncError(error, stackTrace);
       } else {
@@ -265,6 +278,7 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
           externalOrigin: null,
         );
     state = const AsyncData(null);
+    AppLogger.instance.record(AppLogEvent.serviceDisconnected);
   }
 
   Future<void> _reevaluate(NetworkRoute route) async {

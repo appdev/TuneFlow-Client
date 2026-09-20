@@ -2,6 +2,7 @@ import '../../api/models.dart';
 import '../../api/service_api.dart';
 import '../../api/service_exception.dart';
 import '../../api/service_origin.dart';
+import '../../diagnostics/app_logger.dart';
 import 'network_type_monitor.dart';
 import 'server_endpoint_probe.dart';
 
@@ -89,8 +90,15 @@ final class ConnectionRepository {
           'This client requires Service API v1, received ${capabilities.apiVersion}.',
         );
       }
+      AppLogger.instance.record(AppLogEvent.serviceConnected);
       return ConnectedService(api: api, capabilities: capabilities);
-    } on Object {
+    } on Object catch (error, stack) {
+      AppLogger.instance.record(
+        AppLogEvent.serviceConnectionFailed,
+        level: AppLogLevel.warning,
+        error: error,
+        stackTrace: stack,
+      );
       api.close();
       rethrow;
     }

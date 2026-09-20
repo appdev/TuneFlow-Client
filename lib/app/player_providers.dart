@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../diagnostics/app_logger.dart';
 
 import '../features/connection/connection_controller.dart';
 import '../features/downloads/download_repository.dart';
@@ -41,8 +42,14 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
     rememberPlaybackProgress: settings.rememberPlaybackProgress,
     autoSkipPlaybackErrors: settings.autoSkipPlaybackErrors,
     trackStateStore: ref.read(trackPlaybackStateStoreProvider),
-    reportPersistenceError: (_) =>
-        ref.read(appMessageCenterProvider).enqueue('本地播放设置保存失败', '当前会话仍会保留更改。'),
+    reportPersistenceError: (error) {
+      AppLogger.instance.record(
+        AppLogEvent.playbackStateFailed,
+        level: AppLogLevel.warning,
+        error: error,
+      );
+      ref.read(appMessageCenterProvider).enqueue('本地播放设置保存失败', '当前会话仍会保留更改。');
+    },
     sessions: PlaybackHistoryRepository(
       api,
       platform: currentPlaybackPlatform(),

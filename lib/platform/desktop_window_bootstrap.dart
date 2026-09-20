@@ -4,6 +4,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app_platform.dart';
 import 'desktop_window_controller.dart';
+import '../diagnostics/app_logger.dart';
 
 bool shouldInitializeDesktopWindow(AppPlatform platform) => platform.isDesktop;
 
@@ -44,7 +45,11 @@ Future<void> initializeDesktopWindow(AppPlatform platform) async {
       },
     );
   } catch (error, stackTrace) {
-    debugPrint('TuneFlow desktop window initialization failed: $error');
-    debugPrintStack(stackTrace: stackTrace);
+    AppLogger.instance.record(
+      AppLogEvent.desktopWindowFailed,
+      level: AppLogLevel.warning,
+      error: error,
+      stackTrace: stackTrace,
+    );
   }
 }
