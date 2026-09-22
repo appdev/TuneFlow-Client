@@ -16,12 +16,14 @@ import '../design/app_theme_definition.dart';
 import '../design/app_theme_scope.dart';
 import '../design/components/app_feedback.dart';
 import '../features/connection/connection_controller.dart';
+import '../features/connection/connection_screen.dart';
 import '../features/connection/network_type_monitor.dart';
 import '../features/connection/connection_repository.dart';
 import '../features/more/about_screen.dart';
 import '../features/more/app_update.dart';
 import '../features/more/github_update_checker.dart';
 import '../features/player/service_audio_handler.dart';
+import '../features/player/player_shortcuts.dart';
 import '../platform/macos_menu_bar.dart';
 import '../l10n/app_localizations.dart';
 import '../storage/app_image_cache.dart';
@@ -79,8 +81,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   invalidation.addListener(refresh.trigger);
   ref.listen(
     connectionProvider.select(
-      (connection) =>
-          (hasError: connection.hasError, api: connection.value?.api),
+      (connection) => (
+        hasError: connection.hasError,
+        api: connection.value?.api,
+        connected: connection.value?.isConnected ?? false,
+        loading: connection.isLoading,
+      ),
     ),
     (previous, next) {
       if (!identical(previous?.api, next.api)) {
@@ -235,7 +241,9 @@ final class _AppView extends ConsumerWidget {
             definition: themeDefinition,
             child: AppGlassPolicyHost(
               reduceTransparency: settings?.reduceTransparency ?? false,
-              child: ShadAppBuilder(child: _AppMessageHost(child: child!)),
+              child: ShadAppBuilder(
+                child: _AppMessageHost(child: _ConnectionGate(child: child!)),
+              ),
             ),
           ),
         ),
@@ -247,6 +255,34 @@ final class _AppView extends ConsumerWidget {
       result = AppImageCacheScope(cache: imageCache, child: result);
     }
     return result;
+  }
+}
+
+final class _ConnectionGate extends ConsumerWidget {
+  const _ConnectionGate({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final connection = ref.watch(connectionProvider);
+    final allowed =
+        !connection.isLoading && (connection.value?.isConnected ?? false);
+    final player = ref.watch(playerControllerProvider);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ExcludeFocus(
+          excluding: !allowed,
+          child: Offstage(
+            offstage: !allowed,
+            child: player == null
+                ? child
+                : PlayerShortcuts(controller: player, child: child),
+          ),
+        ),
+        if (!allowed) const ConnectionScreen(),
+      ],
+    );
   }
 }
 

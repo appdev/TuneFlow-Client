@@ -221,10 +221,12 @@ GoRouter buildAppRouter({
     final connected = requireConnected();
     final platform = resolveAppPlatform(Theme.of(context).platform);
 
+    var closing = false;
     void closePlayer() {
-      final navigator = Navigator.of(context);
-      if (navigator.canPop()) {
-        navigator.pop();
+      if (closing) return;
+      closing = true;
+      if (context.canPop()) {
+        context.pop();
       } else {
         context.go('/');
       }
@@ -264,11 +266,15 @@ GoRouter buildAppRouter({
     );
   }
 
-  void openPlayer(BuildContext context) {
-    Navigator.of(
-      context,
-      rootNavigator: true,
-    ).push<void>(MaterialPageRoute<void>(builder: playerRoute));
+  var playerOpening = false;
+  Future<void> openPlayer(BuildContext context) async {
+    if (playerOpening) return;
+    playerOpening = true;
+    try {
+      await context.pushNamed<void>('player');
+    } finally {
+      playerOpening = false;
+    }
   }
 
   return GoRouter(
@@ -280,7 +286,7 @@ GoRouter buildAppRouter({
       if (connection.isLoading) {
         return state.matchedLocation == '/connect' ? null : '/connect';
       }
-      if (connected == null) {
+      if (connected == null || !connected.isConnected) {
         return state.matchedLocation == '/connect' ? null : '/connect';
       }
       if (state.matchedLocation == '/connect') {
@@ -523,6 +529,7 @@ GoRouter buildAppRouter({
                           id,
                         ),
                         playTracks: playTracks,
+                        currentTrack: () => requirePlayer().state.current,
                         onDeleted: () => context.canPop()
                             ? context.pop()
                             : context.goNamed('playlists'),
@@ -731,7 +738,39 @@ GoRouter buildAppRouter({
       GoRoute(
         path: '/player',
         name: 'player',
-        builder: (context, state) => playerRoute(context),
+        pageBuilder: (context, state) {
+          final reduceMotion = MediaQuery.disableAnimationsOf(context);
+          return CustomTransitionPage<void>(
+            key: state.pageKey,
+            transitionDuration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 360),
+            reverseTransitionDuration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 360),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  if (reduceMotion) return child;
+                  final curved = animation.drive(
+                    CurveTween(
+                      curve: animation.status == AnimationStatus.reverse
+                          ? Curves.easeInCubic
+                          : Curves.easeOutCubic,
+                    ),
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: curved.drive(
+                        Tween(begin: const Offset(0, .06), end: Offset.zero),
+                      ),
+                      child: child,
+                    ),
+                  );
+                },
+            child: playerRoute(context),
+          );
+        },
       ),
     ],
   );

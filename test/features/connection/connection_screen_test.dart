@@ -82,6 +82,10 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       expect(find.byKey(const Key('service-origin-field')), findsNothing);
 
+      await tester.tap(find.byKey(const Key('cancel-connection-button')));
+      await tester.pump();
+      expect(find.byKey(const Key('service-origin-field')), findsOneWidget);
+
       pendingHealth.complete(
         http.Response(
           jsonEncode({
@@ -90,7 +94,9 @@ void main() {
           200,
         ),
       );
+      await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('connection-error')), findsNothing);
     },
   );
 

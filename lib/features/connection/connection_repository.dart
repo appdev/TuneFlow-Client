@@ -21,6 +21,7 @@ final class ConnectedService {
   final ConnectionDiagnostics? diagnostics;
 
   ServiceOrigin get origin => api.origin;
+  bool get isConnected => diagnostics?.connected ?? true;
 
   ConnectedService copyWith({
     Capabilities? capabilities,

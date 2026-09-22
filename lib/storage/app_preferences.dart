@@ -7,7 +7,11 @@ enum LyricFontSize { small, standard, large }
 
 enum LyricAlignment { adaptive, left, center, right }
 
-enum LyricAuxiliaryOrder { translationFirst, romanizationFirst }
+enum LyricAuxiliaryOrder {
+  translationFirst,
+  romanizationFirst,
+  romanizationAbove,
+}
 
 const bytesPerGiB = 1024 * 1024 * 1024;
 const defaultMediaCacheLimitBytes = 5 * bytesPerGiB;
@@ -46,6 +50,7 @@ final class AppSettings {
     this.lyricAuxiliaryOrder = LyricAuxiliaryOrder.translationFirst,
     this.useTraditionalLyrics = false,
     this.emphasizeActiveLyric = true,
+    this.animatedBackground = false,
     this.rememberPlaybackProgress = false,
     this.autoSkipPlaybackErrors = false,
     this.reduceTransparency = false,
@@ -68,6 +73,7 @@ final class AppSettings {
   final LyricAuxiliaryOrder lyricAuxiliaryOrder;
   final bool useTraditionalLyrics;
   final bool emphasizeActiveLyric;
+  final bool animatedBackground;
   final bool rememberPlaybackProgress;
   final bool autoSkipPlaybackErrors;
   final bool reduceTransparency;
@@ -94,6 +100,7 @@ final class AppSettings {
     LyricAuxiliaryOrder? lyricAuxiliaryOrder,
     bool? useTraditionalLyrics,
     bool? emphasizeActiveLyric,
+    bool? animatedBackground,
     bool? rememberPlaybackProgress,
     bool? autoSkipPlaybackErrors,
     bool? reduceTransparency,
@@ -119,6 +126,7 @@ final class AppSettings {
     lyricAuxiliaryOrder: lyricAuxiliaryOrder ?? this.lyricAuxiliaryOrder,
     useTraditionalLyrics: useTraditionalLyrics ?? this.useTraditionalLyrics,
     emphasizeActiveLyric: emphasizeActiveLyric ?? this.emphasizeActiveLyric,
+    animatedBackground: animatedBackground ?? this.animatedBackground,
     rememberPlaybackProgress:
         rememberPlaybackProgress ?? this.rememberPlaybackProgress,
     autoSkipPlaybackErrors:
@@ -146,13 +154,14 @@ final class AppSettings {
       other.lyricAuxiliaryOrder == lyricAuxiliaryOrder &&
       other.useTraditionalLyrics == useTraditionalLyrics &&
       other.emphasizeActiveLyric == emphasizeActiveLyric &&
+      other.animatedBackground == animatedBackground &&
       other.rememberPlaybackProgress == rememberPlaybackProgress &&
       other.autoSkipPlaybackErrors == autoSkipPlaybackErrors &&
       other.reduceTransparency == reduceTransparency &&
       other.cacheLimitBytes == cacheLimitBytes;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     origin,
     lastConnectedOrigin,
     lanOrigin,
@@ -169,11 +178,12 @@ final class AppSettings {
     lyricAuxiliaryOrder,
     useTraditionalLyrics,
     emphasizeActiveLyric,
+    animatedBackground,
     rememberPlaybackProgress,
     autoSkipPlaybackErrors,
     reduceTransparency,
     cacheLimitBytes,
-  );
+  ]);
 }
 
 abstract interface class AppPreferences {
@@ -257,6 +267,8 @@ final class SharedAppPreferences implements AppPreferences {
           await _preferences.getBool(_useTraditionalLyricsKey) ?? false,
       emphasizeActiveLyric:
           await _preferences.getBool(_emphasizeActiveLyricKey) ?? true,
+      animatedBackground:
+          await _preferences.getBool('animated_background') ?? false,
       rememberPlaybackProgress:
           await _preferences.getBool(_rememberPlaybackProgressKey) ?? false,
       autoSkipPlaybackErrors:
@@ -271,6 +283,10 @@ final class SharedAppPreferences implements AppPreferences {
 
   @override
   Future<void> write(AppSettings settings) async {
+    await _preferences.setBool(
+      'animated_background',
+      settings.animatedBackground,
+    );
     await _writeNullableString(_originKey, settings.origin);
     await _writeNullableString(
       _lastConnectedOriginKey,

@@ -349,7 +349,7 @@ final class _DownloadsScreenState extends State<DownloadsScreen> {
                           ? '下载由 Service 执行，文件保存在 Server 的媒体目录；浏览器播放仍需连接 Service。'
                           : mobile
                           ? 'Service 恢复后将继续排队任务。'
-                          : 'Service 断开时，已完成内容仍可播放；排队任务将在恢复后继续。',
+                          : '连接 Service 后可管理和播放已完成内容；下载由服务器执行。',
                       message: '',
                       compact: true,
                     ),

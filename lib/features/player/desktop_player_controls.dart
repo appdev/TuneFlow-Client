@@ -31,6 +31,11 @@ final class DesktopPlayerControls extends StatefulWidget {
 }
 
 final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
+  static const popoverAnchor = ShadAnchor(
+    childAlignment: Alignment.bottomRight,
+    overlayAlignment: Alignment.topRight,
+    offset: Offset(0, -8),
+  );
   final queuePopover = ShadPopoverController();
   final qualityPopover = ShadPopoverController();
   final speedPopover = ShadPopoverController();
@@ -77,6 +82,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                 children: [
                   PlaybackProgress(
                     key: const Key('player-desktop-progress'),
+                    trackIdentity: (state.current?.source, state.current?.id),
                     position: state.position,
                     duration: state.duration,
                     onSeek: controller.seek,
@@ -167,6 +173,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                   ),
                   ShadPopover(
                     controller: speedPopover,
+                    anchor: popoverAnchor,
                     popover: (_) => SizedBox(
                       key: const Key('player-desktop-speed-popover'),
                       width: 150,
@@ -206,9 +213,11 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                   ),
                   ShadPopover(
                     controller: volumePopover,
+                    anchor: popoverAnchor,
                     popover: (_) => SizedBox(
                       key: const Key('player-desktop-volume-popover'),
                       width: 220,
+                      height: 48,
                       child: Row(
                         children: [
                           IconButton(
@@ -232,7 +241,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                     ),
                     child: _ControlButton(
                       key: const Key('player-desktop-volume'),
-                      label: state.muted ? '取消静音' : '音量',
+                      label: '音量',
                       icon: state.muted || state.volume == 0
                           ? LucideIcons.volumeX
                           : LucideIcons.volume2,
@@ -241,6 +250,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                   ),
                   ShadPopover(
                     controller: qualityPopover,
+                    anchor: popoverAnchor,
                     popover: (_) => SizedBox(
                       key: const Key('player-desktop-quality-popover'),
                       width: 168,
@@ -305,6 +315,7 @@ final class _DesktopPlayerControlsState extends State<DesktopPlayerControls> {
                   ),
                   ShadPopover(
                     controller: queuePopover,
+                    anchor: popoverAnchor,
                     popover: (_) => ListenableBuilder(
                       listenable: controller,
                       builder: (context, _) => DesktopQueuePopover(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../../api/models.dart';
@@ -24,18 +25,24 @@ final class PlaylistDetailScreen extends StatefulWidget {
     required this.playTracks,
     this.onDeleted,
     this.onBack,
+    this.currentTrack,
   });
 
   final PlaylistDetailController controller;
   final PlayTracks playTracks;
   final VoidCallback? onDeleted;
   final VoidCallback? onBack;
+  final Track? Function()? currentTrack;
 
   @override
   State<PlaylistDetailScreen> createState() => _PlaylistDetailScreenState();
 }
 
 final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
+  final _tracksScroll = ScrollController();
+  final _trackListKey = GlobalKey();
+  final _rowKeys = <(String, String), GlobalKey>{};
+  bool _bulkBusy = false;
   @override
   void initState() {
     super.initState();
@@ -44,8 +51,176 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   void dispose() {
+    _tracksScroll.dispose();
     widget.controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _bulk(bool remove) async {
+    final controller = widget.controller;
+    if (_bulkBusy || controller.selectedTracks.isEmpty) return;
+    setState(() => _bulkBusy = true);
+    try {
+      if (remove) {
+        final accepted = await AppBottomSheet.showDestructive(
+          context,
+          title: '移除所选歌曲？',
+          message: '从当前歌单移除 ${controller.selectedTracks.length} 首歌曲，服务器文件会保留。',
+          confirmLabel: '移除',
+        );
+        if (!accepted || !mounted) return;
+        await controller.removeSelected();
+      } else {
+        final targets = await controller.moveTargets();
+        if (!mounted) return;
+        if (targets.isEmpty) {
+          showAppMessage(context, title: '没有其他歌单');
+          return;
+        }
+        final target = await AppBottomSheet.showSelection<String>(
+          context,
+          title: '添加所选歌曲到歌单',
+          selectedValue: targets.first.id,
+          options: [
+            for (final playlist in targets)
+              AppBottomSheetSelection(
+                value: playlist.id,
+                label: playlist.displayName,
+              ),
+          ],
+        );
+        if (!mounted || target == null) return;
+        await controller.addSelectedTo(target);
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        showAppMessage(
+          context,
+          title: '批量操作失败',
+          message: appErrorMessage(error, fallback: '所选歌曲已保留，请重试。'),
+          destructive: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _bulkBusy = false);
+    }
+  }
+
+  void _locate() {
+    final track = widget.currentTrack?.call();
+    final visible = widget.controller.visibleTracks;
+    final index = visible.indexWhere(
+      (t) => t.source == track?.source && t.id == track?.id,
+    );
+    if (index < 0) {
+      showAppMessage(context, title: '当前歌曲不在此列表中');
+      return;
+    }
+    final rowContext = _rowKeys[(track!.source, track.id)]?.currentContext;
+    if (rowContext != null) {
+      Scrollable.ensureVisible(
+        rowContext,
+        alignment: .35,
+        duration: const Duration(milliseconds: 250),
+      );
+    } else if (_tracksScroll.hasClients) {
+      final width = _trackListKey.currentContext?.size?.width ?? 900;
+      _tracksScroll.animateTo(
+        (index * (width < 900 ? 54.0 : 58.0)).clamp(
+          0,
+          _tracksScroll.position.maxScrollExtent,
+        ),
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  Widget _tools() {
+    final controller = widget.controller;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppTextField(
+            key: const Key('playlist-filter'),
+            placeholder: '筛选歌单中的歌曲、歌手或专辑',
+            onChanged: controller.setQuery,
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              AppButton(
+                variant: ShadButtonVariant.ghost,
+                onPressed: _bulkBusy
+                    ? null
+                    : () => controller.setSelecting(!controller.selecting),
+                child: Text(controller.selecting ? '完成选择' : '多选'),
+              ),
+              if (controller.selecting) ...[
+                AppButton(
+                  variant: ShadButtonVariant.ghost,
+                  onPressed: _bulkBusy ? null : controller.selectAllVisible,
+                  child: Text('全选 / 取消（${controller.selected.length}）'),
+                ),
+                AppButton(
+                  variant: ShadButtonVariant.outline,
+                  onPressed: _bulkBusy || controller.selected.isEmpty
+                      ? null
+                      : () => _bulk(false),
+                  child: const Text('添加到歌单'),
+                ),
+                AppButton(
+                  variant: ShadButtonVariant.outline,
+                  onPressed: _bulkBusy || controller.selected.isEmpty
+                      ? null
+                      : () => _bulk(true),
+                  child: const Text('移除所选'),
+                ),
+              ],
+              AppButton(
+                variant: ShadButtonVariant.ghost,
+                onPressed: () async {
+                  final sort = await AppBottomSheet.showSelection<PlaylistSort>(
+                    context,
+                    title: '当前歌单排序',
+                    selectedValue: controller.sort,
+                    options: const [
+                      AppBottomSheetSelection(
+                        value: PlaylistSort.original,
+                        label: '歌单原顺序（可拖动）',
+                      ),
+                      AppBottomSheetSelection(
+                        value: PlaylistSort.title,
+                        label: '歌曲名称',
+                      ),
+                      AppBottomSheetSelection(
+                        value: PlaylistSort.artist,
+                        label: '歌手',
+                      ),
+                      AppBottomSheetSelection(
+                        value: PlaylistSort.album,
+                        label: '专辑',
+                      ),
+                    ],
+                  );
+                  if (mounted && sort != null) controller.setSort(sort);
+                },
+                child: const Text('排序'),
+              ),
+              if (widget.currentTrack != null)
+                AppButton(
+                  variant: ShadButtonVariant.ghost,
+                  onPressed: _locate,
+                  child: const Text('定位当前歌曲'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _rename(String current) async {
@@ -161,6 +336,8 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     builder: (context, _) {
       final state = widget.controller.state;
       final detail = state.detail;
+      final keys = detail?.tracks.map((t) => (t.source, t.id)).toSet() ?? {};
+      _rowKeys.removeWhere((key, _) => !keys.contains(key));
       if (state.loading && detail == null) {
         return const Center(child: CircularProgressIndicator());
       }
@@ -225,6 +402,7 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 ? null
                                 : () => _clear(detail.displayName),
                           ),
+                          _tools(),
                           if (detail.tracks.isEmpty)
                             const SizedBox(
                               height: 220,
@@ -232,6 +410,12 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                             )
                           else
                             _TrackList(
+                              key: _trackListKey,
+                              scrollController: _tracksScroll,
+                              rowKey: (track) => _rowKeys.putIfAbsent((
+                                track.source,
+                                track.id,
+                              ), GlobalKey.new),
                               detail: detail,
                               controller: widget.controller,
                               playTracks: widget.playTracks,
@@ -268,10 +452,17 @@ final class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                               ? null
                               : () => _clear(detail.displayName),
                         ),
+                        _tools(),
                         Expanded(
                           child: detail.tracks.isEmpty
                               ? const AppEmptyState(message: '歌单中还没有歌曲')
                               : _TrackList(
+                                  key: _trackListKey,
+                                  scrollController: _tracksScroll,
+                                  rowKey: (track) => _rowKeys.putIfAbsent((
+                                    track.source,
+                                    track.id,
+                                  ), GlobalKey.new),
                                   detail: detail,
                                   controller: widget.controller,
                                   playTracks: widget.playTracks,
@@ -499,6 +690,9 @@ final class _PlaylistHero extends StatelessWidget {
 
 final class _TrackList extends StatelessWidget {
   const _TrackList({
+    super.key,
+    required this.scrollController,
+    required this.rowKey,
     required this.detail,
     required this.controller,
     required this.playTracks,
@@ -507,6 +701,8 @@ final class _TrackList extends StatelessWidget {
   });
 
   final PlaylistDetail detail;
+  final ScrollController scrollController;
+  final GlobalKey Function(Track) rowKey;
   final PlaylistDetailController controller;
   final PlayTracks playTracks;
   final bool mobile;
@@ -515,7 +711,9 @@ final class _TrackList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!mobile) return _buildDesktop(context);
+    final tracks = controller.visibleTracks;
     final list = ReorderableListView.builder(
+      buildDefaultDragHandles: !controller.filtered && !controller.selecting,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
@@ -524,23 +722,38 @@ final class _TrackList extends StatelessWidget {
         mobile ? 16 : 38,
         30,
       ),
-      itemCount: detail.tracks.length,
+      itemCount: tracks.length,
       onReorderItem: (oldIndex, newIndex) {
-        controller.reorder(
-          position: newIndex,
-          trackIds: [detail.tracks[oldIndex].id],
-        );
+        if (controller.filtered || controller.selecting) return;
+        controller.reorder(position: newIndex, trackIds: [tracks[oldIndex].id]);
       },
       itemBuilder: (context, index) {
-        final track = detail.tracks[index];
-        return _PlaylistTrackRow(
-          key: ValueKey(track.id),
-          track: track,
-          index: index,
-          onPlay: () => controller.playOne(playTracks, index),
-          onRemove: () => controller.remove(track.id),
-          onMore: () => onTrackActions(track),
-          mobile: mobile,
+        final track = tracks[index];
+        return Row(
+          key: rowKey(track),
+          children: [
+            if (controller.selecting)
+              Checkbox(
+                semanticLabel: '选择 ${track.title}',
+                value: controller.selected.contains((track.source, track.id)),
+                onChanged: (_) => controller.toggleSelection(
+                  track,
+                  range: HardwareKeyboard.instance.isShiftPressed,
+                ),
+              ),
+            Expanded(
+              child: _PlaylistTrackRow(
+                track: track,
+                index: index,
+                onPlay: () => controller.selecting
+                    ? controller.toggleSelection(track)
+                    : playTracks(tracks, startIndex: index),
+                onRemove: () => controller.remove(track.id),
+                onMore: () => onTrackActions(track),
+                mobile: mobile,
+              ),
+            ),
+          ],
         );
       },
     );
@@ -549,6 +762,7 @@ final class _TrackList extends StatelessWidget {
 
   Widget _buildDesktop(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
+      final tracks = controller.visibleTracks;
       final compact = constraints.maxWidth < 900;
       final showAlbum = constraints.maxWidth >= 1080;
       final showDuration = constraints.maxWidth >= 720;
@@ -563,18 +777,20 @@ final class _TrackList extends StatelessWidget {
             ),
             Expanded(
               child: ReorderableListView.builder(
+                scrollController: scrollController,
                 buildDefaultDragHandles: false,
-                itemCount: detail.tracks.length,
+                itemCount: tracks.length,
                 onReorderItem: (oldIndex, newIndex) {
+                  if (controller.filtered || controller.selecting) return;
                   controller.reorder(
                     position: newIndex,
-                    trackIds: [detail.tracks[oldIndex].id],
+                    trackIds: [tracks[oldIndex].id],
                   );
                 },
                 itemBuilder: (context, index) {
-                  final track = detail.tracks[index];
+                  final track = tracks[index];
                   return CatalogTrackRow(
-                    key: ValueKey('${track.id}-$index'),
+                    key: ValueKey((track.source, track.id)),
                     index: index + 1,
                     track: track,
                     providers: const [],
@@ -586,18 +802,37 @@ final class _TrackList extends StatelessWidget {
                       final embedded = value.raw['pic'];
                       return embedded is String ? Uri.tryParse(embedded) : null;
                     },
-                    onPlay: () => controller.playOne(playTracks, index),
+                    onPlay: () => controller.selecting
+                        ? controller.toggleSelection(
+                            track,
+                            range: HardwareKeyboard.instance.isShiftPressed,
+                          )
+                        : playTracks(tracks, startIndex: index),
                     onFavorite: () => onTrackActions(track),
                     favoriteIcon: LucideIcons.ellipsis,
                     favoriteTooltip: '更多操作',
                     actions: const [],
-                    trailing: ReorderableDragStartListener(
-                      index: index,
-                      child: const Tooltip(
-                        message: '拖动排序',
-                        child: Icon(LucideIcons.gripVertical, size: 18),
-                      ),
-                    ),
+                    trailing: controller.selecting
+                        ? Checkbox(
+                            semanticLabel: '选择 ${track.title}',
+                            value: controller.selected.contains((
+                              track.source,
+                              track.id,
+                            )),
+                            onChanged: (_) => controller.toggleSelection(
+                              track,
+                              range: HardwareKeyboard.instance.isShiftPressed,
+                            ),
+                          )
+                        : controller.filtered
+                        ? const SizedBox.shrink()
+                        : ReorderableDragStartListener(
+                            index: index,
+                            child: const Tooltip(
+                              message: '拖动排序',
+                              child: Icon(LucideIcons.gripVertical, size: 18),
+                            ),
+                          ),
                     rowKeyPrefix: 'playlist',
                     singleTap: true,
                   );
@@ -613,7 +848,6 @@ final class _TrackList extends StatelessWidget {
 
 final class _PlaylistTrackRow extends StatelessWidget {
   const _PlaylistTrackRow({
-    super.key,
     required this.track,
     required this.index,
     required this.onPlay,

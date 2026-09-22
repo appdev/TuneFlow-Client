@@ -39,6 +39,7 @@ final playerControllerProvider = Provider<PlayerController?>((ref) {
     lyricAuxiliaryOrder: settings.lyricAuxiliaryOrder,
     useTraditionalLyrics: settings.useTraditionalLyrics,
     emphasizeActiveLyric: settings.emphasizeActiveLyric,
+    animatedBackground: settings.animatedBackground,
     rememberPlaybackProgress: settings.rememberPlaybackProgress,
     autoSkipPlaybackErrors: settings.autoSkipPlaybackErrors,
     trackStateStore: ref.read(trackPlaybackStateStoreProvider),

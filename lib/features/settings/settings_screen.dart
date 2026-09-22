@@ -630,6 +630,10 @@ final class _LocalPlaybackAndLyricsSettings extends StatelessWidget {
             value: LyricAuxiliaryOrder.romanizationFirst,
             child: Text('罗马音优先'),
           ),
+          ShadOption(
+            value: LyricAuxiliaryOrder.romanizationAbove,
+            child: Text('罗马音在原文上方'),
+          ),
         ],
         onChanged: controller.setLyricAuxiliaryOrder,
       ),
@@ -644,6 +648,13 @@ final class _LocalPlaybackAndLyricsSettings extends StatelessWidget {
         value: settings.emphasizeActiveLyric,
         onChanged: controller.setEmphasizeActiveLyric,
         label: '放大当前歌词',
+      ),
+      _SwitchPreference(
+        key: const Key('settings-animated-background'),
+        value: settings.animatedBackground,
+        onChanged: controller.setAnimatedBackground,
+        label: '流动渐变背景',
+        description: '播放时根据封面颜色缓慢流动，暂停或减少动画时停止。',
       ),
     ],
   );
@@ -936,6 +947,7 @@ String _lyricAlignmentLabel(LyricAlignment value) => switch (value) {
 String _lyricAuxiliaryOrderLabel(LyricAuxiliaryOrder value) => switch (value) {
   LyricAuxiliaryOrder.translationFirst => '翻译优先',
   LyricAuxiliaryOrder.romanizationFirst => '罗马音优先',
+  LyricAuxiliaryOrder.romanizationAbove => '罗马音在原文上方',
 };
 
 String _cacheLimitLabel(int bytes) => '${bytes ~/ bytesPerGiB} GB';

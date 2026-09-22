@@ -26,10 +26,7 @@ void main() {
     expect(settings.showRomanization, isFalse);
     expect(settings.lyricFontSize, LyricFontSize.standard);
     expect(settings.lyricAlignment, LyricAlignment.adaptive);
-    expect(
-      settings.lyricAuxiliaryOrder,
-      LyricAuxiliaryOrder.translationFirst,
-    );
+    expect(settings.lyricAuxiliaryOrder, LyricAuxiliaryOrder.translationFirst);
     expect(settings.useTraditionalLyrics, isFalse);
     expect(settings.emphasizeActiveLyric, isTrue);
     expect(settings.rememberPlaybackProgress, isFalse);
@@ -57,6 +54,7 @@ void main() {
       lyricAuxiliaryOrder: LyricAuxiliaryOrder.romanizationFirst,
       useTraditionalLyrics: true,
       emphasizeActiveLyric: false,
+      animatedBackground: true,
       rememberPlaybackProgress: true,
       autoSkipPlaybackErrors: true,
       reduceTransparency: true,
@@ -80,10 +78,7 @@ void main() {
 
     expect(settings.lyricFontSize, LyricFontSize.standard);
     expect(settings.lyricAlignment, LyricAlignment.adaptive);
-    expect(
-      settings.lyricAuxiliaryOrder,
-      LyricAuxiliaryOrder.translationFirst,
-    );
+    expect(settings.lyricAuxiliaryOrder, LyricAuxiliaryOrder.translationFirst);
   });
 
   test('legacy origin seeds the last connected origin', () async {

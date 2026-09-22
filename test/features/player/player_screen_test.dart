@@ -1226,7 +1226,7 @@ void main() {
         ),
       );
       await tester.pump();
-      for (var frame = 0; frame < 6; frame++) {
+      for (var frame = 0; frame < 12; frame++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
 
@@ -1666,7 +1666,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('mobile player always opens on the record page', (tester) async {
+  testWidgets('mobile player defaults to the record page on first open', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1678,8 +1680,6 @@ void main() {
     await controller.playTracks([
       Track.fromJson({'id': 'one', 'name': 'One', 'source': 'kw'}),
     ]);
-    controller.setView(PlayerView.lyrics);
-
     await tester.pumpWidget(
       harness(
         PlayerScreen(

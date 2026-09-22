@@ -44,6 +44,7 @@ final class PlayerController extends ChangeNotifier {
         LyricAuxiliaryOrder.translationFirst,
     bool useTraditionalLyrics = false,
     bool emphasizeActiveLyric = true,
+    this.animatedBackground = false,
     bool rememberPlaybackProgress = false,
     bool autoSkipPlaybackErrors = false,
     TrackPlaybackStateStore? trackStateStore,
@@ -76,6 +77,7 @@ final class PlayerController extends ChangeNotifier {
   late final PlaybackSessionPort? _sessions;
   late final StreamSubscription<AudioSnapshot> _subscription;
   PlayerState state;
+  bool animatedBackground;
   final Random _random = Random();
   _ActivePlaybackSession? _activeSession;
   List<PlaybackContext?> _playbackContexts = const [];
@@ -95,6 +97,63 @@ final class PlayerController extends ChangeNotifier {
   ({String key, int generation, Duration position})? _pendingResume;
   final Set<String> _failedTrackKeys = {};
   bool _handlingPlaybackFailure = false;
+  Timer? _sleepTimer;
+  bool _disposed = false;
+  DateTime? sleepDeadline;
+  bool stopAfterCurrent = false;
+  bool _finishTrackAtDeadline = false;
+  String? _sleepTrackKey;
+  int? _sleepStopGeneration;
+
+  void setSleepTimer(Duration? duration, {bool finishCurrentTrack = false}) {
+    cancelSleepTimer();
+    if (duration == null) {
+      if (state.current == null) return;
+      stopAfterCurrent = true;
+      _sleepTrackKey = _currentTrackKey;
+    } else {
+      if (duration <= Duration.zero) return;
+      sleepDeadline = DateTime.now().add(duration);
+      _finishTrackAtDeadline = finishCurrentTrack;
+      _sleepTimer = Timer(duration, _expireSleepTimer);
+    }
+    notifyListeners();
+  }
+
+  String? get _currentTrackKey => state.current == null
+      ? null
+      : '${state.current!.source}\u0000${state.current!.id}';
+
+  void cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    sleepDeadline = null;
+    stopAfterCurrent = false;
+    _sleepTrackKey = null;
+    _finishTrackAtDeadline = false;
+    _sleepStopGeneration = null;
+    notifyListeners();
+  }
+
+  void _expireSleepTimer() {
+    if (sleepDeadline == null) return;
+    final finish = _finishTrackAtDeadline && state.isPlaybackActive;
+    cancelSleepTimer();
+    if (finish) {
+      stopAfterCurrent = true;
+      _sleepTrackKey = _currentTrackKey;
+      notifyListeners();
+    } else {
+      _sleepStopGeneration = _playGeneration;
+      unawaited(
+        pause().catchError((Object error) {
+          if (_disposed) return;
+          state = state.copyWith(error: error);
+          notifyListeners();
+        }),
+      );
+    }
+  }
 
   void setSequentialQueueEndHandler(Future<bool> Function()? handler) {
     _sequentialQueueEndHandler = handler;
@@ -277,6 +336,7 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<bool> clearQueue() async {
+    cancelSleepTimer();
     if (state.queue.isEmpty) return false;
     if (_rememberPlaybackProgress) await _flushResumePosition();
     _playGeneration++;
@@ -431,6 +491,7 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    if (stopAfterCurrent) cancelSleepTimer();
     try {
       await audio.pause();
     } on Object catch (error) {
@@ -445,6 +506,7 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> resume() async {
+    _sleepStopGeneration = null;
     try {
       if (state.current == null) {
         await audio.resume();
@@ -559,6 +621,7 @@ final class PlayerController extends ChangeNotifier {
   }
 
   void applySettings(AppSettings settings) {
+    animatedBackground = settings.animatedBackground;
     _rememberPlaybackProgress = settings.rememberPlaybackProgress;
     _autoSkipPlaybackErrors = settings.autoSkipPlaybackErrors;
     if (!_rememberPlaybackProgress) _pendingResume = null;
@@ -1140,6 +1203,12 @@ final class PlayerController extends ChangeNotifier {
   }
 
   void _onSnapshot(AudioSnapshot snapshot) {
+    if (sleepDeadline != null && !DateTime.now().isBefore(sleepDeadline!)) {
+      _expireSleepTimer();
+    }
+    if (stopAfterCurrent && _sleepTrackKey != _currentTrackKey) {
+      cancelSleepTimer();
+    }
     final newlyCompleted =
         snapshot.processing == PlayerProcessing.completed &&
         state.processing != PlayerProcessing.completed;
@@ -1176,11 +1245,22 @@ final class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _handleCompletion() async {
+    final generation = _playGeneration;
+    final alreadyStopped = _sleepStopGeneration == generation;
+    final shouldStop =
+        alreadyStopped ||
+        (stopAfterCurrent && _sleepTrackKey == _currentTrackKey);
+    if (shouldStop) cancelSleepTimer();
     final completedTrack = state.current;
     if (_rememberPlaybackProgress && completedTrack != null) {
       await _clearResumePosition(completedTrack);
     }
     await _endSession(completed: true);
+    if (generation != _playGeneration) return;
+    if (shouldStop) {
+      if (!alreadyStopped) await pause();
+      return;
+    }
     switch (state.playbackMode) {
       case PlaybackMode.repeatOne:
         state = state.copyWith(
@@ -1205,6 +1285,8 @@ final class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _sleepTimer?.cancel();
     unawaited(_flushResumePosition());
     _playGeneration++;
     unawaited(_endSession(completed: false));

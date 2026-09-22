@@ -98,6 +98,7 @@ final class LyricControls extends StatelessWidget {
           choices: const {
             LyricAuxiliaryOrder.translationFirst: '翻译优先',
             LyricAuxiliaryOrder.romanizationFirst: '罗马音优先',
+            LyricAuxiliaryOrder.romanizationAbove: '罗马音在原文上方',
           },
           onChanged: onAuxiliaryOrder,
           keyPrefix: 'lyric-order',

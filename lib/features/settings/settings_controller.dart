@@ -236,6 +236,8 @@ final class SettingsController extends ChangeNotifier {
       _persist(state.copyWith(useTraditionalLyrics: value));
   Future<void> setEmphasizeActiveLyric(bool value) =>
       _persist(state.copyWith(emphasizeActiveLyric: value));
+  Future<void> setAnimatedBackground(bool value) =>
+      _persist(state.copyWith(animatedBackground: value));
   Future<void> setRememberPlaybackProgress(bool value) =>
       _persist(state.copyWith(rememberPlaybackProgress: value));
   Future<void> setAutoSkipPlaybackErrors(bool value) =>

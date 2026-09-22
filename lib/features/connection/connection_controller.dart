@@ -30,12 +30,16 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
 
   @override
   Future<ConnectedService?> build() async {
+    final generation = ++_generation;
     ref.onDispose(() {
       _generation++;
       _debounceTimer?.cancel();
       unawaited(_networkSubscription?.cancel());
     });
     final settings = await ref.read(appPreferencesProvider).read();
+    if (!ref.mounted || generation != _generation) {
+      return ref.mounted ? state.value : null;
+    }
     final catalog = _catalogFrom(settings);
     final monitor = ref.read(networkTypeMonitorProvider);
     _networkSubscription = monitor.changes.listen(handleNetworkChange);
@@ -46,6 +50,9 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
       return null;
     }
     final transports = _normalizeTransports(await monitor.current());
+    if (!ref.mounted || generation != _generation) {
+      return ref.mounted ? state.value : null;
+    }
     _lastTransports = transports;
     _route = classifyNetwork(transports);
     AppLogger.instance.record(
@@ -63,11 +70,22 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
         final health = await ref
             .read(serverEndpointProbeProvider)
             .probe(lastConnected.uri.toString());
+        if (!ref.mounted || generation != _generation) {
+          return ref.mounted ? state.value : null;
+        }
         final connected = await ref
             .read(connectionRepositoryProvider)
             .connectProbed(health);
+        if (!ref.mounted || generation != _generation) {
+          connected.api.close();
+          return ref.mounted ? state.value : null;
+        }
         final refreshed = catalog.withHealth(health);
         await _persistEndpoints(refreshed, health.origin);
+        if (!ref.mounted || generation != _generation) {
+          connected.api.close();
+          return ref.mounted ? state.value : null;
+        }
         final restored = _withDiagnostics(
           connected,
           health,
@@ -80,6 +98,9 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
         );
         return restored;
       } on Object catch (error, stackTrace) {
+        if (!ref.mounted || generation != _generation) {
+          return ref.mounted ? state.value : null;
+        }
         lastFailure = error;
         lastStackTrace = stackTrace;
         AppLogger.instance.record(
@@ -96,10 +117,18 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
         .select(
           catalog: catalog,
           route: _route,
-          generationIsCurrent: () => true,
+          generationIsCurrent: () => ref.mounted && generation == _generation,
         );
+    if (!ref.mounted || generation != _generation) {
+      selection?.connected.api.close();
+      return ref.mounted ? state.value : null;
+    }
     if (selection != null) {
       await _persistEndpoints(selection.catalog, selection.health.origin);
+      if (!ref.mounted || generation != _generation) {
+        selection.connected.api.close();
+        return ref.mounted ? state.value : null;
+      }
       return _withDiagnostics(
         selection.connected,
         selection.health,
@@ -124,15 +153,20 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
     final previous = state.value;
     final generation = ++_generation;
     _debounceTimer?.cancel();
-    if (previous == null) state = const AsyncLoading();
+    if (previous == null || !previous.isConnected) {
+      previous?.api.close();
+      state = const AsyncLoading();
+    }
     try {
       final bootstrap = ServiceOrigin.parse(value);
       final settings = await ref.read(appPreferencesProvider).read();
+      if (!ref.mounted || generation != _generation) return;
       var route = _route;
       if (route == NetworkRoute.offline) {
         final transports = _normalizeTransports(
           await ref.read(networkTypeMonitorProvider).current(),
         );
+        if (!ref.mounted || generation != _generation) return;
         route = classifyNetwork(transports);
         _lastTransports = transports;
         _route = route;
@@ -142,8 +176,12 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
           .select(
             catalog: _catalogFrom(settings, bootstrapOrigin: bootstrap),
             route: route,
-            generationIsCurrent: () => generation == _generation,
+            generationIsCurrent: () => ref.mounted && generation == _generation,
           );
+      if (!ref.mounted || generation != _generation) {
+        selection?.connected.api.close();
+        return;
+      }
       if (selection == null) {
         throw const ServiceException(
           'NETWORK_ERROR',
@@ -151,6 +189,10 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
         );
       }
       await _persistEndpoints(selection.catalog, selection.health.origin);
+      if (!ref.mounted || generation != _generation) {
+        selection.connected.api.close();
+        return;
+      }
       previous?.api.close();
       state = AsyncData(
         _withDiagnostics(
@@ -161,19 +203,26 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
         ),
       );
     } on Object catch (error, stackTrace) {
+      if (!ref.mounted || generation != _generation) return;
       AppLogger.instance.record(
         AppLogEvent.serviceConnectionFailed,
         level: AppLogLevel.warning,
         error: error,
         stackTrace: stackTrace,
       );
-      if (previous == null) {
+      if (previous == null || !previous.isConnected) {
         state = AsyncError(error, stackTrace);
       } else {
         state = AsyncData(previous);
         Error.throwWithStackTrace(error, stackTrace);
       }
     }
+  }
+
+  void cancelConnection() {
+    _generation++;
+    _debounceTimer?.cancel();
+    state = const AsyncData(null);
   }
 
   Future<void> applyEndpoints({
@@ -394,7 +443,10 @@ final class ConnectionController extends AsyncNotifier<ConnectedService?> {
     ServiceOrigin? bootstrapOrigin,
   }) {
     if (kIsWeb) {
-      final origin = ServiceOrigin.parse(Uri.base.origin);
+      final origin =
+          bootstrapOrigin ??
+          _tryOrigin(settings.origin) ??
+          _tryOrigin(Uri.base.origin);
       return EndpointCatalog(
         bootstrapOrigin: origin,
         lastConnectedOrigin: origin,

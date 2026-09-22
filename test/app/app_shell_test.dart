@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -325,6 +326,12 @@ void main() {
       tester.element(find.byKey(const Key('main-shell'))),
     );
     requests.clear();
+    showDialog<void>(
+      context: tester.element(find.byKey(const Key('main-shell'))),
+      builder: (_) => const AlertDialog(content: Text('门禁测试弹窗')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('门禁测试弹窗'), findsOneWidget);
     container.read(connectionProvider.notifier).handleNetworkChange({
       NetworkTransport.none,
     });
@@ -340,6 +347,18 @@ void main() {
       isEmpty,
       reason: 'connection diagnostics must not refresh music data',
     );
+    expect(find.byKey(const Key('connection-route')), findsOneWidget);
+    expect(find.text('门禁测试弹窗'), findsNothing);
+    expect(find.byKey(const Key('main-shell')), findsNothing);
+    container.read(connectionProvider.notifier).handleNetworkChange({
+      NetworkTransport.wifi,
+    });
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    if (find.text('门禁测试弹窗').evaluate().isNotEmpty) {
+      Navigator.of(tester.element(find.text('门禁测试弹窗'))).pop();
+      await tester.pumpAndSettle();
+    }
     await container.read(playerControllerProvider)!.playTracks([
       Track.fromJson({'id': 'desktop-inset', 'name': '遮挡测试', 'source': 'kw'}),
     ]);
@@ -851,7 +870,7 @@ void main() {
     expect(find.byKey(const Key('mobile-player-dock')), findsNothing);
     expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
 
-    await tester.tap(find.bySemanticsLabel('返回'));
+    await tester.tap(find.byTooltip('关闭播放器'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('player-route')), findsNothing);
     expect(find.byKey(const Key('home-route')), findsOneWidget);
@@ -1002,16 +1021,21 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
     expect(find.byKey(const Key('mobile-page-back')), findsOneWidget);
-    tester.widget<AppMobileDock>(find.byType(AppMobileDock)).onOpenPlayer();
+    final openPlayer = tester
+        .widget<AppMobileDock>(find.byType(AppMobileDock))
+        .onOpenPlayer;
+    openPlayer();
+    openPlayer();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('player-route')), findsOneWidget);
     expect(find.text('返回后仍在'), findsNothing);
     expect(detailRequests, 1);
 
-    Navigator.of(
-      tester.element(find.byKey(const Key('player-route'))),
-      rootNavigator: true,
-    ).pop();
+    final route =
+        ModalRoute.of(tester.element(find.byKey(const Key('player-route'))))!
+            as PageRoute;
+    expect(route.transitionDuration, const Duration(milliseconds: 360));
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('player-route')), findsNothing);
@@ -1019,6 +1043,20 @@ void main() {
     expect(detailRequests, 1);
     expect(find.byKey(const Key('mobile-bottom-navigation')), findsNothing);
     expect(find.byKey(const Key('mobile-page-back')), findsOneWidget);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tester.pump();
+    tester.widget<AppMobileDock>(find.byType(AppMobileDock)).onOpenPlayer();
+    await tester.pumpAndSettle();
+    final reducedRoute =
+        ModalRoute.of(tester.element(find.byKey(const Key('player-route'))))!
+            as PageRoute;
+    expect(reducedRoute.transitionDuration, Duration.zero);
+    await tester.tap(find.byTooltip('关闭播放器'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('player-route')), findsNothing);
+    expect(detailRequests, 1);
     debugDefaultTargetPlatformOverride = null;
   });
 

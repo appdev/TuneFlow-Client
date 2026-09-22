@@ -109,12 +109,12 @@ final class MobilePlayerControls extends StatelessWidget {
                   initialValue: state.playbackRate,
                   decoration: ShadDecoration.none,
                   options: const [
-                    ShadOption(value: .5, child: Text('0.5x')),
-                    ShadOption(value: .75, child: Text('0.75x')),
-                    ShadOption(value: 1, child: Text('1.0x')),
-                    ShadOption(value: 1.25, child: Text('1.25x')),
-                    ShadOption(value: 1.5, child: Text('1.5x')),
-                    ShadOption(value: 2, child: Text('2.0x')),
+                    ShadOption<double>(value: .5, child: Text('0.5x')),
+                    ShadOption<double>(value: .75, child: Text('0.75x')),
+                    ShadOption<double>(value: 1, child: Text('1.0x')),
+                    ShadOption<double>(value: 1.25, child: Text('1.25x')),
+                    ShadOption<double>(value: 1.5, child: Text('1.5x')),
+                    ShadOption<double>(value: 2, child: Text('2.0x')),
                   ],
                   selectedOptionBuilder: (context, value) => Text('${value}x'),
                   onChanged: (value) {
@@ -151,6 +151,7 @@ final class MobilePlayerControls extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           PlaybackProgress(
             key: const Key('player-mobile-progress'),
+            trackIdentity: (track.source, track.id),
             position: state.position,
             duration: state.duration,
             hitExtent: 44,
@@ -272,7 +273,7 @@ final class _TransportButton extends StatelessWidget {
             shape: const CircleBorder(),
             child: InkWell(
               customBorder: const CircleBorder(),
-              onTap: enabled && !loading ? onPressed : null,
+              onTap: enabled ? onPressed : null,
               child: SizedBox.square(
                 dimension: 64,
                 child: Center(
@@ -305,7 +306,7 @@ final class _TransportButton extends StatelessWidget {
       message: label,
       child: Semantics(
         button: true,
-        enabled: enabled && !loading,
+        enabled: enabled,
         label: label,
         child: button,
       ),

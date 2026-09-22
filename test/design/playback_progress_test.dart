@@ -6,6 +6,34 @@ import 'package:musicfree_service_client/design/design_tokens.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 void main() {
+  testWidgets('changing tracks cancels the old seek gesture', (tester) async {
+    final seeks = <Duration>[];
+    Widget progress(String track, int seconds) => ShadApp(
+      theme: buildLightTheme(),
+      home: Scaffold(
+        body: PlaybackProgress(
+          trackIdentity: track,
+          position: Duration(seconds: seconds),
+          duration: const Duration(minutes: 3),
+          onSeek: seeks.add,
+        ),
+      ),
+    );
+    await tester.pumpWidget(progress('one', 30));
+    final area = tester.getRect(
+      find.byKey(const Key('playback-progress-hit-area')),
+    );
+    final gesture = await tester.startGesture(area.center);
+    await tester.pump();
+    await tester.pumpWidget(progress('two', 10));
+    await gesture.moveBy(const Offset(30, 0));
+    await gesture.up();
+    await tester.pump();
+    expect(seeks, isEmpty);
+    expect(find.text('0:10'), findsOneWidget);
+    await tester.tapAt(area.center);
+    expect(seeks, [const Duration(seconds: 90)]);
+  });
   testWidgets('playback progress keeps times aligned and supports seeking', (
     tester,
   ) async {
@@ -60,6 +88,9 @@ void main() {
     await gesture.moveTo(
       Offset(sliderRect.left + sliderRect.width * 0.75, sliderRect.center.dy),
     );
+    await tester.pump();
+    expect(seeked, isNull, reason: 'dragging previews without seeking');
+    expect(find.text('3:03'), findsOneWidget);
     await gesture.up();
     await tester.pump();
     expect(seeked, isNotNull);
@@ -117,6 +148,32 @@ void main() {
     await tester.pump();
 
     expect(seekCount, 0);
+  });
+
+  testWidgets('cancelling a seek restores the actual position', (tester) async {
+    final seeks = <Duration>[];
+    await tester.pumpWidget(
+      ShadApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: PlaybackProgress(
+            position: const Duration(seconds: 30),
+            duration: const Duration(minutes: 3),
+            onSeek: seeks.add,
+          ),
+        ),
+      ),
+    );
+    final area = tester.getRect(
+      find.byKey(const Key('playback-progress-hit-area')),
+    );
+    final gesture = await tester.startGesture(area.center);
+    await tester.pump();
+    expect(find.text('1:30'), findsOneWidget);
+    await gesture.cancel();
+    await tester.pump();
+    expect(seeks, isEmpty);
+    expect(find.text('0:30'), findsOneWidget);
   });
 }
 
